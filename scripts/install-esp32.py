@@ -29,6 +29,10 @@ class InstallerError(RuntimeError):
     pass
 
 
+class SerialPortUnavailableError(InstallerError):
+    """A previously detected serial device is temporarily absent."""
+
+
 def normalized_bridge_name(value: str) -> str:
     name = value.strip(" \t\r\n")
     encoded = name.encode("utf-8")
@@ -130,6 +134,11 @@ def trusted_linux_serial_device(port: str) -> str | None:
     return str(device) if stat.S_ISCHR(mode) else None
 
 
+def expected_linux_serial_path(port: str) -> bool:
+    device = Path(port)
+    return device.parent == Path("/dev") and device.name.startswith(("ttyACM", "ttyUSB"))
+
+
 def ensure_serial_port_access(port: str, allow_sudo: bool) -> None:
     if os.access(port, os.R_OK | os.W_OK):
         return
@@ -140,9 +149,13 @@ def ensure_serial_port_access(port: str, allow_sudo: bool) -> None:
         )
     if not sys.platform.startswith("linux"):
         raise InstallerError(f"permission denied for {port}; grant the current user read/write access and retry")
+    if expected_linux_serial_path(port) and not Path(port).exists():
+        raise SerialPortUnavailableError(f"serial port is reconnecting: {port}")
 
     trusted_port = trusted_linux_serial_device(port)
     if not trusted_port:
+        if expected_linux_serial_path(port) and not Path(port).exists():
+            raise SerialPortUnavailableError(f"serial port is reconnecting: {port}")
         raise InstallerError(
             f"refusing to elevate access for unexpected device path {port}; use a /dev/ttyACM* or /dev/ttyUSB* character device"
         )
@@ -163,7 +176,12 @@ def ensure_serial_port_access(port: str, allow_sudo: bool) -> None:
         action = "temporary device ownership"
 
     print(f"Permission is required for {port}; requesting sudo only to grant {action}.", flush=True)
-    subprocess.run(command, check=True)
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as error:
+        if not Path(port).exists():
+            raise SerialPortUnavailableError(f"serial port disappeared while granting access: {port}") from error
+        raise
     if not os.access(port, os.R_OK | os.W_OK):
         raise InstallerError(f"read/write access to {port} is still unavailable after sudo")
 
@@ -214,6 +232,28 @@ def _open_serial(port: str):
     return connection
 
 
+def wait_for_manual_reset() -> None:
+    prompt = (
+        "Firmware written. Press the ESP32 RESET button once, wait for the USB port "
+        "to reconnect, then press Enter. "
+    )
+    if os.name == "posix":
+        try:
+            with open("/dev/tty", "r+", encoding="utf-8", buffering=1) as terminal:
+                terminal.write(prompt)
+                terminal.flush()
+                terminal.readline()
+                return
+        except OSError:
+            pass
+    try:
+        input(prompt)
+    except EOFError as error:
+        raise InstallerError(
+            "interactive RESET confirmation is unavailable; reset the bridge and rerun with --skip-flash"
+        ) from error
+
+
 def provision_bridge_name(
     preferred_port: str,
     name: str,
@@ -251,6 +291,8 @@ def provision_bridge_name(
                             raise InstallerError(line)
                     if sent_name:
                         last_error = InstallerError("the bridge restarted before acknowledging the saved name")
+            except SerialPortUnavailableError as error:
+                last_error = error
             except InstallerError:
                 raise
             except OSError as error:
@@ -290,6 +332,11 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="on Linux, request sudo only for temporary read/write access to the detected serial device",
     )
+    result.add_argument(
+        "--wait-for-reset",
+        action="store_true",
+        help="after flashing, wait for explicit confirmation that RESET was pressed",
+    )
     return result
 
 
@@ -299,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
         raise InstallerError("--timeout must be greater than zero")
     if args.skip_flash and args.firmware:
         raise InstallerError("--firmware cannot be combined with --skip-flash")
+    if args.skip_flash and args.wait_for_reset:
+        raise InstallerError("--wait-for-reset cannot be combined with --skip-flash")
     if not args.skip_flash and not args.firmware:
         raise InstallerError("--firmware is required unless --skip-flash is used")
 
@@ -311,7 +360,10 @@ def main(argv: list[str] | None = None) -> int:
         ensure_serial_port_access(port, args.grant_port_access)
         print(f"Flashing {args.firmware} on {port}…", flush=True)
         flash_firmware(port, args.firmware)
-        print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
+        if args.wait_for_reset:
+            wait_for_manual_reset()
+        else:
+            print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
 
     print(f"Provisioning BLE name {args.name!r}…", flush=True)
     configured_port = provision_bridge_name(
