@@ -230,6 +230,10 @@
 "Letters" = "Letters";
 "Space" = "Space";
 "Незахищена прошивка ESP — онови її" = "Unsafe ESP firmware — update it";
+"Небезпечна прошивка ESP" = "Unsafe ESP firmware";
+"Несумісна прошивка ESP" = "Incompatible ESP firmware";
+"Цей адаптер не підтримує захищене сполучення. InpuDeck заблокував введення. Повністю перепроший ESP актуальним інсталятором; --skip-flash недостатньо." = "This adapter does not support a secure connection. InpuDeck blocked input. Fully reflash the ESP with the current installer; --skip-flash is not sufficient.";
+"Версію захисту цього адаптера не розпізнано. InpuDeck заблокував введення. Встанови актуальну прошивку ESP." = "This adapter's security version is not recognized. InpuDeck blocked input. Install the current ESP firmware.";
 "Bluetooth: захищене сполучення…" = "Bluetooth: establishing secure pairing…";
 "Захищене сполучення не завершено: %@" = "Secure pairing did not complete: %@";
 "Невідома версія захисту ESP — онови прошивку" = "Unknown ESP security version — update the firmware";

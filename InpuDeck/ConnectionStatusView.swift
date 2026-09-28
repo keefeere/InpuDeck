@@ -102,6 +102,15 @@ struct ConnectionStatusView: View {
         .sheet(isPresented: $showsESPBridges) {
             ESPBridgeSheet(input: input, bridge: esp)
         }
+        .alert(item: firmwareSecurityIssueBinding) { issue in
+            Alert(
+                title: Text(issue.title),
+                message: Text(issue.message),
+                dismissButton: .default(Text("Зрозуміло")) {
+                    esp.dismissFirmwareSecurityIssue()
+                }
+            )
+        }
     }
 
     private var statusLabel: some View {
@@ -114,6 +123,9 @@ struct ConnectionStatusView: View {
 
     private var displayStatus: String {
         if !developerMode {
+            if input.mode == .esp, let issue = esp.firmwareSecurityIssue {
+                return issue.title
+            }
             if input.mode == .bluetooth, let id = direct.selectedHostID,
                let host = direct.savedHosts.first(where: { $0.id == id }), host.hasDisplayName {
                 return host.name
@@ -129,6 +141,15 @@ struct ConnectionStatusView: View {
 
     private var activeProtocolIcon: Image {
         input.mode == .esp ? Image(systemName: "cpu") : Image("BluetoothProtocolIcon")
+    }
+
+    private var firmwareSecurityIssueBinding: Binding<ESPFirmwareSecurityIssue?> {
+        Binding(
+            get: { esp.firmwareSecurityIssue },
+            set: { issue in
+                if issue == nil { esp.dismissFirmwareSecurityIssue() }
+            }
+        )
     }
 
     @ViewBuilder

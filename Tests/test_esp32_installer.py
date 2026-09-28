@@ -79,6 +79,18 @@ class BridgeNameTests(unittest.TestCase):
         self.assertIn("didUpdateValueFor characteristic", app)
         self.assertIn("guard isReady, let peripheral, let writeChar", app)
         self.assertIn('localized("Незахищена прошивка ESP — онови її")', app)
+        self.assertIn("firmwareSecurityIssue = .unsafeLegacy", app)
+        self.assertIn("firmwareSecurityIssue = .unknownCapability", app)
+
+    def test_firmware_exposes_authenticated_authoritative_name(self):
+        firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()
+        app = (SCRIPT.parents[1] / "InpuDeck" / "BLEKeyboardBridge.swift").read_text()
+        self.assertIn("kNameCharUUID", firmware)
+        self.assertIn("pNameChar->setValue", firmware)
+        self.assertIn("NIMBLE_PROPERTY::READ_ENC", firmware)
+        self.assertIn("NIMBLE_PROPERTY::READ_AUTHEN", firmware)
+        self.assertIn("nameCharUUID", app)
+        self.assertIn("ESPBridgeNamePayload.decode", app)
 
     def test_waveshare_status_led_covers_each_connection_path(self):
         firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()

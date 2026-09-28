@@ -34,6 +34,7 @@ enum class BridgeLedState : uint8_t;
 static const char* kServiceUUID = "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kWriteCharUUID = "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kSecurityCharUUID = "2D2A0003-8A5A-4E76-A2E3-1E57D9A1B001";
+static const char* kNameCharUUID = "2D2A0004-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kDefaultBridgeName = "InpuDeck Bridge";
 static const char* kPreferencesNamespace = "inpudeck";
 static const char* kBridgeNameKey = "bridge_name";
@@ -643,6 +644,7 @@ static void sendSystemMicrophoneMuteUp() {
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pWriteChar = nullptr;
 NimBLECharacteristic* pSecurityChar = nullptr;
+NimBLECharacteristic* pNameChar = nullptr;
 
 static void disconnectPeer(uint16_t connHandle) {
   if (connHandle == gConnectedHandle) {
@@ -867,6 +869,18 @@ static void setupBle() {
       | NIMBLE_PROPERTY::READ_ENC
       | NIMBLE_PROPERTY::READ_AUTHEN);
   pSecurityChar->setValue(kSecurityCapability, sizeof(kSecurityCapability));
+
+  // The GAP name reported by phones may be stale after a reflash. Expose the
+  // stored UTF-8 name through the authenticated connection as the authoritative
+  // app label while keeping the security capability payload backward-compatible.
+  pNameChar = svc->createCharacteristic(
+    kNameCharUUID,
+    NIMBLE_PROPERTY::READ
+      | NIMBLE_PROPERTY::READ_ENC
+      | NIMBLE_PROPERTY::READ_AUTHEN);
+  pNameChar->setValue(
+    reinterpret_cast<const uint8_t*>(gBridgeName.c_str()),
+    gBridgeName.length());
 
   svc->start();
 
