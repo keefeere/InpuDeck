@@ -120,8 +120,8 @@ class BridgeNameTests(unittest.TestCase):
 
 class PortSelectionTests(unittest.TestCase):
     @staticmethod
-    def port(device, vid=None):
-        return types.SimpleNamespace(device=device, vid=vid)
+    def port(device, vid=None, **details):
+        return types.SimpleNamespace(device=device, vid=vid, **details)
 
     def test_prefers_requested_port_when_it_is_present(self):
         ports = [self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID), self.port("/dev/ttyACM0")]
@@ -150,7 +150,70 @@ class PortSelectionTests(unittest.TestCase):
             self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID),
         ]
         with self.assertRaises(installer.InstallerError):
-            installer.auto_detect_port(ports)
+            installer.auto_detect_port(
+                ports,
+                now=1000,
+                stat_port=lambda _device: types.SimpleNamespace(st_ctime=100),
+            )
+
+    def test_auto_detection_prefers_the_recently_reconnected_espressif_port(self):
+        ports = [
+            self.port("/dev/ttyACM0", installer.ESPRESSIF_USB_VID),
+            self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID),
+        ]
+        changed_at = {"/dev/ttyACM0": 995, "/dev/ttyACM1": 100}
+
+        self.assertEqual(
+            installer.auto_detect_port(
+                ports,
+                now=1000,
+                stat_port=lambda device: types.SimpleNamespace(st_ctime=changed_at[device]),
+            ),
+            "/dev/ttyACM0",
+        )
+
+    def test_auto_detection_does_not_guess_when_ports_reconnected_together(self):
+        ports = [
+            self.port("/dev/ttyACM0", installer.ESPRESSIF_USB_VID),
+            self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID),
+        ]
+        changed_at = {"/dev/ttyACM0": 995.0, "/dev/ttyACM1": 994.5}
+
+        with self.assertRaises(installer.InstallerError):
+            installer.auto_detect_port(
+                ports,
+                now=1000,
+                stat_port=lambda device: types.SimpleNamespace(st_ctime=changed_at[device]),
+            )
+
+    def test_interactive_fallback_shows_usb_details_and_selects_without_rerun(self):
+        ports = [
+            self.port(
+                "/dev/ttyACM0",
+                installer.ESPRESSIF_USB_VID,
+                product="USB JTAG/serial debug unit",
+                serial_number="AABBCC",
+                location="1-2.3",
+            ),
+            self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID, product="Hub controller"),
+        ]
+        terminal = mock.Mock()
+        terminal.readline.return_value = "2\n"
+
+        selected = installer.auto_detect_port(
+            ports,
+            interactive=True,
+            terminal=terminal,
+            now=1000,
+            stat_port=lambda _device: types.SimpleNamespace(st_ctime=100),
+        )
+
+        self.assertEqual(selected, "/dev/ttyACM1")
+        output = "".join(call.args[0] for call in terminal.write.call_args_list)
+        self.assertIn("USB JTAG/serial debug unit", output)
+        self.assertIn("AABBCC", output)
+        self.assertIn("1-2.3", output)
+        self.assertIn("Hub controller", output)
 
     @mock.patch.object(installer.time, "sleep")
     @mock.patch.object(installer, "available_ports")
