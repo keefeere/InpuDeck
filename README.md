@@ -152,7 +152,7 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.3
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.4
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -162,7 +162,8 @@ To build from source instead, install [Arduino IDE](https://www.arduino.cc/en/so
 add the ESP32 board package URL below, install
 [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), open
 `inpudeck_bridge/inpudeck_bridge.ino`, select the ESP32-S3 board with
-`Tools > USB Mode > USB-OTG (TinyUSB)`, and upload the sketch:
+`Tools > USB Mode > USB-OTG (TinyUSB)`, enable
+`Tools > USB CDC On Boot > Enabled`, and upload the sketch:
 
 ```text
 https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
@@ -375,7 +376,7 @@ helper and distribution-specific testing is optional.
 - **Direct BLE HID on macOS and Windows** - Pairing, keyboard and mouse input, reconnect, and host switching are stable in repeated physical testing. Windows works without repeated pairing through the companion BlueVein improvements. Linux input is functional, with optional helper and distro-specific follow-up retained outside the release roadmap.
 - **Global keep-awake option** - Since 3.0.3, an app-wide setting can keep the display awake independently of Mouse Jiggler while InpuDeck is active. Backgrounding the app or disabling the option restores normal system sleep behavior. Confirmed on-device.
 - **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
-- **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.3 added the one-command bootstrap, scoped Linux serial permissions, and an explicit RESET/re-enumeration flow.
+- **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.4 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, and runtime USB CDC required for post-flash provisioning.
 
 ### Completed in iOS 2.2
 

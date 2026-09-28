@@ -76,7 +76,7 @@ jobs:
           mkdir -p build/esp32-s3-zero dist/esp32
           arduino-cli compile \
             --fqbn esp32:esp32:waveshare_esp32_s3_zero \
-            --board-options USBMode=default,CDCOnBoot=cdc,PSRAM=enabled,FlashMode=qio \
+            --board-options USBMode=default,CDCOnBoot=default,PSRAM=enabled,FlashMode=qio \
             --export-binaries \
             --output-dir build/esp32-s3-zero \
             inpudeck_bridge

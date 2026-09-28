@@ -44,6 +44,17 @@ class BridgeNameTests(unittest.TestCase):
         self.assertIn('"INPUDECK SET-NAME "', firmware)
         self.assertIn('"INPUDECK OK NAME %s\\n"', firmware)
 
+    def test_release_builds_enable_tinyusb_cdc_for_post_flash_provisioning(self):
+        repository = SCRIPT.parents[1]
+        for relative_path in (
+            ".github/workflows/build-ios-ipa.yml",
+            ".github/workflows/build-esp32-firmware.yml",
+        ):
+            with self.subTest(workflow=relative_path):
+                workflow = (repository / relative_path).read_text()
+                self.assertIn("USBMode=default,CDCOnBoot=default", workflow)
+                self.assertNotIn("USBMode=default,CDCOnBoot=cdc", workflow)
+
 
 class PortSelectionTests(unittest.TestCase):
     @staticmethod
