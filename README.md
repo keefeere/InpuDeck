@@ -140,18 +140,19 @@ the image, asks for the bridge name, explains the BOOT/RESET sequence, detects a
 single Espressif serial port, and runs the Python installer in an isolated `uv`
 environment. If `uv` is not installed, the script places a temporary pinned copy
 in its working directory and removes it afterward. No system Python packages are
-changed. On Linux, if the serial device is not accessible, it requests `sudo`
-only to add a temporary ACL to that device node (and reapplies it after USB
-re-enumeration); neither `uv` nor `esptool` runs as root. Every tagged release
-contains the matching firmware, checksum, and installer scripts rather than
-relying on an expiring Actions artifact.
+changed. After flashing, it pauses until RESET has been pressed and the user has
+confirmed that the board may reconnect. On Linux, if the serial device is not
+accessible, it requests `sudo` only to add a temporary ACL to that device node
+(and reapplies it after USB re-enumeration); neither `uv` nor `esptool` runs as
+root. Every tagged release contains the matching firmware, checksum, and
+installer scripts rather than relying on an expiring Actions artifact.
 
 The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
 NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.2
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.3
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -351,7 +352,6 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Installer-configurable ESP32 identity** - Let the firmware read its bridge name from persistent configuration and let the installer provision that name while flashing, without requiring the user to edit or recompile the firmware. Prefer a dedicated NVS/configuration partition or an equivalent deterministic provisioning flow over patching an arbitrary compiled binary.
 - **ESP32-S3-Zero status LED** - Use the board LED to communicate useful bridge states such as booting, advertising, app connection, USB HID readiness, active input, and recoverable errors, with restrained patterns that do not become distracting.
 - **Universal multi-connect** - Generalize saved hosts and quick switching beyond Direct BLE so one app can manage any mix of Bluetooth computers and multiple ESP32 bridges, including two or more bridges with distinct identities.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
@@ -375,6 +375,7 @@ helper and distribution-specific testing is optional.
 - **Direct BLE HID on macOS and Windows** - Pairing, keyboard and mouse input, reconnect, and host switching are stable in repeated physical testing. Windows works without repeated pairing through the companion BlueVein improvements. Linux input is functional, with optional helper and distro-specific follow-up retained outside the release roadmap.
 - **Global keep-awake option** - Since 3.0.3, an app-wide setting can keep the display awake independently of Mouse Jiggler while InpuDeck is active. Backgrounding the app or disabling the option restores normal system sleep behavior. Confirmed on-device.
 - **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
+- **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.3 added the one-command bootstrap, scoped Linux serial permissions, and an explicit RESET/re-enumeration flow.
 
 ### Completed in iOS 2.2
 

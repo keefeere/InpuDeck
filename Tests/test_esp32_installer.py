@@ -89,8 +89,9 @@ class PortPermissionTests(unittest.TestCase):
     @mock.patch.object(installer.subprocess, "run")
     @mock.patch.object(installer, "trusted_system_tool", side_effect=lambda name: f"/usr/bin/{name}")
     @mock.patch.object(installer, "trusted_linux_serial_device", return_value="/dev/ttyACM0")
+    @mock.patch.object(installer.Path, "exists", return_value=True)
     @mock.patch.object(installer.os, "access", side_effect=[False, True])
-    def test_grants_only_a_temporary_acl_when_allowed(self, _access, _device, _tool, run):
+    def test_grants_only_a_temporary_acl_when_allowed(self, _access, _exists, _device, _tool, run):
         installer.ensure_serial_port_access("/dev/ttyACM0", allow_sudo=True)
         run.assert_called_once_with(
             [
@@ -109,6 +110,41 @@ class PortPermissionTests(unittest.TestCase):
         with self.assertRaisesRegex(installer.InstallerError, "refusing to elevate"):
             installer.ensure_serial_port_access("/tmp/not-a-device", allow_sudo=True)
 
+    @mock.patch.object(installer.Path, "exists", return_value=False)
+    @mock.patch.object(installer.os, "access", return_value=False)
+    def test_treats_a_missing_expected_device_as_transient(self, _access, _exists):
+        with self.assertRaisesRegex(installer.SerialPortUnavailableError, "reconnecting"):
+            installer.ensure_serial_port_access("/dev/ttyACM0", allow_sudo=True)
+
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    @mock.patch.object(installer, "ensure_serial_port_access")
+    @mock.patch.object(installer, "_open_serial")
+    def test_provisioning_retries_when_the_detected_port_disappears(
+        self, open_serial, ensure_access, available_ports, _sleep
+    ):
+        port = types.SimpleNamespace(device="/dev/ttyACM0", vid=installer.ESPRESSIF_USB_VID)
+        available_ports.return_value = [port]
+        ensure_access.side_effect = [installer.SerialPortUnavailableError("reconnecting"), None]
+        connection = mock.MagicMock()
+        connection.readline.side_effect = [
+            b"INPUDECK NAME InpuDeck Bridge\n",
+            "INPUDECK OK NAME Телевізор\n".encode(),
+        ]
+        connection.__enter__.return_value = connection
+        open_serial.return_value = connection
+
+        configured_port = installer.provision_bridge_name(
+            "/dev/ttyACM0",
+            "Телевізор",
+            {"/dev/ttyACM0"},
+            timeout=1,
+            allow_sudo=True,
+        )
+
+        self.assertEqual(configured_port, "/dev/ttyACM0")
+        self.assertEqual(ensure_access.call_count, 2)
+
 
 class BootstrapContractTests(unittest.TestCase):
     def test_bootstrap_downloads_release_assets_and_uses_uv_script_metadata(self):
@@ -123,6 +159,7 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn('run --no-project --script "$workdir/install-esp32.py"', bootstrap)
         self.assertIn("UV_UNMANAGED_INSTALL", bootstrap)
         self.assertIn("--grant-port-access", bootstrap)
+        self.assertIn("--wait-for-reset", bootstrap)
 
 
 if __name__ == "__main__":

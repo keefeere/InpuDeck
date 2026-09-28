@@ -124,6 +124,7 @@ fi
 installer_args=(
   --firmware "$workdir/InpuDeck-ESP32-S3-Zero.bin"
   --name "$bridge_name"
+  --wait-for-reset
 )
 if [[ "$serial_port" != "auto" ]]; then
   installer_args+=(--port "$serial_port")
