@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "install-esp32.py"
+BOOTSTRAP = SCRIPT.with_suffix(".sh")
 SPEC = importlib.util.spec_from_file_location("install_esp32", SCRIPT)
 installer = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -61,6 +62,35 @@ class PortSelectionTests(unittest.TestCase):
             installer.candidate_port_names("/dev/ttyACM0", ports, {"/dev/ttyUSB0"}),
             ["/dev/ttyACM2"],
         )
+
+    def test_auto_detects_one_espressif_port(self):
+        ports = [self.port("/dev/ttyS0"), self.port("/dev/ttyACM3", installer.ESPRESSIF_USB_VID)]
+        self.assertEqual(installer.auto_detect_port(ports), "/dev/ttyACM3")
+
+    def test_auto_detects_one_likely_usb_serial_port(self):
+        self.assertEqual(installer.auto_detect_port([self.port("/dev/ttyACM0")]), "/dev/ttyACM0")
+
+    def test_auto_detection_refuses_ambiguous_ports(self):
+        ports = [
+            self.port("/dev/ttyACM0", installer.ESPRESSIF_USB_VID),
+            self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID),
+        ]
+        with self.assertRaises(installer.InstallerError):
+            installer.auto_detect_port(ports)
+
+
+class BootstrapContractTests(unittest.TestCase):
+    def test_bootstrap_downloads_release_assets_and_uses_uv_script_metadata(self):
+        bootstrap = BOOTSTRAP.read_text()
+        for asset in (
+            "InpuDeck-ESP32-S3-Zero.bin",
+            "InpuDeck-ESP32-S3-Zero.bin.sha256",
+            "install-esp32.py",
+        ):
+            self.assertIn(asset, bootstrap)
+        self.assertIn("releases/latest/download", bootstrap)
+        self.assertIn('run --no-project --script "$workdir/install-esp32.py"', bootstrap)
+        self.assertIn("UV_UNMANAGED_INSTALL", bootstrap)
 
 
 if __name__ == "__main__":
