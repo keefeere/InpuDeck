@@ -307,6 +307,14 @@ into standard HID keyboard/mouse commands.
 - **Compatibility**: Works with any OS that supports USB HID (Windows, macOS, Linux, etc.)
 - **USB recovery**: Idle keyboard reports act as a health check; two consecutive transfer timeouts restart the ESP32-S3 so keyboard and mouse remain available across a host warm reboot. Verified on ASUS ROG Xbox Ally X, including pre-OS input.
 
+> [!WARNING]
+> The released ESP firmware through 3.2.2 accepts BLE command writes without
+> pairing, link encryption, or application authentication. A nearby device that
+> connects to the advertised service can therefore inject USB keyboard or mouse
+> input. Treat ESP mode as a trusted-environment prototype until secure
+> enrollment is implemented. Direct Bluetooth HID uses system pairing and
+> encrypted HID attributes and is not affected by this ESP bridge limitation.
+
 ## Project Structure
 
 ```
@@ -358,8 +366,8 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
+- **Secure ESP enrollment and bonded commands (distribution blocker)** - Require an encrypted bonded BLE link before accepting command writes. Permit a new iPhone only during an explicit physical enrollment window, preserve approved bonds across reboot, reject unknown centrals once enrollment closes, and provide deliberate reset/re-pair and migration paths for existing unbonded adapters. Start with BLE Secure Connections, encrypted characteristic writes, and physical confirmation; evaluate a per-adapter passkey for stronger MITM protection before treating the bridge as consumer-ready. Validate first pairing, unattended reconnect, two-adapter switching, reboot recovery, rejected unknown clients, and bond reset on physical devices.
 - **ESP32-S3-Zero status LED** - Use the board LED to communicate useful bridge states such as booting, advertising, app connection, USB HID readiness, active input, and recoverable errors, with restrained patterns that do not become distracting.
-- **Universal multi-connect (3.2.2 test build)** - A single destination menu now manages any mix of saved Direct Bluetooth devices and multiple ESP32 bridges. ESP discovery keeps every distinct CoreBluetooth identity, migrates the legacy single bridge, and switches only after releasing input on the previous route. The 3.2.1 follow-up discards peripherals owned by a retired CoreBluetooth manager and restores destination selection by tapping its name. In 3.2.2 the selector is limited to fast switching, while pairing and discovery live in the adjacent action menu; protocol icons identify Direct Bluetooth and ESP routes at a glance. Physical two-bridge discovery, switching, reconnect, and USB HID validation remain before this item moves to Completed.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
 - **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.
 - **Adaptive layouts for iPhone Duo and iPad (wishlist)** - Once the iPhone Duo simulator is available, verify the app in full-screen and half-screen configurations. Also test representative iPad sizes and multitasking widths (Split View and Stage Manager), then consider layouts that make better use of the additional space.
@@ -382,6 +390,7 @@ helper and distribution-specific testing is optional.
 - **Global keep-awake option** - Since 3.0.3, an app-wide setting can keep the display awake independently of Mouse Jiggler while InpuDeck is active. Backgrounding the app or disabling the option restores normal system sleep behavior. Confirmed on-device.
 - **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
 - **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.6 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, runtime USB CDC, resilient port discovery, a no-reflash recovery path, and the CDC control-line handshake required for bidirectional provisioning.
+- **Universal multi-connect** - Completed in 3.2.0-3.2.2. One destination selector manages any mix of saved Direct Bluetooth devices and multiple named ESP32 bridges, releases held input before switching routes, and reconnects each adapter through its own CoreBluetooth identity. Pairing and discovery remain in the adjacent action menu, while protocol icons distinguish ESP and Direct Bluetooth routes. Two-adapter discovery, switching, reconnect, and USB HID input were confirmed on-device.
 
 ### Completed in iOS 2.2
 
