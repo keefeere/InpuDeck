@@ -7,6 +7,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private let serviceUUID = CBUUID(string: "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001")
     private let writeCharUUID = CBUUID(string: "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001")
     private let securityCharUUID = CBUUID(string: "2D2A0003-8A5A-4E76-A2E3-1E57D9A1B001")
+    private let nameCharUUID = CBUUID(string: "2D2A0004-8A5A-4E76-A2E3-1E57D9A1B001")
     private let requiredSecurityCapability = Data([0x49, 0x44, 0x01, 0x0F])
     private let restoreIdentifier = "com.keefeere.InpuDeck.central"
     @Published var statusText = localized("Bluetooth: ініціалізація…")
@@ -16,11 +17,13 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     @Published private(set) var selectedBridgeID: UUID?
     @Published private(set) var connectedBridgeID: UUID?
     @Published private(set) var isScanning = false
+    @Published private(set) var firmwareSecurityIssue: ESPFirmwareSecurityIssue? = nil
 
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
     private var securityChar: CBCharacteristic?
+    private var nameChar: CBCharacteristic?
     private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
     private let bridgeStore = ESPBridgeStore()
@@ -335,6 +338,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     }
 
     func selectBridge(_ id: UUID) {
+        if selectedBridgeID != id { firmwareSecurityIssue = nil }
         let name = discoveredBridges.first(where: { $0.id == id })?.name
             ?? bridgeStore.bridge(id)?.advertisedName
         bridgeStore.select(id, name: name)
@@ -380,8 +384,13 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         }
     }
 
+    func dismissFirmwareSecurityIssue() {
+        firmwareSecurityIssue = nil
+    }
+
     func forgetBridge(_ id: UUID) {
         let wasSelected = selectedBridgeID == id
+        if wasSelected { firmwareSecurityIssue = nil }
         bridgeStore.forget(id)
         publishStore()
         discoveredBridges.removeAll { $0.id == id }
@@ -458,6 +467,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         connectedBridgeID = nil
         writeChar = nil
         securityChar = nil
+        nameChar = nil
         pendingWrites.removeAll()
         writeWithResponseInFlight = false
         lastSentModifiersMask = 0
@@ -557,8 +567,9 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         reconnectWorkItem = nil
         reconnectAttempt = 0
         self.peripheral = peripheral
-        let name = advertisedName(for: peripheral)
-        bridgeStore.connected(peripheral.identifier, name: name)
+        let name = discoveredBridges.first(where: { $0.id == peripheral.identifier })?.name
+            ?? advertisedName(for: peripheral)
+        bridgeStore.connected(peripheral.identifier, fallbackName: name)
         publishStore()
         statusText = localized("Bluetooth: перевірка сервісу…")
         peripheral.delegate = self
@@ -601,7 +612,7 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             statusText = localized("ESP32 не має потрібного BLE-сервісу")
             return
         }
-        peripheral.discoverCharacteristics([writeCharUUID, securityCharUUID], for: service)
+        peripheral.discoverCharacteristics([writeCharUUID, securityCharUUID, nameCharUUID], for: service)
     }
 
     func peripheral(
@@ -622,11 +633,13 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
         }
         guard let securityCharacteristic = service.characteristics?.first(where: { $0.uuid == securityCharUUID }) else {
             writeChar = nil
+            firmwareSecurityIssue = .unsafeLegacy
             statusText = localized("Незахищена прошивка ESP — онови її")
             return
         }
         writeChar = characteristic
         securityChar = securityCharacteristic
+        nameChar = service.characteristics?.first(where: { $0.uuid == nameCharUUID })
         statusText = localized("Bluetooth: захищене сполучення…")
         peripheral.readValue(for: securityCharacteristic)
     }
@@ -636,8 +649,21 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
         didUpdateValueFor characteristic: CBCharacteristic,
         error: Error?
     ) {
-        guard peripheral.identifier == selectedBridgeID,
-              characteristic.uuid == securityCharUUID else { return }
+        guard peripheral.identifier == selectedBridgeID else { return }
+        if characteristic.uuid == nameCharUUID {
+            guard error == nil,
+                  let name = ESPBridgeNamePayload.decode(characteristic.value) else { return }
+            if let index = discoveredBridges.firstIndex(where: { $0.id == peripheral.identifier }) {
+                discoveredBridges[index].name = name
+            }
+            bridgeStore.updateDiscoveredName(name, for: peripheral.identifier)
+            publishStore()
+            if isReady {
+                statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
+            }
+            return
+        }
+        guard characteristic.uuid == securityCharUUID else { return }
         if let error {
             isReady = false
             connectedBridgeID = nil
@@ -651,13 +677,16 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             isReady = false
             connectedBridgeID = nil
             writeChar = nil
+            firmwareSecurityIssue = .unknownCapability
             statusText = localized("Невідома версія захисту ESP — онови прошивку")
             return
         }
 
+        firmwareSecurityIssue = nil
         connectedBridgeID = peripheral.identifier
         statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
         isReady = true
+        if let nameChar { peripheral.readValue(for: nameChar) }
     }
 
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
@@ -665,6 +694,9 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
     }
 
     func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
+        // This callback exposes CoreBluetooth's cached GAP name. Keep it only
+        // as a fallback for migrated entries that have no better name yet.
+        guard bridgeStore.bridge(peripheral.identifier)?.advertisedName == nil else { return }
         bridgeStore.updateDiscoveredName(peripheral.name, for: peripheral.identifier)
         publishStore()
         if isReady {

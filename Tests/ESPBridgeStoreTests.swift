@@ -30,9 +30,26 @@ struct ESPBridgeStoreTests {
         check(store.bridges.count == 2, "Both bridges remain saved")
         check(store.bridge(television)?.name == "Телевізор", "UTF-8 advertised names survive persistence")
 
-        store.connected(television, name: "Телевізор")
+        store.connected(television, fallbackName: "InpuDeck Bridge")
+        check(
+            store.bridge(television)?.advertisedName == "Телевізор",
+            "A cached CoreBluetooth name cannot replace the current advertised name"
+        )
         store.rename(television, to: "Вітальня")
         check(store.bridge(television)?.name == "Вітальня", "An app-local label overrides the advertised name")
+
+        check(
+            ESPBridgeNamePayload.decode(Data("ESP Телевізор".utf8)) == "ESP Телевізор",
+            "The authenticated name channel preserves UTF-8 names"
+        )
+        check(
+            ESPBridgeNamePayload.decode(Data([0xFF, 0xFE])) == nil,
+            "The authenticated name channel rejects invalid UTF-8"
+        )
+        check(
+            ESPBridgeNamePayload.decode(Data("Bad\nName".utf8)) == nil,
+            "The authenticated name channel rejects control characters"
+        )
 
         store = ESPBridgeStore(
             defaults: defaults,
@@ -46,6 +63,6 @@ struct ESPBridgeStoreTests {
         check(store.selectedBridgeID == nil, "Forgetting the active bridge clears the selection")
         check(store.bridges.map(\.id) == [legacy], "Forgetting one bridge preserves the others")
 
-        print("PASS: ESP bridge registry migration, UTF-8 names, multi-adapter selection and forgetting")
+        print("PASS: ESP bridge registry migration, authenticated UTF-8 names, cached-name isolation, multi-adapter selection and forgetting")
     }
 }

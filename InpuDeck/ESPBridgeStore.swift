@@ -1,5 +1,42 @@
 import Foundation
 
+enum ESPFirmwareSecurityIssue: String, Identifiable {
+    case unsafeLegacy
+    case unknownCapability
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unsafeLegacy:
+            localized("Небезпечна прошивка ESP")
+        case .unknownCapability:
+            localized("Несумісна прошивка ESP")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .unsafeLegacy:
+            localized("Цей адаптер не підтримує захищене сполучення. InpuDeck заблокував введення. Повністю перепроший ESP актуальним інсталятором; --skip-flash недостатньо.")
+        case .unknownCapability:
+            localized("Версію захисту цього адаптера не розпізнано. InpuDeck заблокував введення. Встанови актуальну прошивку ESP.")
+        }
+    }
+}
+
+enum ESPBridgeNamePayload {
+    static let maximumByteCount = 28
+
+    static func decode(_ data: Data?) -> String? {
+        guard let data, !data.isEmpty, data.count <= maximumByteCount,
+              !data.contains(where: { $0 < 0x20 || $0 == 0x7F }),
+              let decoded = String(data: data, encoding: .utf8) else { return nil }
+        let name = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+}
+
 struct SavedESPBridge: Codable, Identifiable, Equatable {
     let id: UUID
     var advertisedName: String?
@@ -87,8 +124,15 @@ final class ESPBridgeStore {
         persist()
     }
 
-    func connected(_ id: UUID, name: String?) {
-        select(id, name: name)
+    func connected(_ id: UUID, fallbackName: String?) {
+        // CBPeripheral.name is cached by iOS and can retain the name from
+        // before a bridge was reflashed or renamed. It is useful only for a
+        // nameless migrated entry; never let it replace a name observed in a
+        // current advertisement or read from the authenticated name channel.
+        if bridge(id)?.advertisedName == nil {
+            remember(id, name: fallbackName)
+        }
+        snapshot.selectedBridgeID = id
         if let index = snapshot.bridges.firstIndex(where: { $0.id == id }) {
             snapshot.bridges[index].lastConnectedAt = Date()
         }
