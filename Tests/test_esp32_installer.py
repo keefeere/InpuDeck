@@ -80,6 +80,20 @@ class BridgeNameTests(unittest.TestCase):
         self.assertIn("guard isReady, let peripheral, let writeChar", app)
         self.assertIn('localized("Незахищена прошивка ESP — онови її")', app)
 
+    def test_waveshare_status_led_covers_each_connection_path(self):
+        firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()
+        for contract in (
+            "BridgeLedState::ready",
+            "BridgeLedState::usbOnly",
+            "BridgeLedState::bleOnly",
+            "BridgeLedState::powerOnly",
+            "BridgeLedState::pairing",
+            "BridgeLedState::usbError",
+            "rgbLedWrite(RGB_BUILTIN, red, green, blue)",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, firmware)
+
     def test_release_builds_enable_tinyusb_cdc_for_post_flash_provisioning(self):
         repository = SCRIPT.parents[1]
         for relative_path in (
