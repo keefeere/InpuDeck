@@ -34,6 +34,12 @@ class BridgeNameTests(unittest.TestCase):
             "INPUDECK SET-NAME Міст\n".encode("utf-8"),
         )
 
+    def test_secure_provisioning_command_preserves_utf8_name(self):
+        self.assertEqual(
+            installer.serial_provision_command("Телевізор", 483921),
+            "INPUDECK PROVISION 483921 Телевізор\n".encode("utf-8"),
+        )
+
     def test_installer_protocol_matches_firmware_contract(self):
         firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()
         self.assertIn(
@@ -41,8 +47,38 @@ class BridgeNameTests(unittest.TestCase):
             firmware,
         )
         self.assertIn('"INPUDECK GET-NAME"', firmware)
+        self.assertIn('"INPUDECK GET-INFO"', firmware)
         self.assertIn('"INPUDECK SET-NAME "', firmware)
+        self.assertIn('"INPUDECK PROVISION "', firmware)
         self.assertIn('"INPUDECK OK NAME %s\\n"', firmware)
+
+    def test_firmware_requires_authenticated_bonded_writes(self):
+        firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()
+        for contract in (
+            "NIMBLE_PROPERTY::WRITE_ENC",
+            "NIMBLE_PROPERTY::WRITE_AUTHEN",
+            "NIMBLE_PROPERTY::READ_ENC",
+            "NIMBLE_PROPERTY::READ_AUTHEN",
+            "NimBLEDevice::setSecurityAuth(true, true, true)",
+            "connInfo.isBonded()",
+            "connInfo.isEncrypted()",
+            "connInfo.isAuthenticated()",
+            "connInfo.getSecKeySize() >= 16",
+            "NimBLEDevice::deleteAllBonds()",
+            "Rejected unknown BLE peer while the pairing window is closed.",
+            "gHiddenPasskey = generatePasskey()",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, firmware)
+
+    def test_ios_rejects_legacy_bridge_before_enabling_input(self):
+        app = (SCRIPT.parents[1] / "InpuDeck" / "BLEKeyboardBridge.swift").read_text()
+        self.assertIn("securityCharUUID", app)
+        self.assertIn("requiredSecurityCapability", app)
+        self.assertIn("peripheral.readValue(for: securityCharacteristic)", app)
+        self.assertIn("didUpdateValueFor characteristic", app)
+        self.assertIn("guard isReady, let peripheral, let writeChar", app)
+        self.assertIn('localized("Незахищена прошивка ESP — онови її")', app)
 
     def test_release_builds_enable_tinyusb_cdc_for_post_flash_provisioning(self):
         repository = SCRIPT.parents[1]
@@ -100,6 +136,22 @@ class PortSelectionTests(unittest.TestCase):
         self.assertEqual(available_ports.call_count, 2)
 
 
+class PasskeyTests(unittest.TestCase):
+    def test_accepts_exactly_six_nonzero_leading_ascii_digits(self):
+        self.assertEqual(installer.normalized_passkey("100000"), 100000)
+        self.assertEqual(installer.normalized_passkey("999999"), 999999)
+
+    def test_rejects_short_zero_leading_and_non_ascii_passkeys(self):
+        for value in ("99999", "000001", "12345a", "１２３４５６"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                installer.normalized_passkey(value)
+
+    @mock.patch.object(installer.secrets, "randbelow", return_value=383921)
+    def test_generated_passkey_uses_cryptographic_rng(self, randbelow):
+        self.assertEqual(installer.generate_passkey(), 483921)
+        randbelow.assert_called_once_with(900000)
+
+
 class PortPermissionTests(unittest.TestCase):
     @mock.patch.object(installer.os, "access", return_value=False)
     def test_refuses_to_elevate_without_explicit_flag(self, _access):
@@ -148,18 +200,19 @@ class PortPermissionTests(unittest.TestCase):
         ensure_access.side_effect = [installer.SerialPortUnavailableError("reconnecting"), None]
         connection = mock.MagicMock()
         connection.readline.side_effect = [
-            b"INPUDECK NAME InpuDeck Bridge\n",
-            "INPUDECK OK NAME Телевізор\n".encode(),
+            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
+            "INPUDECK OK PROVISION Телевізор\n".encode(),
         ]
         connection.__enter__.return_value = connection
         open_serial.return_value = connection
 
-        configured_port = installer.provision_bridge_name(
+        configured_port = installer.provision_bridge(
             "/dev/ttyACM0",
             "Телевізор",
             {"/dev/ttyACM0"},
             timeout=1,
             allow_sudo=True,
+            passkey=483921,
         )
 
         self.assertEqual(configured_port, "/dev/ttyACM0")
@@ -176,13 +229,13 @@ class PortPermissionTests(unittest.TestCase):
         available_ports.side_effect = [TypeError("idVendor disappeared"), [port]]
         connection = mock.MagicMock()
         connection.readline.side_effect = [
-            b"INPUDECK NAME InpuDeck Bridge\n",
+            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
             b"INPUDECK OK NAME Television\n",
         ]
         connection.__enter__.return_value = connection
         open_serial.return_value = connection
 
-        configured_port = installer.provision_bridge_name(
+        configured_port = installer.provision_bridge(
             "/dev/ttyACM0",
             "Television",
             {"/dev/ttyACM0"},
@@ -192,6 +245,29 @@ class PortPermissionTests(unittest.TestCase):
 
         self.assertEqual(configured_port, "/dev/ttyACM0")
         self.assertEqual(available_ports.call_count, 2)
+
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    @mock.patch.object(installer, "ensure_serial_port_access")
+    @mock.patch.object(installer, "_open_serial")
+    def test_skip_flash_rejects_unsafe_legacy_firmware(
+        self, open_serial, _ensure_access, available_ports, _sleep
+    ):
+        port = types.SimpleNamespace(device="/dev/ttyACM0", vid=installer.ESPRESSIF_USB_VID)
+        available_ports.return_value = [port]
+        connection = mock.MagicMock()
+        connection.readline.side_effect = [b"INPUDECK NAME InpuDeck Bridge\n", b""]
+        connection.__enter__.return_value = connection
+        open_serial.return_value = connection
+
+        with self.assertRaisesRegex(installer.InstallerError, "unsafe legacy firmware"):
+            installer.provision_bridge(
+                "/dev/ttyACM0",
+                "Television",
+                {"/dev/ttyACM0"},
+                timeout=0.01,
+                allow_sudo=True,
+            )
 
 
 class SerialConnectionTests(unittest.TestCase):
@@ -228,6 +304,8 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("--grant-port-access", bootstrap)
         self.assertIn("--wait-for-reset", bootstrap)
         self.assertIn("--skip-flash", bootstrap)
+        self.assertIn("--rotate-passkey", bootstrap)
+        self.assertIn("--passkey", bootstrap)
 
     def test_bootstrap_user_interface_is_english(self):
         bootstrap = BOOTSTRAP.read_text()

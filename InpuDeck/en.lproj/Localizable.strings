@@ -229,3 +229,9 @@
 "Numbers" = "Numbers";
 "Letters" = "Letters";
 "Space" = "Space";
+"Незахищена прошивка ESP — онови її" = "Unsafe ESP firmware — update it";
+"Bluetooth: захищене сполучення…" = "Bluetooth: establishing secure pairing…";
+"Захищене сполучення не завершено: %@" = "Secure pairing did not complete: %@";
+"Невідома версія захисту ESP — онови прошивку" = "Unknown ESP security version — update the firmware";
+"Перше сполучення: вибери адаптер і введи його шестизначний код у системному запиті iOS. Після прошивки вікно сполучення відкрите п’ять хвилин." = "First pairing: select the adapter and enter its six-digit code in the iOS system prompt. After flashing, pairing remains open for five minutes.";
+"Щоб додати новий iPhone, затисни BOOT на адаптері на 3–7 секунд. Утримання BOOT понад 10 секунд видаляє всі сполучення й відкриває налаштування заново." = "To add another iPhone, hold BOOT on the adapter for 3–7 seconds. Holding BOOT for more than 10 seconds deletes all bonds and opens setup again.";

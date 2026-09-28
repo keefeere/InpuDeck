@@ -6,6 +6,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <esp_system.h>
 
 #if !defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE != 0
 #error "InpuDeck requires Tools > USB Mode > USB-OTG (TinyUSB)"
@@ -30,13 +31,40 @@
 // =====================
 static const char* kServiceUUID = "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kWriteCharUUID = "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001";
+static const char* kSecurityCharUUID = "2D2A0003-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kDefaultBridgeName = "InpuDeck Bridge";
 static const char* kPreferencesNamespace = "inpudeck";
 static const char* kBridgeNameKey = "bridge_name";
+static const char* kPasskeyKey = "passkey";
+static const char* kPairOnBootKey = "pair_on_boot";
 static constexpr size_t kMaxBridgeNameBytes = 28;
+static constexpr uint32_t kMinimumPasskey = 100000;
+static constexpr uint32_t kMaximumPasskey = 999999;
+static constexpr uint8_t kPairButtonPin = 0;
+static constexpr uint32_t kPairButtonHoldMs = 3000;
+static constexpr uint32_t kBondResetHoldMs = 10000;
+static constexpr uint32_t kPairingWindowMs = 120000;
+static constexpr uint32_t kProvisionedPairingWindowMs = 300000;
+static constexpr uint32_t kBondIdentityGraceMs = 2000;
+static constexpr uint32_t kAuthenticationTimeoutMs = 10000;
+static constexpr uint32_t kEnrollmentConnectionTimeoutMs = 60000;
+static constexpr uint8_t kSecurityCapability[] = { 'I', 'D', 0x01, 0x0F };
 
 static String gBridgeName = kDefaultBridgeName;
 static String gSerialCommand;
+static uint32_t gPasskey = 0;
+static uint32_t gHiddenPasskey = 0;
+static uint32_t gPairingWindowOpenedAtMs = 0;
+static uint32_t gPairingWindowDurationMs = 0;
+static volatile bool gPairingWindowOpen = false;
+static bool gPairButtonDown = false;
+static bool gPairButtonHandled = false;
+static uint32_t gPairButtonDownAtMs = 0;
+static volatile uint16_t gConnectedHandle = BLE_HS_CONN_HANDLE_NONE;
+static volatile bool gConnectedWasBonded = false;
+static volatile bool gConnectedSecure = false;
+static volatile bool gConnectionSecurityStarted = false;
+static volatile uint32_t gConnectedAtMs = 0;
 
 static bool isValidBridgeName(const String& name) {
   const size_t length = name.length();
@@ -66,11 +94,120 @@ static bool storeBridgeName(const String& name) {
   return storedLength == name.length();
 }
 
+static bool isValidPasskey(uint32_t passkey) {
+  return passkey >= kMinimumPasskey && passkey <= kMaximumPasskey;
+}
+
+static uint32_t generatePasskey() {
+  return kMinimumPasskey + (esp_random() % (kMaximumPasskey - kMinimumPasskey + 1));
+}
+
+static uint32_t loadPasskey(bool* wasGenerated = nullptr) {
+  Preferences preferences;
+  uint32_t passkey = 0;
+  if (preferences.begin(kPreferencesNamespace, true)) {
+    passkey = preferences.getUInt(kPasskeyKey, 0);
+    preferences.end();
+  }
+  if (isValidPasskey(passkey)) {
+    if (wasGenerated != nullptr) *wasGenerated = false;
+    return passkey;
+  }
+
+  passkey = generatePasskey();
+  if (preferences.begin(kPreferencesNamespace, false)) {
+    preferences.putUInt(kPasskeyKey, passkey);
+    preferences.putBool(kPairOnBootKey, true);
+    preferences.end();
+  }
+  if (wasGenerated != nullptr) *wasGenerated = true;
+  return passkey;
+}
+
+static bool consumePairOnBoot() {
+  Preferences preferences;
+  if (!preferences.begin(kPreferencesNamespace, false)) return false;
+  const bool enabled = preferences.getBool(kPairOnBootKey, false);
+  if (enabled) preferences.remove(kPairOnBootKey);
+  preferences.end();
+  return enabled;
+}
+
+static bool storeProvisioning(const String& name, uint32_t passkey) {
+  Preferences preferences;
+  if (!preferences.begin(kPreferencesNamespace, false)) return false;
+  const bool nameStored = preferences.putString(kBridgeNameKey, name) == name.length();
+  const bool passkeyStored = preferences.putUInt(kPasskeyKey, passkey) == sizeof(uint32_t);
+  const bool pairingStored = preferences.putBool(kPairOnBootKey, true) == sizeof(uint8_t);
+  preferences.end();
+  return nameStored && passkeyStored && pairingStored;
+}
+
+static void setPairingWindow(bool enabled, uint32_t durationMs = 0) {
+  gPairingWindowOpen = enabled;
+  gPairingWindowOpenedAtMs = millis();
+  gPairingWindowDurationMs = durationMs;
+  NimBLEDevice::setSecurityPasskey(enabled ? gPasskey : gHiddenPasskey);
+  Serial.printf("BLE pairing window %s.\n", enabled ? "open" : "closed");
+}
+
+static bool secureConnection(const NimBLEConnInfo& connInfo) {
+  return connInfo.isBonded()
+      && connInfo.isEncrypted()
+      && connInfo.isAuthenticated()
+      && connInfo.getSecKeySize() >= 16;
+}
+
 static void handleSerialCommand(String command) {
   command.trim();
 
   if (command == "INPUDECK GET-NAME") {
     Serial.printf("INPUDECK NAME %s\n", gBridgeName.c_str());
+    return;
+  }
+
+  if (command == "INPUDECK GET-INFO") {
+    Serial.printf("INPUDECK INFO SECURITY 1 NAME %s\n", gBridgeName.c_str());
+    return;
+  }
+
+  static const String provisionPrefix = "INPUDECK PROVISION ";
+  if (command.startsWith(provisionPrefix)) {
+    if (!gPairingWindowOpen) {
+      Serial.println("INPUDECK ERROR physical pairing window is closed");
+      return;
+    }
+
+    const String payload = command.substring(provisionPrefix.length());
+    const int separator = payload.indexOf(' ');
+    if (separator != 6) {
+      Serial.println("INPUDECK ERROR PROVISION requires a six-digit passkey and name");
+      return;
+    }
+    const String passkeyText = payload.substring(0, separator);
+    for (size_t i = 0; i < passkeyText.length(); ++i) {
+      if (!isDigit(passkeyText[i])) {
+        Serial.println("INPUDECK ERROR passkey must contain six digits");
+        return;
+      }
+    }
+    const uint32_t passkey = static_cast<uint32_t>(passkeyText.toInt());
+    String name = payload.substring(separator + 1);
+    name.trim();
+    if (!isValidPasskey(passkey) || !isValidBridgeName(name)) {
+      Serial.println("INPUDECK ERROR invalid passkey or NAME");
+      return;
+    }
+    if (!storeProvisioning(name, passkey)) {
+      Serial.println("INPUDECK ERROR failed to save secure provisioning");
+      return;
+    }
+
+    NimBLEDevice::deleteAllBonds();
+    Serial.printf("INPUDECK OK PROVISION %s\n", name.c_str());
+    Serial.flush();
+    delay(150);
+    ESP.restart();
     return;
   }
 
@@ -427,9 +564,27 @@ static void sendSystemMicrophoneMuteUp() {
 // =====================
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pWriteChar = nullptr;
+NimBLECharacteristic* pSecurityChar = nullptr;
+
+static void disconnectPeer(uint16_t connHandle) {
+  if (connHandle == gConnectedHandle) {
+    gConnectedHandle = BLE_HS_CONN_HANDLE_NONE;
+    gConnectedWasBonded = false;
+    gConnectedSecure = false;
+    gConnectionSecurityStarted = false;
+    gConnectedAtMs = 0;
+  }
+  pServer->disconnect(connHandle);
+}
 
 class WriteCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+    if (!secureConnection(connInfo)) {
+      Serial.println("Rejected HID command from an unauthenticated BLE connection.");
+      disconnectPeer(connInfo.getConnHandle());
+      return;
+    }
+
     gLastBleCommandAtMs = millis();
 
     std::string v = pCharacteristic->getValue();
@@ -546,31 +701,94 @@ class WriteCallbacks : public NimBLECharacteristicCallbacks {
 
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
+    gConnectedHandle = connInfo.getConnHandle();
+    gConnectedAtMs = millis();
+    gConnectedWasBonded = connInfo.isBonded()
+      || NimBLEDevice::isBonded(connInfo.getIdAddress());
+    gConnectedSecure = secureConnection(connInfo);
+    gConnectionSecurityStarted = false;
+    if (gConnectedWasBonded && !gConnectedSecure) {
+      gConnectionSecurityStarted = NimBLEDevice::startSecurity(connInfo.getConnHandle());
+    }
     Serial.print("BLE connected: ");
     Serial.println(connInfo.getAddress().toString().c_str());
+  }
+
+  void onIdentity(NimBLEConnInfo& connInfo) override {
+    if (connInfo.getConnHandle() == gConnectedHandle) {
+      gConnectedWasBonded = gConnectedWasBonded
+        || NimBLEDevice::isBonded(connInfo.getIdAddress());
+      if (gConnectedWasBonded && !gConnectedSecure && !gConnectionSecurityStarted) {
+        gConnectionSecurityStarted = NimBLEDevice::startSecurity(connInfo.getConnHandle());
+      }
+    }
+  }
+
+  uint32_t onPassKeyDisplay() override {
+    return gPairingWindowOpen ? gPasskey : gHiddenPasskey;
+  }
+
+  void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+    if (!secureConnection(connInfo)) {
+      Serial.println("BLE authentication rejected: bonding, MITM, Secure Connections, and a 128-bit key are required.");
+      if (!gPairingWindowOpen) {
+        // A closed window has no usable passkey. Rotate the undisclosed decoy
+        // after every failed attempt so repeated guesses cannot accumulate.
+        gHiddenPasskey = generatePasskey();
+        NimBLEDevice::setSecurityPasskey(gHiddenPasskey);
+      }
+      disconnectPeer(connInfo.getConnHandle());
+      return;
+    }
+
+    Serial.print("BLE authenticated and bonded: ");
+    Serial.println(connInfo.getIdAddress().toString().c_str());
+    gConnectedSecure = true;
+    if (gPairingWindowOpen && !gConnectedWasBonded) setPairingWindow(false);
   }
 
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     Serial.print("BLE disconnected, reason=");
     Serial.println(reason);
 
+    if (connInfo.getConnHandle() == gConnectedHandle) {
+      gConnectedHandle = BLE_HS_CONN_HANDLE_NONE;
+      gConnectedWasBonded = false;
+      gConnectedSecure = false;
+      gConnectionSecurityStarted = false;
+      gConnectedAtMs = 0;
+    }
+
     NimBLEDevice::startAdvertising();
   }
 };
 
 static void setupBle() {
-  NimBLEDevice::init(gBridgeName.c_str());
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  NimBLEDevice::setSecurityAuth(true, true, true);
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+  NimBLEDevice::setSecurityPasskey(gPairingWindowOpen ? gPasskey : gHiddenPasskey);
 
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());
+  pServer->advertiseOnDisconnect(true);
 
   NimBLEService* svc = pServer->createService(kServiceUUID);
 
   pWriteChar = svc->createCharacteristic(
     kWriteCharUUID,
-    NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+    NIMBLE_PROPERTY::WRITE
+      | NIMBLE_PROPERTY::WRITE_NR
+      | NIMBLE_PROPERTY::WRITE_ENC
+      | NIMBLE_PROPERTY::WRITE_AUTHEN);
   pWriteChar->setCallbacks(new WriteCallbacks());
+
+  pSecurityChar = svc->createCharacteristic(
+    kSecurityCharUUID,
+    NIMBLE_PROPERTY::READ
+      | NIMBLE_PROPERTY::READ_ENC
+      | NIMBLE_PROPERTY::READ_AUTHEN);
+  pSecurityChar->setValue(kSecurityCapability, sizeof(kSecurityCapability));
 
   svc->start();
 
@@ -600,17 +818,92 @@ void setup() {
   delay(200);
 
   gBridgeName = loadBridgeName();
+  // Initialize the Bluetooth controller before drawing passkeys so esp_random
+  // has the RF entropy source available, including for manual source uploads.
+  NimBLEDevice::init(gBridgeName.c_str());
+  bool generatedPasskey = false;
+  gPasskey = loadPasskey(&generatedPasskey);
+  gHiddenPasskey = generatePasskey();
+  const bool pairOnBoot = consumePairOnBoot() || generatedPasskey;
+  gPairingWindowOpen = pairOnBoot;
+  gPairingWindowOpenedAtMs = millis();
+  gPairingWindowDurationMs = pairOnBoot ? kProvisionedPairingWindowMs : 0;
+  pinMode(kPairButtonPin, INPUT_PULLUP);
   Serial.println("Starting InpuDeck ESP32-S3 BLE -> USB HID bridge...");
+  if (generatedPasskey) {
+    Serial.printf("INPUDECK GENERATED PASSKEY %06lu\n", static_cast<unsigned long>(gPasskey));
+  }
 
   setupUsbHid();
   setupBle();
-  Serial.printf("INPUDECK READY NAME %s\n", gBridgeName.c_str());
+  Serial.printf(
+    "INPUDECK READY SECURITY 1 PAIRING %s NAME %s\n",
+    gPairingWindowOpen ? "OPEN" : "CLOSED",
+    gBridgeName.c_str());
 }
 
 void loop() {
   static uint32_t lastHidProbeAtMs = 0;
 
   processSerialCommands();
+
+  const uint32_t now = millis();
+  const bool pairButtonPressed = digitalRead(kPairButtonPin) == LOW;
+  if (pairButtonPressed && !gPairButtonDown) {
+    gPairButtonDown = true;
+    gPairButtonHandled = false;
+    gPairButtonDownAtMs = now;
+  } else if (pairButtonPressed && gPairButtonDown && !gPairButtonHandled
+             && (uint32_t)(now - gPairButtonDownAtMs) >= kBondResetHoldMs) {
+    gPairButtonHandled = true;
+    NimBLEDevice::deleteAllBonds();
+    setPairingWindow(true, kPairingWindowMs);
+    if (gConnectedHandle != BLE_HS_CONN_HANDLE_NONE) {
+      disconnectPeer(gConnectedHandle);
+    } else {
+      NimBLEDevice::startAdvertising();
+    }
+    Serial.println("All BLE bonds deleted; pairing is open for two minutes.");
+  } else if (!pairButtonPressed && gPairButtonDown) {
+    const uint32_t heldMs = now - gPairButtonDownAtMs;
+    gPairButtonDown = false;
+    if (!gPairButtonHandled && heldMs >= kPairButtonHoldMs) {
+      setPairingWindow(true, kPairingWindowMs);
+      if (gConnectedHandle != BLE_HS_CONN_HANDLE_NONE) {
+        disconnectPeer(gConnectedHandle);
+      } else {
+        NimBLEDevice::startAdvertising();
+      }
+      Serial.println("Pairing is open for two minutes.");
+    }
+  }
+
+  if (gPairingWindowOpen
+      && gPairingWindowDurationMs > 0
+      && (uint32_t)(now - gPairingWindowOpenedAtMs) >= gPairingWindowDurationMs) {
+    setPairingWindow(false);
+  }
+
+  if (gConnectedHandle != BLE_HS_CONN_HANDLE_NONE && !gConnectedSecure) {
+    const uint32_t connectedForMs = now - gConnectedAtMs;
+    if (!gPairingWindowOpen
+        && !gConnectionSecurityStarted
+        && connectedForMs >= kBondIdentityGraceMs) {
+      NimBLEConnInfo connInfo = pServer->getPeerInfoByHandle(gConnectedHandle);
+      gConnectedWasBonded = connInfo.isBonded()
+        || NimBLEDevice::isBonded(connInfo.getIdAddress());
+      if (gConnectedWasBonded) {
+        gConnectionSecurityStarted = NimBLEDevice::startSecurity(gConnectedHandle);
+      } else {
+        Serial.println("Rejected unknown BLE peer while the pairing window is closed.");
+        disconnectPeer(gConnectedHandle);
+      }
+    } else if ((!gPairingWindowOpen && connectedForMs >= kAuthenticationTimeoutMs)
+               || (gPairingWindowOpen && connectedForMs >= kEnrollmentConnectionTimeoutMs)) {
+      Serial.println("Disconnected BLE peer that did not complete authentication in time.");
+      disconnectPeer(gConnectedHandle);
+    }
+  }
 
   if (!gUsbRestartRequested
       && gUsbMounted

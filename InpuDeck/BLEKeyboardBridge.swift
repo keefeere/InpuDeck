@@ -6,6 +6,8 @@ import Foundation
 final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private let serviceUUID = CBUUID(string: "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001")
     private let writeCharUUID = CBUUID(string: "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001")
+    private let securityCharUUID = CBUUID(string: "2D2A0003-8A5A-4E76-A2E3-1E57D9A1B001")
+    private let requiredSecurityCapability = Data([0x49, 0x44, 0x01, 0x0F])
     private let restoreIdentifier = "com.keefeere.InpuDeck.central"
     @Published var statusText = localized("Bluetooth: ініціалізація…")
     @Published var isReady = false
@@ -18,6 +20,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
+    private var securityChar: CBCharacteristic?
     private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
     private let bridgeStore = ESPBridgeStore()
@@ -181,7 +184,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     }
 
     private func writeV2(_ frames: [V2Frame]) {
-        guard let peripheral, let writeChar, !frames.isEmpty else { return }
+        guard isReady, let peripheral, let writeChar, !frames.isEmpty else { return }
 
         let writeType: CBCharacteristicWriteType = writeChar.properties.contains(.writeWithoutResponse)
             ? .withoutResponse
@@ -454,6 +457,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         isReady = false
         connectedBridgeID = nil
         writeChar = nil
+        securityChar = nil
         pendingWrites.removeAll()
         writeWithResponseInFlight = false
         lastSentModifiersMask = 0
@@ -597,7 +601,7 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             statusText = localized("ESP32 не має потрібного BLE-сервісу")
             return
         }
-        peripheral.discoverCharacteristics([writeCharUUID], for: service)
+        peripheral.discoverCharacteristics([writeCharUUID, securityCharUUID], for: service)
     }
 
     func peripheral(
@@ -616,7 +620,41 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             statusText = localized("ESP32 не має каналу команд")
             return
         }
+        guard let securityCharacteristic = service.characteristics?.first(where: { $0.uuid == securityCharUUID }) else {
+            writeChar = nil
+            statusText = localized("Незахищена прошивка ESP — онови її")
+            return
+        }
         writeChar = characteristic
+        securityChar = securityCharacteristic
+        statusText = localized("Bluetooth: захищене сполучення…")
+        peripheral.readValue(for: securityCharacteristic)
+    }
+
+    func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateValueFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        guard peripheral.identifier == selectedBridgeID,
+              characteristic.uuid == securityCharUUID else { return }
+        if let error {
+            isReady = false
+            connectedBridgeID = nil
+            statusText = localizedFormat(
+                "Захищене сполучення не завершено: %@",
+                error.localizedDescription
+            )
+            return
+        }
+        guard characteristic.value == requiredSecurityCapability else {
+            isReady = false
+            connectedBridgeID = nil
+            writeChar = nil
+            statusText = localized("Невідома версія захисту ESP — онови прошивку")
+            return
+        }
+
         connectedBridgeID = peripheral.identifier
         statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
         isReady = true
