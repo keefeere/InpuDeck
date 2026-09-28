@@ -8,7 +8,7 @@ struct SavedHIDHost: Codable, Identifiable, Equatable {
     var lastConnectedAt: Date?
 
     var name: String {
-        customName ?? discoveredName ?? localized("Комп’ютер без назви")
+        customName ?? discoveredName ?? localized("BT-пристрій без назви")
     }
 
     var hasDisplayName: Bool { customName != nil || discoveredName != nil }

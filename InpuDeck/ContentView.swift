@@ -292,10 +292,10 @@ struct ContentView: View {
                     longPressLabel: localized("Пояснення кнопки"),
                     onLongPress: { if !expertMode { showsLayoutHelp = true } }
                 ))
-                .accessibilityLabel("Перемкнути розкладку на комп’ютері")
-                .help("Надіслати скорочення зміни мови на комп’ютер")
+                .accessibilityLabel("Перемкнути розкладку на пристрої")
+                .help("Надіслати скорочення зміни мови на пристрій")
                 .popover(isPresented: $showsLayoutHelp) {
-                    Text("Перемкнути розкладку на комп’ютері · \(selectedShortcut.displayName)")
+                    Text("Перемкнути розкладку на пристрої · \(selectedShortcut.displayName)")
                         .font(.callout)
                         .padding(12)
                         .presentationCompactAdaptation(.popover)
@@ -758,7 +758,7 @@ struct ContentView: View {
                     }
                 }
 
-                Section("Перемикання розкладки на комп’ютері") {
+                Section("Перемикання розкладки на пристрої") {
                     Picker("Комбінація", selection: shortcutBinding) {
                         ForEach(HostLayoutShortcut.allCases) { shortcut in
                             Text(shortcut.displayName).tag(shortcut)
@@ -821,8 +821,13 @@ struct ContentView: View {
                     }
                 }
 
-                Section("Bluetooth") {
+                Section("Зв’язок") {
                     ConnectionStatusView(input: ble)
+                    if !expertMode {
+                        Text("ESP-адаптер приймає команди від iPhone через BLE і передає їх підключеному пристрою як USB HID. Direct Bluetooth перетворює сам iPhone на BLE-клавіатуру й мишу; ESP не потрібна.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section {

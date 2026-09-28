@@ -72,10 +72,10 @@ fi
 
 assets=(install-esp32.py)
 if [[ "$skip_flash" == false ]]; then
-  echo "Завантажую firmware InpuDeck (${version})…"
+  echo "Downloading InpuDeck firmware (${version})…"
   assets=(InpuDeck-ESP32-S3-Zero.bin InpuDeck-ESP32-S3-Zero.bin.sha256 "${assets[@]}")
 else
-  echo "Завантажую інсталятор InpuDeck (${version}); firmware не перепрошиватиметься…"
+  echo "Downloading the InpuDeck installer (${version}); firmware will not be reflashed…"
 fi
 for asset in "${assets[@]}"; do
   curl --fail --location --silent --show-error --retry 3 \
@@ -94,7 +94,7 @@ if [[ "$skip_flash" == false ]]; then
 fi
 
 if [[ -z "$bridge_name" ]]; then
-  printf 'Імʼя адаптера [InpuDeck Bridge]: ' >/dev/tty
+  printf 'Adapter name [InpuDeck Bridge]: ' >/dev/tty
   IFS= read -r bridge_name </dev/tty
   bridge_name="${bridge_name:-InpuDeck Bridge}"
 fi
@@ -102,31 +102,31 @@ fi
 if [[ "$skip_flash" == false ]]; then
   cat >/dev/tty <<'EOF'
 
-Переведи ESP32-S3-Zero у режим прошивки:
-  0. Відʼєднай інші ESP32, якщо вони підключені до цього компʼютера.
-  1. Затисни кнопку BOOT.
-  2. Натисни й відпусти RESET, не відпускаючи BOOT.
-  3. Відпусти BOOT.
+Put ESP32-S3-Zero into flashing mode:
+  0. Disconnect any other ESP32 boards from this computer.
+  1. Hold the BOOT button.
+  2. Press and release RESET while holding BOOT.
+  3. Release BOOT.
 EOF
 else
   cat >/dev/tty <<'EOF'
 
-Переконайся, що ESP32-S3-Zero підключена й працює не в BOOT mode.
-Якщо вона щойно прошита, натисни RESET один раз і зачекай 2–3 секунди.
+Make sure ESP32-S3-Zero is connected and is not in BOOT mode.
+If it was just flashed, press RESET once and wait 2–3 seconds.
 EOF
 fi
 
 if [[ "$serial_port" == "auto" ]]; then
-  printf 'Коли зробиш — натисни Enter; USB-порт буде знайдено автоматично. ' >/dev/tty
+  printf 'Press Enter when ready; the USB port will be detected automatically. ' >/dev/tty
 else
-  printf 'Коли зробиш — натисни Enter; використаємо %s. ' "$serial_port" >/dev/tty
+  printf 'Press Enter when ready; %s will be used. ' "$serial_port" >/dev/tty
 fi
 IFS= read -r _ </dev/tty
 
 if command -v uv >/dev/null 2>&1; then
   uv_command="$(command -v uv)"
 else
-  echo "uv не знайдено; завантажую тимчасову копію ${uv_version}…"
+  echo "uv was not found; downloading a temporary copy of ${uv_version}…"
   mkdir -p "$workdir/uv"
   curl --fail --location --silent --show-error \
     "https://astral.sh/uv/${uv_version}/install.sh" \
@@ -136,10 +136,10 @@ fi
 
 echo
 if [[ "$skip_flash" == false ]]; then
-  echo "Після запису firmware натисни RESET один раз, коли інсталятор попросить."
+  echo "After flashing, press RESET once when the installer asks you to."
 fi
 if [[ "$(uname -s)" == "Linux" ]]; then
-  echo "Якщо бракує прав на serial-порт, sudo буде запитано лише для тимчасового доступу до нього."
+  echo "If the serial port is not accessible, sudo will be requested only to grant temporary access."
 fi
 
 installer_args=(--name "$bridge_name")
@@ -162,4 +162,4 @@ UV_CACHE_DIR="$workdir/uv-cache" \
   "$uv_command" run --no-project --script "$workdir/install-esp32.py" "${installer_args[@]}"
 
 echo
-echo "Готово. ESP рекламується як «${bridge_name}»."
+echo "Done. The ESP now advertises as '${bridge_name}'."
