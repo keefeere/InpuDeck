@@ -140,15 +140,18 @@ the image, asks for the bridge name, explains the BOOT/RESET sequence, detects a
 single Espressif serial port, and runs the Python installer in an isolated `uv`
 environment. If `uv` is not installed, the script places a temporary pinned copy
 in its working directory and removes it afterward. No system Python packages are
-changed. Every tagged release contains the matching firmware, checksum, and
-installer scripts rather than relying on an expiring Actions artifact.
+changed. On Linux, if the serial device is not accessible, it requests `sudo`
+only to add a temporary ACL to that device node (and reapplies it after USB
+re-enumeration); neither `uv` nor `esptool` runs as root. Every tagged release
+contains the matching firmware, checksum, and installer scripts rather than
+relying on an expiring Actions artifact.
 
 The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
 NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.1
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.2
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and

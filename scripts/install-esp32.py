@@ -10,7 +10,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -109,6 +111,63 @@ def auto_detect_port(ports: Iterable) -> str:
     )
 
 
+def trusted_system_tool(name: str) -> str | None:
+    for directory in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
+        candidate = Path(directory) / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def trusted_linux_serial_device(port: str) -> str | None:
+    try:
+        device = Path(port).resolve(strict=True)
+        mode = device.stat().st_mode
+    except (OSError, RuntimeError):
+        return None
+    if device.parent != Path("/dev") or not device.name.startswith(("ttyACM", "ttyUSB")):
+        return None
+    return str(device) if stat.S_ISCHR(mode) else None
+
+
+def ensure_serial_port_access(port: str, allow_sudo: bool) -> None:
+    if os.access(port, os.R_OK | os.W_OK):
+        return
+    if not allow_sudo:
+        raise InstallerError(
+            f"permission denied for {port}. Rerun the one-command installer, or grant temporary access with "
+            f"'sudo setfacl -m u:$USER:rw {port}'."
+        )
+    if not sys.platform.startswith("linux"):
+        raise InstallerError(f"permission denied for {port}; grant the current user read/write access and retry")
+
+    trusted_port = trusted_linux_serial_device(port)
+    if not trusted_port:
+        raise InstallerError(
+            f"refusing to elevate access for unexpected device path {port}; use a /dev/ttyACM* or /dev/ttyUSB* character device"
+        )
+
+    sudo = trusted_system_tool("sudo")
+    if not sudo:
+        raise InstallerError(f"permission denied for {port}, and sudo is not installed")
+
+    setfacl = trusted_system_tool("setfacl")
+    if setfacl:
+        command = [sudo, setfacl, "-m", f"u:{os.getuid()}:rw", trusted_port]
+        action = "a temporary ACL"
+    else:
+        chown = trusted_system_tool("chown")
+        if not chown:
+            raise InstallerError(f"permission denied for {port}; neither setfacl nor chown is available")
+        command = [sudo, chown, f"{os.getuid()}:{os.getgid()}", trusted_port]
+        action = "temporary device ownership"
+
+    print(f"Permission is required for {port}; requesting sudo only to grant {action}.", flush=True)
+    subprocess.run(command, check=True)
+    if not os.access(port, os.R_OK | os.W_OK):
+        raise InstallerError(f"read/write access to {port} is still unavailable after sudo")
+
+
 def esptool_command() -> list[str]:
     try:
         import esptool  # noqa: F401
@@ -160,6 +219,7 @@ def provision_bridge_name(
     name: str,
     ports_before_flash: set[str],
     timeout: float,
+    allow_sudo: bool = False,
 ) -> str:
     command = serial_set_name_command(name)
     expected_ack = f"INPUDECK OK NAME {name}"
@@ -170,6 +230,7 @@ def provision_bridge_name(
         candidates = candidate_port_names(preferred_port, available_ports(), ports_before_flash)
         for port in candidates:
             try:
+                ensure_serial_port_access(port, allow_sudo)
                 with _open_serial(port) as connection:
                     connection.reset_input_buffer()
                     connection.write(b"INPUDECK GET-NAME\n")
@@ -224,6 +285,11 @@ def parser() -> argparse.ArgumentParser:
         help="only configure a bridge that is already running compatible firmware",
     )
     result.add_argument("--timeout", type=float, default=90, help="seconds to wait for firmware USB Serial")
+    result.add_argument(
+        "--grant-port-access",
+        action="store_true",
+        help="on Linux, request sudo only for temporary read/write access to the detected serial device",
+    )
     return result
 
 
@@ -242,12 +308,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Detected ESP32 serial port: {port}", flush=True)
     ports_before_flash = {candidate.device for candidate in ports}
     if not args.skip_flash:
+        ensure_serial_port_access(port, args.grant_port_access)
         print(f"Flashing {args.firmware} on {port}…", flush=True)
         flash_firmware(port, args.firmware)
         print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
 
     print(f"Provisioning BLE name {args.name!r}…", flush=True)
-    configured_port = provision_bridge_name(port, args.name, ports_before_flash, args.timeout)
+    configured_port = provision_bridge_name(
+        port,
+        args.name,
+        ports_before_flash,
+        args.timeout,
+        allow_sudo=args.grant_port_access,
+    )
     print(f"Done. The bridge saved {args.name!r} and restarted ({configured_port}).")
     return 0
 
