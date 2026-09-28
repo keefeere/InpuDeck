@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "esptool>=5,<6",
+# ]
+# ///
 """Flash InpuDeck firmware and provision its persistent BLE bridge name."""
 
 from __future__ import annotations
@@ -76,6 +82,31 @@ def candidate_port_names(preferred: str, ports: Iterable, ports_before_flash: se
         if getattr(port, "vid", None) == ESPRESSIF_USB_VID:
             add(port.device)
     return names
+
+
+def auto_detect_port(ports: Iterable) -> str:
+    ports = list(ports)
+    espressif = [port.device for port in ports if getattr(port, "vid", None) == ESPRESSIF_USB_VID]
+    if len(espressif) == 1:
+        return espressif[0]
+    if len(espressif) > 1:
+        raise InstallerError(
+            "multiple Espressif serial ports found; rerun with --port: " + ", ".join(espressif)
+        )
+
+    likely = [
+        port.device
+        for port in ports
+        if port.device.startswith(("/dev/ttyACM", "/dev/ttyUSB", "/dev/cu.usb", "COM"))
+    ]
+    if len(likely) == 1:
+        return likely[0]
+
+    visible = ", ".join(port.device for port in ports) or "none"
+    raise InstallerError(
+        "could not choose one ESP32 serial port automatically. "
+        f"Visible ports: {visible}. Rerun with --port PORT."
+    )
 
 
 def esptool_command() -> list[str]:
@@ -180,7 +211,11 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description="Flash an ESP32-S3 InpuDeck bridge and set its persistent BLE name."
     )
-    result.add_argument("--port", required=True, help="ROM/USB serial port, for example /dev/ttyACM0 or COM5")
+    result.add_argument(
+        "--port",
+        default="auto",
+        help="ROM/USB serial port, for example /dev/ttyACM0 or COM5 (default: auto-detect)",
+    )
     result.add_argument("--name", required=True, type=normalized_bridge_name, help="BLE name (1-28 UTF-8 bytes)")
     result.add_argument("--firmware", type=Path, help="complete merged InpuDeck firmware image")
     result.add_argument(
@@ -201,14 +236,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_flash and not args.firmware:
         raise InstallerError("--firmware is required unless --skip-flash is used")
 
-    ports_before_flash = {port.device for port in available_ports()}
+    ports = available_ports()
+    port = auto_detect_port(ports) if args.port == "auto" else args.port
+    if args.port == "auto":
+        print(f"Detected ESP32 serial port: {port}", flush=True)
+    ports_before_flash = {candidate.device for candidate in ports}
     if not args.skip_flash:
-        print(f"Flashing {args.firmware} on {args.port}…", flush=True)
-        flash_firmware(args.port, args.firmware)
+        print(f"Flashing {args.firmware} on {port}…", flush=True)
+        flash_firmware(port, args.firmware)
         print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
 
     print(f"Provisioning BLE name {args.name!r}…", flush=True)
-    configured_port = provision_bridge_name(args.port, args.name, ports_before_flash, args.timeout)
+    configured_port = provision_bridge_name(port, args.name, ports_before_flash, args.timeout)
     print(f"Done. The bridge saved {args.name!r} and restarted ({configured_port}).")
     return 0
 

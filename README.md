@@ -128,45 +128,44 @@ Popular ESP32-S3 boards that work:
   <sub>Waveshare ESP32-S3-Zero running the optional InpuDeck Bridge.</sub>
 </p>
 
-1. Install [Arduino IDE](https://www.arduino.cc/en/software)
-2. Add ESP32 board support: `File > Preferences > Additional Board Manager URLs`
-   ```
-   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-   ```
-3. Install [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino):
-   `Tools > Manage Libraries > Search "NimBLE-Arduino"`
-4. Open `inpudeck_bridge/inpudeck_bridge.ino`
-5. Select your ESP32-S3 board and set `Tools > USB Mode > USB-OTG (TinyUSB)`
-6. Upload the sketch
-
-For the Waveshare ESP32-S3-Zero, the `Build ESP32-S3 firmware` GitHub Actions
-workflow produces a complete 4 MB merged image, its SHA-256 checksum, and the
-`install-esp32.py` installer. Download the workflow artifact, install its one
-dependency, put the board into the ROM bootloader, and choose a recognizable
-name for the adapter:
+For a Waveshare ESP32-S3-Zero on Linux or macOS, the recommended installer is
+one command:
 
 ```bash
-python3 -m pip install esptool
-python3 install-esp32.py \
-  --port /dev/ttyACM0 \
-  --firmware InpuDeck-ESP32-S3-Zero.bin \
-  --name "InpuDeck Office"
+curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash
 ```
 
-On Windows, use the board's `COM` port instead. The name must occupy 1–28 UTF-8
-bytes. The installer flashes the unchanged release image, waits for the firmware
-USB Serial endpoint, and stores the name in the `inpudeck` NVS namespace; it
-does not patch or recompile the binary. Press RESET when prompted. The serial
-device number can change after USB re-enumeration, and the installer will prefer
-the newly appeared Espressif port. To rename an already flashed compatible
-bridge without reflashing it, run:
+It downloads the latest firmware and checksum from the GitHub Release, verifies
+the image, asks for the bridge name, explains the BOOT/RESET sequence, detects a
+single Espressif serial port, and runs the Python installer in an isolated `uv`
+environment. If `uv` is not installed, the script places a temporary pinned copy
+in its working directory and removes it afterward. No system Python packages are
+changed. Every tagged release contains the matching firmware, checksum, and
+installer scripts rather than relying on an expiring Actions artifact.
+
+The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
+NVS namespace; it does not patch or recompile the binary. For explicit or
+non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-python3 install-esp32.py --port /dev/ttyACM0 --skip-flash --name "InpuDeck TV"
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.1
 ```
 
-An Arduino IDE upload uses `InpuDeck Bridge` by default. The same `--skip-flash`
-command can provision its name after the sketch is running.
+The lower-level `install-esp32.py` asset supports Windows `COM` ports and
+`--skip-flash` for renaming an already flashed compatible bridge.
+
+To build from source instead, install [Arduino IDE](https://www.arduino.cc/en/software),
+add the ESP32 board package URL below, install
+[NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), open
+`inpudeck_bridge/inpudeck_bridge.ino`, select the ESP32-S3 board with
+`Tools > USB Mode > USB-OTG (TinyUSB)`, and upload the sketch:
+
+```text
+https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+```
+
+An Arduino IDE upload uses `InpuDeck Bridge` by default. Run the released Python
+installer with `--skip-flash` afterward to provision a different name.
 
 ### 2. Install the iOS App
 
