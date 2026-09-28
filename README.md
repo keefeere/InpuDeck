@@ -162,6 +162,12 @@ and enter that code in the iOS system pairing prompt. The first-pairing window
 stays open for five minutes after provisioning and closes immediately after a
 successful authenticated bond.
 
+A full flash or passkey rotation deletes the adapter's previous bonds. If that
+physical board was already paired, forget its old entry in both iPhone Settings
+→ Bluetooth and InpuDeck before pairing it again. Otherwise iOS can retain the
+old name and repeatedly dismiss the new passkey prompt because its stored key
+no longer matches the adapter.
+
 The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
 NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
