@@ -83,8 +83,11 @@ the selected mode and host.
    diagnostics; a missing cached HID service alone is not a reason to re-pair.
 
 Pairing is open for two minutes. Once connected, input is pinned to that host;
-use the pairing panel to select a different computer. The app clears held and
-queued input when it moves to the background or loses its HID session.
+use the pairing panel to select a different computer. HID notifications and
+readable input-report state are isolated to the selected host: another bonded
+host receives neutral reports rather than the current keyboard or pointer
+state. The app clears held and queued input when it moves to the background or
+loses its HID session.
 
 Run `./scripts/test-direct-hid.sh` on a Swift-equipped machine to check HID report
 encoding, queue backpressure, host selection, and descriptor sizes. The IPA
@@ -403,6 +406,7 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
+- **Bluetooth security hardening (3.3.2 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; verified installer downloads; Linux helper/service hardening; and a physical window for mutable ESP USB-serial commands.
 - **Secure ESP enrollment and bonded commands (3.3.0 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing window, preserved bonds, deliberate bond reset, and a protected app readiness probe. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate first pairing, unattended reconnect, two-adapter switching, reboot recovery, rejected unknown clients, pairing-window timeout, and bond reset on physical devices.
 - **ESP32-S3-Zero status LED (3.3.1 device validation)** - The firmware now distinguishes a complete BLE-to-USB path, PC/USB only, authenticated Bluetooth with power-only USB, neither data side, the physical pairing window, and USB recovery. Confirm the colors and patterns on the onboard WS2812 before marking it complete.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.

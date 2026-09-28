@@ -14,6 +14,7 @@ struct DirectHIDTests {
         notificationBackpressure()
         wakeProbe()
         hostSelection()
+        inputReadIsolation()
         disconnectPolicy()
         reconnectWatchdog()
         descriptorSizes()
@@ -265,6 +266,26 @@ struct DirectHIDTests {
         store.connected(second, name: "Linux", supportsOutgoing: false)
         let extensionStore = HIDHostStore(defaults: defaults, hostKey: "shareDirectHID.selectedHost")
         check(extensionStore.selectedHostID == nil, "Share selection has a separate namespace")
+    }
+
+    static func inputReadIsolation() {
+        let reports = [
+            Data([0x02, 0, 0x04, 0, 0, 0, 0, 0]),
+            Data([0x01, 12, 244, 3, 249]),
+            Data([0xE9, 0]),
+            Data([1])
+        ]
+        for report in reports {
+            check(
+                HIDInputReadPolicy.response(report, isRoutedHost: true) == report,
+                "The selected host reads the current input report"
+            )
+            check(
+                HIDInputReadPolicy.response(report, isRoutedHost: false)
+                    == Data(repeating: 0, count: report.count),
+                "A bonded non-selected host reads a neutral report of the same shape"
+            )
+        }
     }
 
     static func advertisingLifecycle() {
