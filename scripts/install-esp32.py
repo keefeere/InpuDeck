@@ -5,12 +5,13 @@
 #   "esptool>=5,<6",
 # ]
 # ///
-"""Flash InpuDeck firmware and provision its persistent BLE bridge name."""
+"""Flash InpuDeck firmware and securely provision an ESP bridge."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import shutil
 import stat
 import subprocess
@@ -22,6 +23,8 @@ from typing import Iterable
 
 DEFAULT_BRIDGE_NAME = "InpuDeck Bridge"
 MAX_BRIDGE_NAME_BYTES = 28
+MIN_PASSKEY = 100000
+MAX_PASSKEY = 999999
 ESPRESSIF_USB_VID = 0x303A
 TRANSIENT_PORT_SCAN_ERRORS = (OSError, TypeError, ValueError)
 
@@ -48,8 +51,27 @@ def normalized_bridge_name(value: str) -> str:
     return name
 
 
+def normalized_passkey(value: str) -> int:
+    if len(value) != 6 or not value.isascii() or not value.isdecimal():
+        raise argparse.ArgumentTypeError("passkey must contain exactly six ASCII digits")
+    passkey = int(value)
+    if not MIN_PASSKEY <= passkey <= MAX_PASSKEY:
+        raise argparse.ArgumentTypeError("passkey must be between 100000 and 999999")
+    return passkey
+
+
+def generate_passkey() -> int:
+    return MIN_PASSKEY + secrets.randbelow(MAX_PASSKEY - MIN_PASSKEY + 1)
+
+
 def serial_set_name_command(name: str) -> bytes:
     return f"INPUDECK SET-NAME {normalized_bridge_name(name)}\n".encode("utf-8")
+
+
+def serial_provision_command(name: str, passkey: int) -> bytes:
+    normalized_name = normalized_bridge_name(name)
+    normalized_key = normalized_passkey(f"{passkey:06d}")
+    return f"INPUDECK PROVISION {normalized_key:06d} {normalized_name}\n".encode("utf-8")
 
 
 def _serial_modules():
@@ -276,17 +298,19 @@ def wait_for_manual_reset() -> None:
         ) from error
 
 
-def provision_bridge_name(
+def provision_bridge(
     preferred_port: str,
     name: str,
     ports_before_flash: set[str],
     timeout: float,
     allow_sudo: bool = False,
+    passkey: int | None = None,
 ) -> str:
-    command = serial_set_name_command(name)
-    expected_ack = f"INPUDECK OK NAME {name}"
+    command = serial_set_name_command(name) if passkey is None else serial_provision_command(name, passkey)
+    expected_ack = f"INPUDECK OK NAME {name}" if passkey is None else f"INPUDECK OK PROVISION {name}"
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
+    legacy_firmware_seen = False
 
     while time.monotonic() < deadline:
         try:
@@ -303,26 +327,38 @@ def provision_bridge_name(
                 ensure_serial_port_access(port, allow_sudo)
                 with _open_serial(port) as connection:
                     connection.reset_input_buffer()
+                    connection.write(b"INPUDECK GET-INFO\n")
                     connection.write(b"INPUDECK GET-NAME\n")
                     connection.flush()
                     ready_deadline = min(deadline, time.monotonic() + 1.5)
-                    sent_name = False
+                    sent_command = False
+                    legacy_response = False
                     while time.monotonic() < ready_deadline:
                         line = connection.readline().decode("utf-8", errors="replace").strip()
-                        if line.startswith("INPUDECK NAME ") or line.startswith("INPUDECK READY NAME "):
+                        if not line and legacy_response:
+                            break
+                        if line.startswith("INPUDECK INFO SECURITY 1 ") and not sent_command:
                             connection.write(command)
                             connection.flush()
-                            sent_name = True
+                            sent_command = True
                             ready_deadline = min(deadline, time.monotonic() + 2)
                             continue
+                        if line.startswith("INPUDECK NAME ") or line.startswith("INPUDECK READY NAME "):
+                            legacy_firmware_seen = True
+                            legacy_response = True
                         if line == expected_ack:
                             return port
                         if line.startswith("INPUDECK ERROR "):
                             raise InstallerError(line)
-                    if sent_name:
-                        last_error = InstallerError("the bridge restarted before acknowledging the saved name")
+                    if sent_command:
+                        last_error = InstallerError("the bridge restarted before acknowledging secure provisioning")
+                    elif legacy_response:
+                        raise InstallerError(
+                            "unsafe legacy firmware detected. Reflash the bridge; "
+                            "--skip-flash cannot upgrade its security protocol."
+                        )
                     else:
-                        last_error = InstallerError(f"{port} opened but did not answer the provisioning protocol")
+                        last_error = InstallerError(f"{port} opened but did not answer the secure provisioning protocol")
             except SerialPortUnavailableError as error:
                 last_error = error
             except InstallerError:
@@ -334,6 +370,10 @@ def provision_bridge_name(
                 last_error = error
         time.sleep(0.4)
 
+    if legacy_firmware_seen:
+        raise InstallerError(
+            "unsafe legacy firmware detected. Reflash the bridge; --skip-flash cannot upgrade its security protocol."
+        )
     detail = f" Last error: {last_error}" if last_error else ""
     raise InstallerError(
         "could not reach the running InpuDeck firmware over USB Serial. "
@@ -344,7 +384,7 @@ def provision_bridge_name(
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="Flash an ESP32-S3 InpuDeck bridge and set its persistent BLE name."
+        description="Flash and securely provision an ESP32-S3 InpuDeck bridge."
     )
     result.add_argument(
         "--port",
@@ -352,11 +392,21 @@ def parser() -> argparse.ArgumentParser:
         help="ROM/USB serial port, for example /dev/ttyACM0 or COM5 (default: auto-detect)",
     )
     result.add_argument("--name", required=True, type=normalized_bridge_name, help="BLE name (1-28 UTF-8 bytes)")
+    result.add_argument(
+        "--passkey",
+        type=normalized_passkey,
+        help="fixed six-digit BLE passkey (default: generate a random unique passkey)",
+    )
     result.add_argument("--firmware", type=Path, help="complete merged InpuDeck firmware image")
     result.add_argument(
         "--skip-flash",
         action="store_true",
         help="only configure a bridge that is already running compatible firmware",
+    )
+    result.add_argument(
+        "--rotate-passkey",
+        action="store_true",
+        help="replace the passkey and delete existing bonds; requires the physical pairing window",
     )
     result.add_argument("--timeout", type=float, default=90, help="seconds to wait for firmware USB Serial")
     result.add_argument(
@@ -382,6 +432,14 @@ def main(argv: list[str] | None = None) -> int:
         raise InstallerError("--wait-for-reset cannot be combined with --skip-flash")
     if not args.skip_flash and not args.firmware:
         raise InstallerError("--firmware is required unless --skip-flash is used")
+    if args.passkey is not None and args.skip_flash and not args.rotate_passkey:
+        raise InstallerError("--passkey with --skip-flash requires --rotate-passkey")
+    if args.rotate_passkey and not args.skip_flash:
+        raise InstallerError("--rotate-passkey is implied by a full flash and is only valid with --skip-flash")
+
+    provisioned_passkey = (
+        args.passkey if args.passkey is not None else generate_passkey()
+    ) if (not args.skip_flash or args.rotate_passkey) else None
 
     ports = wait_for_available_ports(args.timeout)
     port = auto_detect_port(ports) if args.port == "auto" else args.port
@@ -397,15 +455,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
 
-    print(f"Provisioning BLE name {args.name!r}…", flush=True)
-    configured_port = provision_bridge_name(
+    action = "secure identity" if provisioned_passkey is not None else "BLE name"
+    print(f"Provisioning {action} for {args.name!r}…", flush=True)
+    configured_port = provision_bridge(
         port,
         args.name,
         ports_before_flash,
         args.timeout,
         allow_sudo=args.grant_port_access,
+        passkey=provisioned_passkey,
     )
     print(f"Done. The bridge saved {args.name!r} and restarted ({configured_port}).")
+    if provisioned_passkey is not None:
+        print()
+        print(f"Security passkey: {provisioned_passkey:06d}")
+        print("Store this passkey. iOS will request it the first time this bridge is paired.")
     return 0
 
 

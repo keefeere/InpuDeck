@@ -136,7 +136,8 @@ curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/inst
 ```
 
 It downloads the latest firmware and checksum from the GitHub Release, verifies
-the image, asks for the bridge name, explains the BOOT/RESET sequence, detects a
+the image, asks for the bridge name, generates a unique six-digit security
+passkey, explains the BOOT/RESET sequence, detects a
 single Espressif serial port, and runs the Python installer in an isolated `uv`
 environment. If `uv` is not installed, the script places a temporary pinned copy
 in its working directory and removes it afterward. No system Python packages are
@@ -147,12 +148,17 @@ accessible, it requests `sudo` only to add a temporary ACL to that device node
 root. Every tagged release contains the matching firmware, checksum, and
 installer scripts rather than relying on an expiring Actions artifact.
 
+Store the passkey printed at the end. In InpuDeck, select the new ESP adapter
+and enter that code in the iOS system pairing prompt. The first-pairing window
+stays open for five minutes after provisioning and closes immediately after a
+successful authenticated bond.
+
 The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
 NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.2.2
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.0
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -162,6 +168,22 @@ installer exposes the same recovery path without rewriting firmware:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash -s -- --skip-flash
 ```
+
+`--skip-flash` refuses firmware older than 3.3.0 because renaming cannot make
+the old command channel safe. To replace a passkey and deliberately invalidate
+all existing iPhone bonds, hold BOOT for 3–7 seconds while the firmware is
+running, then use:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh \
+  | bash -s -- --skip-flash --rotate-passkey
+```
+
+For a new iPhone without rotating the shared adapter identity, hold BOOT for
+3–7 seconds to open a two-minute pairing window, select the adapter in InpuDeck,
+and enter its stored passkey. Holding BOOT for at least 10 seconds deletes every
+bond and opens the two-minute window; forget the adapter in iOS as well before
+pairing again.
 
 To build from source instead, install [Arduino IDE](https://www.arduino.cc/en/software),
 add the ESP32 board package URL below, install
@@ -174,8 +196,10 @@ add the ESP32 board package URL below, install
 https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 ```
 
-An Arduino IDE upload uses `InpuDeck Bridge` by default. Run the released Python
-installer with `--skip-flash` afterward to provision a different name.
+An Arduino IDE upload uses `InpuDeck Bridge` by default and generates a passkey
+that is printed once over Serial. To replace it with an installer-reported code
+and set a different name, hold BOOT for 3–7 seconds and run the released
+installer with `--skip-flash --rotate-passkey`.
 
 ### 2. Install the iOS App
 
@@ -307,13 +331,25 @@ into standard HID keyboard/mouse commands.
 - **Compatibility**: Works with any OS that supports USB HID (Windows, macOS, Linux, etc.)
 - **USB recovery**: Idle keyboard reports act as a health check; two consecutive transfer timeouts restart the ESP32-S3 so keyboard and mouse remain available across a host warm reboot. Verified on ASUS ROG Xbox Ally X, including pre-OS input.
 
-> [!WARNING]
-> The released ESP firmware through 3.2.2 accepts BLE command writes without
-> pairing, link encryption, or application authentication. A nearby device that
-> connects to the advertised service can therefore inject USB keyboard or mouse
-> input. Treat ESP mode as a trusted-environment prototype until secure
-> enrollment is implemented. Direct Bluetooth HID uses system pairing and
-> encrypted HID attributes and is not affected by this ESP bridge limitation.
+### ESP bridge security
+
+Firmware 3.3.0 and newer requires BLE Secure Connections with bonding, MITM
+passkey authentication, 128-bit link encryption, and an explicit physical
+pairing window. Both the command characteristic and the app's readiness probe
+require authenticated encryption, and the firmware independently rejects HID
+commands unless the current connection is bonded, encrypted, and authenticated.
+The installer gives every adapter a random passkey and a full reflash rotates
+it and clears old bonds. InpuDeck refuses the legacy service shape instead of
+silently operating against an unsafe adapter.
+
+> [!CAUTION]
+> Firmware through 3.2.2 has no pairing protection and must be fully reflashed;
+> `--skip-flash` cannot upgrade it. Radio authentication does not protect a
+> board from an attacker with physical USB/BOOT access, who can replace the
+> firmware. Production hardware that must resist physical tampering additionally
+> needs an irreversible ESP32 Secure Boot and flash-encryption provisioning
+> process; those eFuse operations are intentionally not enabled on development
+> boards by this installer.
 
 ## Project Structure
 
@@ -366,7 +402,7 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Secure ESP enrollment and bonded commands (distribution blocker)** - Require an encrypted bonded BLE link before accepting command writes. Permit a new iPhone only during an explicit physical enrollment window, preserve approved bonds across reboot, reject unknown centrals once enrollment closes, and provide deliberate reset/re-pair and migration paths for existing unbonded adapters. Start with BLE Secure Connections, encrypted characteristic writes, and physical confirmation; evaluate a per-adapter passkey for stronger MITM protection before treating the bridge as consumer-ready. Validate first pairing, unattended reconnect, two-adapter switching, reboot recovery, rejected unknown clients, and bond reset on physical devices.
+- **Secure ESP enrollment and bonded commands (3.3.0 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing window, preserved bonds, deliberate bond reset, and a protected app readiness probe. Remaining before marking it complete: validate first pairing, unattended reconnect, two-adapter switching, reboot recovery, rejected unknown clients, pairing-window timeout, and bond reset on physical devices, then remove legacy unsafe firmware downloads.
 - **ESP32-S3-Zero status LED** - Use the board LED to communicate useful bridge states such as booting, advertising, app connection, USB HID readiness, active input, and recoverable errors, with restrained patterns that do not become distracting.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
 - **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.

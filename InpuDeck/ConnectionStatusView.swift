@@ -227,6 +227,16 @@ private struct ESPBridgeSheet: View {
                     Text("Одночасно активний лише один пристрій. Перед перемиканням InpuDeck відпускає натиснуті клавіші й кнопки на попередньому.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Label {
+                        Text("Перше сполучення: вибери адаптер і введи його шестизначний код у системному запиті iOS. Після прошивки вікно сполучення відкрите п’ять хвилин.")
+                    } icon: {
+                        Image(systemName: "lock.shield")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    Text("Щоб додати новий iPhone, затисни BOOT на адаптері на 3–7 секунд. Утримання BOOT понад 10 секунд видаляє всі сполучення й відкриває налаштування заново.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("ESP-адаптери")
