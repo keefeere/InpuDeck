@@ -333,7 +333,16 @@ into standard HID keyboard/mouse commands.
 - **Battery**: ESP32 powered by target computer via USB
 - **Compatibility**: Works with any OS that supports USB HID (Windows, macOS, Linux, etc.)
 - **USB recovery**: Idle keyboard reports act as a health check; two consecutive transfer timeouts restart the ESP32-S3 so keyboard and mouse remain available across a host warm reboot. Verified on ASUS ROG Xbox Ally X, including pre-OS input.
-- **ESP32-S3-Zero status LED**: The onboard RGB LED reports the complete connection path: solid green means authenticated BLE and USB HID are both ready; solid blue means the PC/USB side is ready but Bluetooth is waiting; an amber double blink means Bluetooth is connected but USB provides power only; a short red heartbeat means neither data side is connected. A purple pulse identifies the physical pairing window, and rapid red blinking precedes automatic USB recovery. Brightness is deliberately restrained.
+- **ESP32-S3-Zero status LED**: The onboard RGB LED reports the complete connection path. Brightness is deliberately restrained.
+
+| Indicator | Pattern | Status |
+| --- | --- | --- |
+| 🟢 Green | Solid | Authenticated Bluetooth and USB HID are both ready |
+| 🔵 Blue | Solid | The PC/USB HID side is ready; Bluetooth is waiting |
+| 🟠 Amber | Double blink | Authenticated Bluetooth is connected; USB supplies power but HID is not ready |
+| 🔴 Red | Short heartbeat | Neither Bluetooth nor USB HID has a data connection |
+| 🟣 Purple | Pulse | The physical pairing window is open |
+| 🔴 Red | Rapid blink | USB HID is stalled and automatic recovery is about to restart the bridge |
 
 ### ESP bridge security
 
