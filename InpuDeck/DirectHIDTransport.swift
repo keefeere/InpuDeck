@@ -1013,7 +1013,8 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
             peripheral.respond(to: request, withResult: .unlikelyError)
             return
         }
-        if !session.allows(peer) {
+        let isRoutedHost = session.allows(peer)
+        if !isRoutedHost {
             noteRejectedPeer(peer, action: "read (answered, not routed)", repeating: false)
         }
         guard let attribute = attributes[ObjectIdentifier(request.characteristic)] else {
@@ -1023,11 +1024,16 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         }
         let value: Data
         switch attribute {
-        case .input(.keyboard), .input(.bootKeyboard): value = lastKeyboard
-        case .input(.mouse): value = lastMouse
-        case .input(.consumer): value = lastConsumer
-        case .input(.systemMicrophoneMute): value = lastSystemMicrophoneMute
-        case .input(.bootMouse): value = Data(lastMouse.prefix(3))
+        case .input(.keyboard), .input(.bootKeyboard):
+            value = HIDInputReadPolicy.response(lastKeyboard, isRoutedHost: isRoutedHost)
+        case .input(.mouse):
+            value = HIDInputReadPolicy.response(lastMouse, isRoutedHost: isRoutedHost)
+        case .input(.consumer):
+            value = HIDInputReadPolicy.response(lastConsumer, isRoutedHost: isRoutedHost)
+        case .input(.systemMicrophoneMute):
+            value = HIDInputReadPolicy.response(lastSystemMicrophoneMute, isRoutedHost: isRoutedHost)
+        case .input(.bootMouse):
+            value = HIDInputReadPolicy.response(Data(lastMouse.prefix(3)), isRoutedHost: isRoutedHost)
         case .leds: value = Data([leds])
         case .microphoneMuteLED: value = Data([microphoneMuteLED & 1])
         case .protocolMode: value = Data([session.bootProtocol ? 0 : 1])

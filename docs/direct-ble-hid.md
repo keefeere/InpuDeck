@@ -727,11 +727,19 @@ Reads and writes from a computer other than the selected one were answered with
 says the bond is not good enough for this attribute, so macOS did the reasonable
 thing and tried to establish a better one — every reconnect, forever.
 
-Refusing them bought nothing. A read carries no input, and the pinning that
-matters is that only the selected host is notified, which `transmit` enforces by
-sending to one central. Reads are now answered for any bonded computer, writes
-are accepted and discarded unless they come from the selected host, and the
-journal records the unrouted access instead of an ATT error.
+At that point, refusing them bought nothing. Reads were answered for any bonded
+computer, writes were accepted and discarded unless they came from the selected
+host, and the journal recorded the unrouted access instead of an ATT error. The
+important compatibility property remains: an already encrypted host must not
+receive `insufficientAuthorization`, because that tells it to pair again.
+
+Security hardening in 3.3.2 corrects the overly broad claim that a read carries
+no input. Input-report characteristics can expose the latest keyboard, mouse,
+consumer-control, or microphone-mute report. Reads therefore still succeed for
+compatibility, but a bonded host that is not the selected route receives a
+same-size all-zero report. Only the selected host can read the current input
+state or receive its notifications. Static HID metadata and non-input protocol
+state remain readable as required for normal HOGP discovery.
 
 ### Selecting a host dropped the link it was about to use
 

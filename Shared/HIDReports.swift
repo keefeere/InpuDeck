@@ -302,6 +302,16 @@ struct HIDHostSession {
     }
 }
 
+/// A bonded computer may still issue ATT reads while another computer is the
+/// selected input destination. Encryption authenticates the Bluetooth bond,
+/// but it does not make that computer the routed host. Preserve the report
+/// shape required by HOGP while exposing only the neutral state off-route.
+enum HIDInputReadPolicy {
+    static func response(_ current: Data, isRoutedHost: Bool) -> Data {
+        isRoutedHost ? current : Data(repeating: 0, count: current.count)
+    }
+}
+
 /// USB HID 1.11 / HID Usage Tables: 6-key keyboard with LED output (ID 1),
 /// relative three-button mouse with vertical wheel and Consumer AC Pan (ID 2),
 /// a 16-bit Consumer Control usage selector (ID 3), and HUTRR110 System
