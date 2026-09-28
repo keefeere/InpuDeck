@@ -28,6 +28,7 @@ struct ConnectionStatusView: View {
                             Button { input.selectESPBridge(bridge.id) } label: {
                                 destinationLabel(
                                     developerMode ? bridge.diagnosticName : bridge.name,
+                                    protocolIcon: "externaldrive.connected.to.line.below",
                                     selected: input.mode == .esp && esp.selectedBridgeID == bridge.id,
                                     connected: input.mode == .esp && esp.connectedBridgeID == bridge.id
                                 )
@@ -47,6 +48,7 @@ struct ConnectionStatusView: View {
                             Button { input.selectDirectHost(host.id) } label: {
                                 destinationLabel(
                                     developerMode ? host.diagnosticName : host.name,
+                                    protocolIcon: "desktopcomputer",
                                     selected: input.mode == .bluetooth && direct.selectedHostID == host.id,
                                     connected: input.mode == .bluetooth && direct.connectedHostID == host.id
                                 )
@@ -59,22 +61,28 @@ struct ConnectionStatusView: View {
                     }
                 }
             } label: {
-                connectionModeLabel
+                HStack(spacing: 8) {
+                    Circle().fill(input.isReady ? .green : .orange).frame(width: 7, height: 7)
+                    statusLabel
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: compact ? 32 : 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .layoutPriority(2)
+            .frame(maxWidth: .infinity)
+            .layoutPriority(1)
             .disabled(input.isSwitching)
-            .accessibilityLabel("Режим підключення")
-            .accessibilityValue(input.mode.title)
+            .accessibilityLabel("Вибрати пристрій")
+            .accessibilityValue(displayStatus)
 
-            Circle().fill(input.isReady ? .green : .orange).frame(width: 7, height: 7)
-            statusLabel
             Menu {
                 Button("Знайти ESP-адаптер", systemImage: "antenna.radiowaves.left.and.right") {
                     input.prepareESPDiscovery()
                     showsESPBridges = true
                 }
-                Button("Комп’ютери та сполучення Bluetooth", systemImage: "link.badge.plus") {
+                Button("Додати комп’ютер через Direct Bluetooth", systemImage: "link.badge.plus") {
                     input.prepareDirectManagement()
                     showsBluetooth = true
                 }
@@ -96,17 +104,6 @@ struct ConnectionStatusView: View {
         .sheet(isPresented: $showsESPBridges) {
             ESPBridgeSheet(input: input, bridge: esp)
         }
-    }
-
-    private var connectionModeLabel: some View {
-        HStack(spacing: 3) {
-            Text(input.mode == .esp ? "ESP" : "BT")
-                .fontWeight(.semibold)
-            Image(systemName: "chevron.down")
-                .font(.caption2)
-        }
-        .frame(width: compact ? 44 : 52, height: compact ? 32 : 44)
-        .contentShape(Rectangle())
     }
 
     private var statusLabel: some View {
@@ -133,13 +130,19 @@ struct ConnectionStatusView: View {
     }
 
     @ViewBuilder
-    private func destinationLabel(_ name: String, selected: Bool, connected: Bool) -> some View {
-        if connected {
-            Label(name, systemImage: "checkmark")
-        } else if selected {
-            Label("\(name) · очікуємо", systemImage: "clock")
-        } else {
-            Text(name)
+    private func destinationLabel(
+        _ name: String,
+        protocolIcon: String,
+        selected: Bool,
+        connected: Bool
+    ) -> some View {
+        HStack {
+            Label(name, systemImage: protocolIcon)
+            if connected {
+                Image(systemName: "checkmark")
+            } else if selected {
+                Image(systemName: "clock")
+            }
         }
     }
 
