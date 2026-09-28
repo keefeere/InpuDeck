@@ -90,6 +90,15 @@ class PortSelectionTests(unittest.TestCase):
         with self.assertRaises(installer.InstallerError):
             installer.auto_detect_port(ports)
 
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    def test_initial_detection_retries_a_transient_pyserial_scan_failure(self, available_ports, _sleep):
+        port = self.port("/dev/ttyACM0", installer.ESPRESSIF_USB_VID)
+        available_ports.side_effect = [TypeError("idVendor disappeared"), [port]]
+
+        self.assertEqual(installer.wait_for_available_ports(1), [port])
+        self.assertEqual(available_ports.call_count, 2)
+
 
 class PortPermissionTests(unittest.TestCase):
     @mock.patch.object(installer.os, "access", return_value=False)
@@ -156,6 +165,34 @@ class PortPermissionTests(unittest.TestCase):
         self.assertEqual(configured_port, "/dev/ttyACM0")
         self.assertEqual(ensure_access.call_count, 2)
 
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    @mock.patch.object(installer, "ensure_serial_port_access")
+    @mock.patch.object(installer, "_open_serial")
+    def test_provisioning_retries_a_transient_pyserial_scan_failure(
+        self, open_serial, _ensure_access, available_ports, _sleep
+    ):
+        port = types.SimpleNamespace(device="/dev/ttyACM0", vid=installer.ESPRESSIF_USB_VID)
+        available_ports.side_effect = [TypeError("idVendor disappeared"), [port]]
+        connection = mock.MagicMock()
+        connection.readline.side_effect = [
+            b"INPUDECK NAME InpuDeck Bridge\n",
+            b"INPUDECK OK NAME Television\n",
+        ]
+        connection.__enter__.return_value = connection
+        open_serial.return_value = connection
+
+        configured_port = installer.provision_bridge_name(
+            "/dev/ttyACM0",
+            "Television",
+            {"/dev/ttyACM0"},
+            timeout=1,
+            allow_sudo=True,
+        )
+
+        self.assertEqual(configured_port, "/dev/ttyACM0")
+        self.assertEqual(available_ports.call_count, 2)
+
 
 class BootstrapContractTests(unittest.TestCase):
     def test_bootstrap_downloads_release_assets_and_uses_uv_script_metadata(self):
@@ -171,6 +208,7 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("UV_UNMANAGED_INSTALL", bootstrap)
         self.assertIn("--grant-port-access", bootstrap)
         self.assertIn("--wait-for-reset", bootstrap)
+        self.assertIn("--skip-flash", bootstrap)
 
 
 if __name__ == "__main__":
