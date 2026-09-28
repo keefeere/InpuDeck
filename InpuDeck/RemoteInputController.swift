@@ -17,7 +17,7 @@ final class RemoteInputController: ObservableObject {
     @Published private(set) var statusText = localized("Підключення…")
     @Published private(set) var inputEpoch = 0
     let direct = DirectHIDTransport()
-    private let esp = BLEKeyboardBridge()
+    let esp = BLEKeyboardBridge()
     private var subscriptions: Set<AnyCancellable> = []
     private let modeKey = "inputTransportMode"
     private var backgroundedAt: Date?
@@ -52,12 +52,58 @@ final class RemoteInputController: ObservableObject {
 
     func selectMode(_ next: RemoteInputMode) {
         guard next != mode, !isSwitching else { return }
+        switchRoute(to: next) {}
+    }
+
+    func selectESPBridge(_ id: UUID) {
+        guard !isSwitching else { return }
+        if mode == .esp, esp.selectedBridgeID == id { return }
+        if mode == .esp {
+            switchRoute(to: .esp) { [weak self] in self?.esp.selectBridge(id) }
+        } else {
+            esp.selectBridge(id)
+            switchRoute(to: .esp) {}
+        }
+    }
+
+    func selectDirectHost(_ id: UUID) {
+        guard !isSwitching else { return }
+        if mode == .bluetooth {
+            direct.connect(to: id)
+        } else {
+            direct.selectSavedHost(id)
+            switchRoute(to: .bluetooth) {}
+        }
+    }
+
+    func prepareESPDiscovery() {
+        guard !isSwitching else { return }
+        esp.beginDiscovery()
+        if mode != .esp { switchRoute(to: .esp) {} }
+    }
+
+    func prepareDirectManagement() {
+        guard !isSwitching, mode != .bluetooth else { return }
+        switchRoute(to: .bluetooth) {}
+    }
+
+    func forgetESPBridge(_ id: UUID) {
+        guard !isSwitching else { return }
+        if mode == .esp, esp.selectedBridgeID == id {
+            switchRoute(to: .esp) { [weak self] in self?.esp.forgetBridge(id) }
+        } else {
+            esp.forgetBridge(id)
+        }
+    }
+
+    private func switchRoute(to next: RemoteInputMode, configure: @escaping () -> Void) {
         isSwitching = true
         isReady = false
         inputEpoch += 1
         statusText = localized("Перемикання підключення…")
         active.stop { [weak self] in
             guard let self else { return }
+            configure()
             self.mode = next
             UserDefaults.standard.set(next.rawValue, forKey: self.modeKey)
             self.isSwitching = false
@@ -80,6 +126,7 @@ final class RemoteInputController: ObservableObject {
     func enteredBackground() {
         backgroundedAt = Date()
         direct.browser.stopScan()
+        esp.endDiscovery()
         releaseAllInput()
     }
 

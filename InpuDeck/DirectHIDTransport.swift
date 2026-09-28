@@ -251,6 +251,25 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
     func beginPairing() { prepareHost(nil) }
     func connect(to id: UUID) { prepareHost(id) }
 
+    /// Persists a destination even while the direct transport is inactive.
+    /// RemoteInputController can then stop another transport and start Direct
+    /// Bluetooth without racing service installation or its pairing gate.
+    func selectSavedHost(_ id: UUID) {
+        guard let host = hostStore.host(id) else { return }
+        if isRunning {
+            prepareHost(id)
+            return
+        }
+        hostStore.select(
+            id,
+            name: host.discoveredName,
+            supportsOutgoing: host.supportsOutgoingConnection
+        )
+        savedHosts = hostStore.hosts
+        selectedHostID = id
+        browser.setKnownHosts(savedHosts)
+    }
+
     private func prepareHost(_ id: UUID?) {
         guard canPair, afterDrain == nil else { return }
         cancelRecovery()
