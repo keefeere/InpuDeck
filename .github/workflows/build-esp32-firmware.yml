@@ -5,10 +5,14 @@ on:
   pull_request:
     paths:
       - "inpudeck_bridge/**"
+      - "scripts/install-esp32.py"
+      - "Tests/test_esp32_installer.py"
       - ".github/workflows/build-esp32-firmware.yml"
   push:
     paths:
       - "inpudeck_bridge/**"
+      - "scripts/install-esp32.py"
+      - "Tests/test_esp32_installer.py"
       - ".github/workflows/build-esp32-firmware.yml"
 
 permissions:
@@ -22,6 +26,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Test firmware installer
+        run: python3 -m unittest Tests/test_esp32_installer.py
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -49,6 +56,8 @@ jobs:
           merged_bin="$(find build/esp32-s3-zero -maxdepth 1 -name '*.merged.bin' -print -quit)"
           test -n "$merged_bin"
           cp "$merged_bin" dist/InpuDeck-ESP32-S3-Zero.bin
+          cp scripts/install-esp32.py dist/install-esp32.py
+          chmod +x dist/install-esp32.py
           cd dist
           sha256sum InpuDeck-ESP32-S3-Zero.bin \
             > InpuDeck-ESP32-S3-Zero.bin.sha256
@@ -60,5 +69,6 @@ jobs:
           path: |
             dist/InpuDeck-ESP32-S3-Zero.bin
             dist/InpuDeck-ESP32-S3-Zero.bin.sha256
+            dist/install-esp32.py
           if-no-files-found: error
           retention-days: 30

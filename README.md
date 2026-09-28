@@ -140,20 +140,33 @@ Popular ESP32-S3 boards that work:
 6. Upload the sketch
 
 For the Waveshare ESP32-S3-Zero, the `Build ESP32-S3 firmware` GitHub Actions
-workflow also produces a complete 4 MB merged image and its SHA-256 checksum.
-Flash the downloaded image from the ROM bootloader with:
+workflow produces a complete 4 MB merged image, its SHA-256 checksum, and the
+`install-esp32.py` installer. Download the workflow artifact, install its one
+dependency, put the board into the ROM bootloader, and choose a recognizable
+name for the adapter:
 
 ```bash
-esptool \
-  --chip esp32s3 \
+python3 -m pip install esptool
+python3 install-esp32.py \
   --port /dev/ttyACM0 \
-  --before no-reset \
-  --after no-reset \
-  write-flash 0x0 InpuDeck-ESP32-S3-Zero.bin
+  --firmware InpuDeck-ESP32-S3-Zero.bin \
+  --name "InpuDeck Office"
 ```
 
-Press RESET after flashing. The serial device number can change after USB
-re-enumeration, so verify the port before writing.
+On Windows, use the board's `COM` port instead. The name must occupy 1–28 UTF-8
+bytes. The installer flashes the unchanged release image, waits for the firmware
+USB Serial endpoint, and stores the name in the `inpudeck` NVS namespace; it
+does not patch or recompile the binary. Press RESET when prompted. The serial
+device number can change after USB re-enumeration, and the installer will prefer
+the newly appeared Espressif port. To rename an already flashed compatible
+bridge without reflashing it, run:
+
+```bash
+python3 install-esp32.py --port /dev/ttyACM0 --skip-flash --name "InpuDeck TV"
+```
+
+An Arduino IDE upload uses `InpuDeck Bridge` by default. The same `--skip-flash`
+command can provision its name after the sketch is running.
 
 ### 2. Install the iOS App
 
@@ -336,8 +349,6 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Global keep-awake option** - Add an app-wide setting that prevents display sleep while InpuDeck is active, independently of Mouse Jiggler. Preserve the existing foreground-only lifecycle and restore normal system sleep behavior when the app becomes inactive or the option is disabled.
-- **Expert mode** - Add one setting that removes all optional guidance and descriptive text throughout the app, including Settings, action buttons, and touchpad zones, while preserving the essential legends on keyboard keys. In this mode the bottom-center `input-keyboard-tools` control should use icons only, with two separate, visually related icons that still make its two destinations distinguishable.
 - **Installer-configurable ESP32 identity** - Let the firmware read its bridge name from persistent configuration and let the installer provision that name while flashing, without requiring the user to edit or recompile the firmware. Prefer a dedicated NVS/configuration partition or an equivalent deterministic provisioning flow over patching an arbitrary compiled binary.
 - **ESP32-S3-Zero status LED** - Use the board LED to communicate useful bridge states such as booting, advertising, app connection, USB HID readiness, active input, and recoverable errors, with restrained patterns that do not become distracting.
 - **Universal multi-connect** - Generalize saved hosts and quick switching beyond Direct BLE so one app can manage any mix of Bluetooth computers and multiple ESP32 bridges, including two or more bridges with distinct identities.
@@ -360,6 +371,8 @@ helper and distribution-specific testing is optional.
 
 - **InpuDeck identity** - Renamed the project and app from ESPRemoteControl to InpuDeck in 3.0.0, reflecting that direct Bluetooth HID is now a first-class transport and the ESP32 bridge is optional.
 - **Direct BLE HID on macOS and Windows** - Pairing, keyboard and mouse input, reconnect, and host switching are stable in repeated physical testing. Windows works without repeated pairing through the companion BlueVein improvements. Linux input is functional, with optional helper and distro-specific follow-up retained outside the release roadmap.
+- **Global keep-awake option** - Since 3.0.3, an app-wide setting can keep the display awake independently of Mouse Jiggler while InpuDeck is active. Backgrounding the app or disabling the option restores normal system sleep behavior. Confirmed on-device.
+- **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
 
 ### Completed in iOS 2.2
 
