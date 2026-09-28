@@ -57,7 +57,10 @@ final class RemoteInputController: ObservableObject {
 
     func selectESPBridge(_ id: UUID) {
         guard !isSwitching else { return }
-        if mode == .esp, esp.selectedBridgeID == id { return }
+        if mode == .esp, esp.selectedBridgeID == id {
+            if !esp.isReady { esp.reconnectNow() }
+            return
+        }
         if mode == .esp {
             switchRoute(to: .esp) { [weak self] in self?.esp.selectBridge(id) }
         } else {

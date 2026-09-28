@@ -159,6 +159,7 @@
 "Немає збережених ESP-адаптерів" = "No saved ESP adapters";
 "Знайти ESP-адаптер" = "Find ESP adapter";
 "Пристрої та сполучення" = "Devices and pairing";
+"Вибрати пристрій" = "Select device";
 "Мої ESP-адаптери" = "My ESP adapters";
 "Перейменувати в застосунку" = "Rename in app";
 "Знайдені поруч" = "Nearby";
@@ -182,6 +183,7 @@
 "Вибрати комп’ютер" = "Select computer";
 "Показати збережені комп’ютери" = "Show saved computers";
 "Комп’ютери та сполучення Bluetooth" = "Computers and Bluetooth pairing";
+"Додати комп’ютер через Direct Bluetooth" = "Add computer via Direct Bluetooth";
 "Перепідключити" = "Reconnect";
 "Копіювати UUID" = "Copy UUID";
 "Перейменувати" = "Rename";

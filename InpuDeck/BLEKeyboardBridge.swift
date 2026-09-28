@@ -103,6 +103,10 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         central?.delegate = nil
         central = nil
         peripheral = nil
+        // CBPeripheral instances belong to the CBCentralManager that produced
+        // them. Reusing one after recreating the manager leaves connect() in a
+        // permanent waiting state until a fresh scan replaces the object.
+        peers.removeAll()
         connectedBridgeID = nil
         resetConnectionState()
         finishingStop = false
@@ -118,6 +122,13 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
 
         if let peripheral, peripheral.state == .connected {
             central?.cancelPeripheralConnection(peripheral)
+        } else if let peripheral, peripheral.state == .connecting {
+            central?.cancelPeripheralConnection(peripheral)
+            peripheral.delegate = nil
+            peers.removeValue(forKey: peripheral.identifier)
+            self.peripheral = nil
+            resetConnectionState()
+            scanForBridges()
         } else {
             connectToSelectedBridgeOrScan()
         }
@@ -459,6 +470,8 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         case .poweredOff:
             statusText = localized("Bluetooth вимкнено")
             isScanning = false
+            peers.removeAll()
+            peripheral = nil
             resetConnectionState()
         case .unauthorized:
             statusText = localized("Немає дозволу на Bluetooth")
@@ -471,6 +484,8 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         case .resetting:
             statusText = localized("Bluetooth перезапускається…")
             isScanning = false
+            peers.removeAll()
+            peripheral = nil
             resetConnectionState()
         case .unknown:
             statusText = localized("Bluetooth: невідомий стан")
