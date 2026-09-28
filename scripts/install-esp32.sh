@@ -117,6 +117,9 @@ fi
 
 echo
 echo "Після запису firmware натисни RESET один раз, коли інсталятор попросить."
+if [[ "$(uname -s)" == "Linux" ]]; then
+  echo "Якщо бракує прав на serial-порт, sudo буде запитано лише для тимчасового доступу до нього."
+fi
 
 installer_args=(
   --firmware "$workdir/InpuDeck-ESP32-S3-Zero.bin"
@@ -124,6 +127,9 @@ installer_args=(
 )
 if [[ "$serial_port" != "auto" ]]; then
   installer_args+=(--port "$serial_port")
+fi
+if [[ "$(uname -s)" == "Linux" ]]; then
+  installer_args+=(--grant-port-access)
 fi
 
 UV_CACHE_DIR="$workdir/uv-cache" \

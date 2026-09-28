@@ -3,6 +3,7 @@ import importlib.util
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "install-esp32.py"
@@ -79,6 +80,36 @@ class PortSelectionTests(unittest.TestCase):
             installer.auto_detect_port(ports)
 
 
+class PortPermissionTests(unittest.TestCase):
+    @mock.patch.object(installer.os, "access", return_value=False)
+    def test_refuses_to_elevate_without_explicit_flag(self, _access):
+        with self.assertRaisesRegex(installer.InstallerError, "permission denied"):
+            installer.ensure_serial_port_access("/dev/ttyACM0", allow_sudo=False)
+
+    @mock.patch.object(installer.subprocess, "run")
+    @mock.patch.object(installer, "trusted_system_tool", side_effect=lambda name: f"/usr/bin/{name}")
+    @mock.patch.object(installer, "trusted_linux_serial_device", return_value="/dev/ttyACM0")
+    @mock.patch.object(installer.os, "access", side_effect=[False, True])
+    def test_grants_only_a_temporary_acl_when_allowed(self, _access, _device, _tool, run):
+        installer.ensure_serial_port_access("/dev/ttyACM0", allow_sudo=True)
+        run.assert_called_once_with(
+            [
+                "/usr/bin/sudo",
+                "/usr/bin/setfacl",
+                "-m",
+                f"u:{installer.os.getuid()}:rw",
+                "/dev/ttyACM0",
+            ],
+            check=True,
+        )
+
+    @mock.patch.object(installer, "trusted_linux_serial_device", return_value=None)
+    @mock.patch.object(installer.os, "access", return_value=False)
+    def test_refuses_to_elevate_an_unexpected_path(self, _access, _device):
+        with self.assertRaisesRegex(installer.InstallerError, "refusing to elevate"):
+            installer.ensure_serial_port_access("/tmp/not-a-device", allow_sudo=True)
+
+
 class BootstrapContractTests(unittest.TestCase):
     def test_bootstrap_downloads_release_assets_and_uses_uv_script_metadata(self):
         bootstrap = BOOTSTRAP.read_text()
@@ -91,6 +122,7 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("releases/latest/download", bootstrap)
         self.assertIn('run --no-project --script "$workdir/install-esp32.py"', bootstrap)
         self.assertIn("UV_UNMANAGED_INSTALL", bootstrap)
+        self.assertIn("--grant-port-access", bootstrap)
 
 
 if __name__ == "__main__":
