@@ -37,7 +37,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Universal compatibility** - Works with any device that accepts USB HID devices (Smart TVs, computers, streaming boxes, embedded systems)
 - **Zero configuration** - No drivers, no network setup, just plug and play
 - **Low latency** - Direct Bluetooth LE connection for responsive input
-- **Multiple hosts** - Remembers paired computers and lets you select the active destination
+- **Universal destinations** - Remembers Direct Bluetooth computers and multiple ESP32 bridges, then safely switches one active input destination
 - **Optional hardware bridge** - Uses an ESP32-S3 for USB HID and pre-OS input when needed
 - **Warm-reboot recovery** - Recovers a stalled USB HID endpoint when a host reboots without removing USB power
 - **Optional privacy mask** - Keep the typing composer visible or mask it when entering passwords
@@ -152,7 +152,7 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.6
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.2.0
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -359,7 +359,7 @@ This project solves a real problem with a unique hardware approach. Contribution
 ## Roadmap
 
 - **ESP32-S3-Zero status LED** - Use the board LED to communicate useful bridge states such as booting, advertising, app connection, USB HID readiness, active input, and recoverable errors, with restrained patterns that do not become distracting.
-- **Universal multi-connect** - Generalize saved hosts and quick switching beyond Direct BLE so one app can manage any mix of Bluetooth computers and multiple ESP32 bridges, including two or more bridges with distinct identities.
+- **Universal multi-connect (3.2.0 test build)** - A single destination menu now manages any mix of saved Direct Bluetooth computers and multiple ESP32 bridges. ESP discovery keeps every distinct CoreBluetooth identity, migrates the legacy single bridge, and switches only after releasing input on the previous route. Physical two-bridge discovery, switching, reconnect, and USB HID validation remain before this item moves to Completed.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
 - **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.
 - **Adaptive layouts for iPhone Duo and iPad (wishlist)** - Once the iPhone Duo simulator is available, verify the app in full-screen and half-screen configurations. Also test representative iPad sizes and multitasking widths (Split View and Stage Manager), then consider layouts that make better use of the additional space.

@@ -4,22 +4,58 @@ import UIKit
 struct ConnectionStatusView: View {
     @ObservedObject var input: RemoteInputController
     @ObservedObject private var direct: DirectHIDTransport
+    @ObservedObject private var esp: BLEKeyboardBridge
     var compact = false
     @State private var showsBluetooth = false
+    @State private var showsESPBridges = false
     @AppStorage("developerMode") private var developerMode = false
 
     init(input: RemoteInputController, compact: Bool = false) {
         self.input = input
         self.direct = input.direct
+        self.esp = input.esp
         self.compact = compact
     }
 
     var body: some View {
         HStack(spacing: 8) {
             Menu {
-                Picker("Підключення", selection: Binding(get: { input.mode }, set: input.selectMode)) {
-                    ForEach(RemoteInputMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                Section("ESP-адаптери") {
+                    if visibleSavedBridges.isEmpty {
+                        Text("Немає збережених ESP-адаптерів")
+                    } else {
+                        ForEach(visibleSavedBridges) { bridge in
+                            Button { input.selectESPBridge(bridge.id) } label: {
+                                destinationLabel(
+                                    developerMode ? bridge.diagnosticName : bridge.name,
+                                    selected: input.mode == .esp && esp.selectedBridgeID == bridge.id,
+                                    connected: input.mode == .esp && esp.connectedBridgeID == bridge.id
+                                )
+                            }
+                        }
+                    }
+                    Button("Знайти ESP-адаптер", systemImage: "antenna.radiowaves.left.and.right") {
+                        input.prepareESPDiscovery()
+                        showsESPBridges = true
+                    }
+                }
+                Section("Прямий Bluetooth") {
+                    if visibleSavedHosts.isEmpty {
+                        Text("Немає збережених комп’ютерів")
+                    } else {
+                        ForEach(visibleSavedHosts) { host in
+                            Button { input.selectDirectHost(host.id) } label: {
+                                destinationLabel(
+                                    developerMode ? host.diagnosticName : host.name,
+                                    selected: input.mode == .bluetooth && direct.selectedHostID == host.id,
+                                    connected: input.mode == .bluetooth && direct.connectedHostID == host.id
+                                )
+                            }
+                        }
+                    }
+                    Button("Сполучити інший комп’ютер", systemImage: "link.badge.plus") {
+                        input.prepareDirectManagement()
+                        showsBluetooth = true
                     }
                 }
             } label: {
@@ -32,49 +68,21 @@ struct ConnectionStatusView: View {
             .accessibilityValue(input.mode.title)
 
             Circle().fill(input.isReady ? .green : .orange).frame(width: 7, height: 7)
-            if input.mode == .bluetooth {
-                Menu {
-                    if visibleSavedHosts.isEmpty {
-                        Text("Немає збережених комп’ютерів")
-                    } else {
-                        Section("Мої комп’ютери") {
-                            ForEach(visibleSavedHosts) { host in
-                                Button { direct.connect(to: host.id) } label: {
-                                    if direct.connectedHostID == host.id {
-                                        Label(developerMode ? host.diagnosticName : host.name, systemImage: "checkmark")
-                                    } else if direct.selectedHostID == host.id {
-                                        Label("\(developerMode ? host.diagnosticName : host.name) · очікуємо", systemImage: "clock")
-                                    } else {
-                                        Text(developerMode ? host.diagnosticName : host.name)
-                                    }
-                                }
-                                .disabled(!direct.canPair)
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("Сполучити інший комп’ютер", systemImage: "link.badge.plus") {
-                        showsBluetooth = true
-                    }
-                } label: {
-                    hostSelectionLabel
+            statusLabel
+            Menu {
+                Button("Знайти ESP-адаптер", systemImage: "antenna.radiowaves.left.and.right") {
+                    input.prepareESPDiscovery()
+                    showsESPBridges = true
                 }
-                .menuIndicator(.hidden)
-                .layoutPriority(1)
-                .disabled(input.isSwitching)
-                .accessibilityLabel("Вибрати комп’ютер")
-                .accessibilityValue(displayStatus)
-                .accessibilityHint("Показати збережені комп’ютери")
-            } else {
-                statusLabel
-            }
-            if input.mode == .bluetooth {
-                Button { showsBluetooth = true } label: {
-                    Image(systemName: "link.badge.plus")
+                Button("Комп’ютери та сполучення Bluetooth", systemImage: "link.badge.plus") {
+                    input.prepareDirectManagement()
+                    showsBluetooth = true
                 }
-                .accessibilityLabel("Комп’ютери та сполучення Bluetooth")
-                .disabled(input.isSwitching)
+            } label: {
+                Image(systemName: "link.badge.plus")
             }
+            .accessibilityLabel("Пристрої та сполучення")
+            .disabled(input.isSwitching)
             Button(action: input.reconnectNow) {
                 Image(systemName: "arrow.clockwise")
             }
@@ -84,6 +92,9 @@ struct ConnectionStatusView: View {
         .buttonStyle(.borderless)
         .sheet(isPresented: $showsBluetooth) {
             DirectBluetoothSheet(transport: direct, browser: direct.browser)
+        }
+        .sheet(isPresented: $showsESPBridges) {
+            ESPBridgeSheet(input: input, bridge: esp)
         }
     }
 
@@ -98,18 +109,6 @@ struct ConnectionStatusView: View {
         .contentShape(Rectangle())
     }
 
-    private var hostSelectionLabel: some View {
-        HStack(spacing: 4) {
-            statusLabel
-            Image(systemName: "chevron.down")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: compact ? 32 : 44, alignment: .leading)
-        .padding(.horizontal, 4)
-        .contentShape(Rectangle())
-    }
-
     private var statusLabel: some View {
         Text(displayStatus)
             .font(compact ? .caption2 : .caption)
@@ -119,17 +118,208 @@ struct ConnectionStatusView: View {
     }
 
     private var displayStatus: String {
-        if !developerMode, input.mode == .bluetooth, let id = direct.selectedHostID {
-            if let host = direct.savedHosts.first(where: { $0.id == id }), host.hasDisplayName {
+        if !developerMode {
+            if input.mode == .bluetooth, let id = direct.selectedHostID,
+               let host = direct.savedHosts.first(where: { $0.id == id }), host.hasDisplayName {
                 return host.name
+            }
+            if input.mode == .esp, let id = esp.selectedBridgeID,
+               let bridge = esp.savedBridges.first(where: { $0.id == id }), bridge.hasDisplayName {
+                return bridge.name
             }
             return localized(input.isReady ? "Підключено" : "Очікується підключення")
         }
         return input.statusText
     }
 
+    @ViewBuilder
+    private func destinationLabel(_ name: String, selected: Bool, connected: Bool) -> some View {
+        if connected {
+            Label(name, systemImage: "checkmark")
+        } else if selected {
+            Label("\(name) · очікуємо", systemImage: "clock")
+        } else {
+            Text(name)
+        }
+    }
+
     private var visibleSavedHosts: [SavedHIDHost] {
         developerMode ? direct.savedHosts : direct.savedHosts.filter(\.hasDisplayName)
+    }
+
+    private var visibleSavedBridges: [SavedESPBridge] {
+        developerMode ? esp.savedBridges : esp.savedBridges.filter(\.hasDisplayName)
+    }
+}
+
+private struct ESPBridgeSheet: View {
+    @ObservedObject var input: RemoteInputController
+    @ObservedObject var bridge: BLEKeyboardBridge
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("developerMode") private var developerMode = false
+    @State private var bridgeToRename: SavedESPBridge?
+    @State private var bridgeToForget: SavedESPBridge?
+    @State private var editedName = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label(
+                        bridge.statusText,
+                        systemImage: bridge.isReady
+                            ? "checkmark.circle.fill"
+                            : "antenna.radiowaves.left.and.right"
+                    )
+                    .foregroundStyle(bridge.isReady ? .green : .primary)
+                }
+
+                if !visibleSavedBridges.isEmpty {
+                    Section("Мої ESP-адаптери") {
+                        ForEach(visibleSavedBridges) { saved in
+                            bridgeRow(
+                                id: saved.id,
+                                name: developerMode ? saved.diagnosticName : saved.name,
+                                signal: signal(for: saved.id),
+                                isConnectable: true
+                            )
+                            .contextMenu {
+                                Button("Перейменувати в застосунку", systemImage: "pencil") {
+                                    editedName = saved.customName ?? saved.advertisedName ?? ""
+                                    bridgeToRename = saved
+                                }
+                                Button("Забути", systemImage: "trash", role: .destructive) {
+                                    bridgeToForget = saved
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Знайдені поруч") {
+                    if visibleNearbyBridges.isEmpty {
+                        HStack(spacing: 10) {
+                            if bridge.isScanning { ProgressView() }
+                            Text(bridge.isScanning ? "Шукаємо ESP-адаптери…" : "ESP-адаптерів не знайдено")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        ForEach(visibleNearbyBridges) { candidate in
+                            bridgeRow(
+                                id: candidate.id,
+                                name: developerMode ? candidate.diagnosticName : candidate.displayName,
+                                signal: candidate.signal,
+                                isConnectable: candidate.isConnectable
+                            )
+                        }
+                    }
+                }
+
+                Section {
+                    Text("Одночасно активний лише один пристрій. Перед перемиканням InpuDeck відпускає натиснуті клавіші й кнопки на попередньому.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("ESP-адаптери")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Закрити") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        bridge.beginDiscovery()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Повторити пошук ESP-адаптерів")
+                }
+            }
+        }
+        .onAppear {
+            input.prepareESPDiscovery()
+            bridge.beginDiscovery()
+        }
+        .onDisappear { bridge.endDiscovery() }
+        .alert("Ім’я адаптера в InpuDeck", isPresented: Binding(
+            get: { bridgeToRename != nil },
+            set: { if !$0 { bridgeToRename = nil } }
+        ), presenting: bridgeToRename) { saved in
+            TextField("Ім’я", text: $editedName)
+            Button("Зберегти") {
+                bridge.renameBridge(saved.id, to: editedName)
+                bridgeToRename = nil
+            }
+            Button("Скасувати", role: .cancel) { bridgeToRename = nil }
+        } message: { _ in
+            Text("Змінюється лише підпис у цьому застосунку. Рекламоване ім’я ESP залишається без змін.")
+        }
+        .confirmationDialog("Забути ESP-адаптер?", isPresented: Binding(
+            get: { bridgeToForget != nil },
+            set: { if !$0 { bridgeToForget = nil } }
+        ), presenting: bridgeToForget) { saved in
+            Button("Забути \(saved.name)", role: .destructive) {
+                input.forgetESPBridge(saved.id)
+                bridgeToForget = nil
+            }
+            Button("Скасувати", role: .cancel) { bridgeToForget = nil }
+        } message: { saved in
+            Text("\(saved.name) буде вилучено зі списку InpuDeck. Його можна знайти знову під час сканування.")
+        }
+    }
+
+    private func bridgeRow(id: UUID, name: String, signal: Int?, isConnectable: Bool) -> some View {
+        Button {
+            input.selectESPBridge(id)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "externaldrive.connected.to.line.below")
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name)
+                    if bridge.connectedBridgeID == id {
+                        Text("Підключено")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else if bridge.selectedBridgeID == id {
+                        Text("Вибрано · очікуємо підключення")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if let signal {
+                    Text("\(signal) dBm")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                if bridge.connectedBridgeID == id {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else if bridge.selectedBridgeID == id {
+                    Image(systemName: "clock")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(input.isSwitching || !isConnectable)
+    }
+
+    private func signal(for id: UUID) -> Int? {
+        bridge.discoveredBridges.first(where: { $0.id == id })?.signal
+    }
+
+    private var visibleSavedBridges: [SavedESPBridge] {
+        developerMode ? bridge.savedBridges : bridge.savedBridges.filter(\.hasDisplayName)
+    }
+
+    private var visibleNearbyBridges: [DiscoveredESPBridge] {
+        bridge.discoveredBridges.filter { candidate in
+            !bridge.savedBridges.contains { $0.id == candidate.id }
+                && (developerMode || candidate.hasDisplayName)
+        }
     }
 }
 

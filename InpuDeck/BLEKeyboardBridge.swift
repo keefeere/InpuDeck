@@ -7,17 +7,22 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private let serviceUUID = CBUUID(string: "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001")
     private let writeCharUUID = CBUUID(string: "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001")
     private let restoreIdentifier = "com.keefeere.InpuDeck.central"
-    private let lastPeripheralKey = "lastBridgePeripheralIdentifier"
-
     @Published var statusText = localized("Bluetooth: ініціалізація…")
     @Published var isReady = false
+    @Published private(set) var savedBridges: [SavedESPBridge] = []
+    @Published private(set) var discoveredBridges: [DiscoveredESPBridge] = []
+    @Published private(set) var selectedBridgeID: UUID?
+    @Published private(set) var connectedBridgeID: UUID?
+    @Published private(set) var isScanning = false
 
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
     private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
-    private var bridgeName: String?
+    private let bridgeStore = ESPBridgeStore()
+    private var peers: [UUID: CBPeripheral] = [:]
+    private var userRequestedScan = false
 
     private var pendingWrites: [Data] = []
     private var writeWithResponseInFlight = false
@@ -27,11 +32,17 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private var stopDeadline: DispatchWorkItem?
     private var finishingStop = false
 
+    override init() {
+        super.init()
+        savedBridges = bridgeStore.bridges
+        selectedBridgeID = bridgeStore.selectedBridgeID
+    }
+
     func start() {
         isRunning = true
         guard central == nil else {
             if central?.state == .poweredOn, !isReady {
-                connectToRememberedBridgeOrScan()
+                connectToSelectedBridgeOrScan()
             }
             return
         }
@@ -85,11 +96,14 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         stopDeadline?.cancel()
         stopDeadline = nil
         central?.stopScan()
+        isScanning = false
+        userRequestedScan = false
         peripheral?.delegate = nil
         if let peripheral { central?.cancelPeripheralConnection(peripheral) }
         central?.delegate = nil
         central = nil
         peripheral = nil
+        connectedBridgeID = nil
         resetConnectionState()
         finishingStop = false
         completion()
@@ -105,7 +119,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         if let peripheral, peripheral.state == .connected {
             central?.cancelPeripheralConnection(peripheral)
         } else {
-            connectToRememberedBridgeOrScan()
+            connectToSelectedBridgeOrScan()
         }
     }
 
@@ -135,12 +149,24 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private var lastSentModifiersMask: UInt8 = 0
 
     private var bridgeDisplayName: String {
-        bridgeName ?? localized("ESP-адаптер")
+        guard let selectedBridgeID else { return localized("ESP-адаптер") }
+        return bridgeStore.bridge(selectedBridgeID)?.name
+            ?? discoveredBridges.first(where: { $0.id == selectedBridgeID })?.displayName
+            ?? localized("ESP-адаптер")
     }
 
-    private func rememberBridgeName(_ value: String?) {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return }
-        bridgeName = value
+    private func advertisedName(
+        for peripheral: CBPeripheral,
+        advertisementData: [String: Any]? = nil
+    ) -> String? {
+        let value = advertisementData?[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+
+    private func publishStore() {
+        savedBridges = bridgeStore.bridges
+        selectedBridgeID = bridgeStore.selectedBridgeID
     }
 
     private func writeV2(_ frames: [V2Frame]) {
@@ -294,34 +320,109 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         writeV2([V2Frame(command: V2.mouseButtonUp, payload: [button])])
     }
 
-    private func connectToRememberedBridgeOrScan() {
+    func selectBridge(_ id: UUID) {
+        let name = discoveredBridges.first(where: { $0.id == id })?.name
+            ?? bridgeStore.bridge(id)?.advertisedName
+        bridgeStore.select(id, name: name)
+        publishStore()
+        guard isRunning else { return }
+
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        reconnectAttempt = 0
+        if peripheral?.identifier != id {
+            if let peripheral {
+                peripheral.delegate = nil
+                central?.cancelPeripheralConnection(peripheral)
+            }
+            peripheral = nil
+            connectedBridgeID = nil
+            resetConnectionState()
+        }
+        connectToSelectedBridgeOrScan()
+    }
+
+    func beginDiscovery() {
+        userRequestedScan = true
+        discoveredBridges.removeAll()
+        guard isRunning else { return }
+        scanForBridges()
+    }
+
+    func endDiscovery() {
+        userRequestedScan = false
+        guard selectedBridgeID == nil
+                || peripheral?.state == .connected
+                || peripheral?.state == .connecting else { return }
+        central?.stopScan()
+        isScanning = false
+    }
+
+    func renameBridge(_ id: UUID, to name: String) {
+        bridgeStore.rename(id, to: name)
+        publishStore()
+        if id == selectedBridgeID, isReady {
+            statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
+        }
+    }
+
+    func forgetBridge(_ id: UUID) {
+        let wasSelected = selectedBridgeID == id
+        bridgeStore.forget(id)
+        publishStore()
+        discoveredBridges.removeAll { $0.id == id }
+        peers.removeValue(forKey: id)
+        guard wasSelected else { return }
+
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        if let peripheral, peripheral.identifier == id {
+            peripheral.delegate = nil
+            central?.cancelPeripheralConnection(peripheral)
+            self.peripheral = nil
+        }
+        connectedBridgeID = nil
+        resetConnectionState()
+        statusText = localized("Вибери ESP-адаптер")
+        if isRunning { scanForBridges() }
+    }
+
+    private func connectToSelectedBridgeOrScan() {
         guard isRunning else { return }
         guard let central, central.state == .poweredOn else { return }
         guard peripheral?.state != .connecting, peripheral?.state != .connected else { return }
 
-        if let identifierString = UserDefaults.standard.string(forKey: lastPeripheralKey),
-           let identifier = UUID(uuidString: identifierString),
-           let remembered = central.retrievePeripherals(withIdentifiers: [identifier]).first {
-            peripheral = remembered
-            remembered.delegate = self
-            rememberBridgeName(remembered.name)
-            statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
-            central.connect(remembered, options: nil)
+        guard let identifier = selectedBridgeID else {
+            statusText = localized("Вибери ESP-адаптер")
+            scanForBridges()
             return
         }
 
-        scanForBridge()
+        if let remembered = peers[identifier]
+            ?? central.retrievePeripherals(withIdentifiers: [identifier]).first {
+            peers[identifier] = remembered
+            peripheral = remembered
+            remembered.delegate = self
+            bridgeStore.updateDiscoveredName(remembered.name, for: identifier)
+            publishStore()
+            statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
+            central.connect(remembered, options: nil)
+            if userRequestedScan { scanForBridges() }
+            return
+        }
+
+        statusText = localizedFormat("Bluetooth: пошук %@…", bridgeDisplayName)
+        scanForBridges()
     }
 
-    private func scanForBridge() {
+    private func scanForBridges() {
         guard let central, central.state == .poweredOn else { return }
-        statusText = localized("Bluetooth: пошук ESP32…")
-        isReady = false
         central.stopScan()
         central.scanForPeripherals(
             withServices: [serviceUUID],
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
+        isScanning = true
     }
 
     private func scheduleReconnect() {
@@ -332,7 +433,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         statusText = localizedFormat("Bluetooth: перепідключення через %d с…", Int(delay))
 
         let work = DispatchWorkItem { [weak self] in
-            self?.connectToRememberedBridgeOrScan()
+            self?.connectToSelectedBridgeOrScan()
         }
         reconnectWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -340,6 +441,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
 
     private func resetConnectionState() {
         isReady = false
+        connectedBridgeID = nil
         writeChar = nil
         pendingWrites.removeAll()
         writeWithResponseInFlight = false
@@ -353,32 +455,39 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         guard isRunning else { return }
         switch central.state {
         case .poweredOn:
-            connectToRememberedBridgeOrScan()
+            connectToSelectedBridgeOrScan()
         case .poweredOff:
             statusText = localized("Bluetooth вимкнено")
+            isScanning = false
             resetConnectionState()
         case .unauthorized:
             statusText = localized("Немає дозволу на Bluetooth")
+            isScanning = false
             resetConnectionState()
         case .unsupported:
             statusText = localized("Bluetooth LE не підтримується")
+            isScanning = false
             resetConnectionState()
         case .resetting:
             statusText = localized("Bluetooth перезапускається…")
+            isScanning = false
             resetConnectionState()
         case .unknown:
             statusText = localized("Bluetooth: невідомий стан")
+            isScanning = false
             resetConnectionState()
         @unknown default:
             statusText = localized("Bluetooth: невідомий стан")
+            isScanning = false
             resetConnectionState()
         }
     }
 
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
-        guard let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral])?.first else {
-            return
-        }
+        let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? []
+        for restored in restoredPeripherals { peers[restored.identifier] = restored }
+        guard let selectedBridgeID,
+              let restored = restoredPeripherals.first(where: { $0.identifier == selectedBridgeID }) else { return }
         peripheral = restored
         restored.delegate = self
         statusText = localized("Bluetooth: відновлення з’єднання…")
@@ -391,21 +500,47 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         rssi RSSI: NSNumber
     ) {
         guard isRunning else { return }
-        rememberBridgeName(advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name)
+        let id = peripheral.identifier
+        let name = advertisedName(for: peripheral, advertisementData: advertisementData)
+        let isConnectable = (advertisementData[CBAdvertisementDataIsConnectable] as? NSNumber)?.boolValue ?? true
+        let signal = RSSI.intValue == 127 ? nil : RSSI.intValue
+        peers[id] = peripheral
+
+        let candidate = DiscoveredESPBridge(id: id, name: name, signal: signal, isConnectable: isConnectable)
+        discoveredBridges.removeAll { $0.id == id }
+        discoveredBridges.append(candidate)
+        discoveredBridges.sort { ($0.signal ?? -200) > ($1.signal ?? -200) }
+        if bridgeStore.bridge(id) != nil {
+            bridgeStore.updateDiscoveredName(name, for: id)
+            publishStore()
+        }
+
+        guard id == selectedBridgeID, isConnectable,
+              self.peripheral?.state != .connecting,
+              self.peripheral?.state != .connected else { return }
         self.peripheral = peripheral
         peripheral.delegate = self
         statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
-        central.stopScan()
+        if !userRequestedScan {
+            central.stopScan()
+            isScanning = false
+        }
         central.connect(peripheral, options: nil)
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         guard isRunning else { central.cancelPeripheralConnection(peripheral); return }
+        guard peripheral.identifier == selectedBridgeID else {
+            central.cancelPeripheralConnection(peripheral)
+            return
+        }
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         reconnectAttempt = 0
-        rememberBridgeName(peripheral.name)
-        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: lastPeripheralKey)
+        self.peripheral = peripheral
+        let name = advertisedName(for: peripheral)
+        bridgeStore.connected(peripheral.identifier, name: name)
+        publishStore()
         statusText = localized("Bluetooth: перевірка сервісу…")
         peripheral.delegate = self
         peripheral.discoverServices([serviceUUID])
@@ -416,6 +551,7 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         didFailToConnect peripheral: CBPeripheral,
         error: Error?
     ) {
+        guard peripheral.identifier == selectedBridgeID else { return }
         resetConnectionState()
         self.peripheral = nil
         scheduleReconnect()
@@ -426,6 +562,7 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         didDisconnectPeripheral peripheral: CBPeripheral,
         error: Error?
     ) {
+        guard peripheral.identifier == selectedBridgeID else { return }
         resetConnectionState()
         self.peripheral = nil
         scheduleReconnect()
@@ -434,6 +571,7 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
 
 extension BLEKeyboardBridge: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard peripheral.identifier == selectedBridgeID else { return }
         if let error {
             statusText = localizedFormat("Помилка BLE-сервісу: %@", error.localizedDescription)
             scheduleReconnect()
@@ -452,6 +590,7 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
         didDiscoverCharacteristicsFor service: CBService,
         error: Error?
     ) {
+        guard peripheral.identifier == selectedBridgeID else { return }
         if let error {
             statusText = localizedFormat("Помилка BLE-команди: %@", error.localizedDescription)
             scheduleReconnect()
@@ -463,6 +602,7 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             return
         }
         writeChar = characteristic
+        connectedBridgeID = peripheral.identifier
         statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
         isReady = true
     }
@@ -472,7 +612,8 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
     }
 
     func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
-        rememberBridgeName(peripheral.name)
+        bridgeStore.updateDiscoveredName(peripheral.name, for: peripheral.identifier)
+        publishStore()
         if isReady {
             statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
         }
