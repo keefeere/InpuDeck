@@ -17,6 +17,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     private var writeChar: CBCharacteristic?
     private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
+    private var bridgeName: String?
 
     private var pendingWrites: [Data] = []
     private var writeWithResponseInFlight = false
@@ -132,6 +133,15 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
     }
 
     private var lastSentModifiersMask: UInt8 = 0
+
+    private var bridgeDisplayName: String {
+        bridgeName ?? localized("ESP-адаптер")
+    }
+
+    private func rememberBridgeName(_ value: String?) {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return }
+        bridgeName = value
+    }
 
     private func writeV2(_ frames: [V2Frame]) {
         guard let peripheral, let writeChar, !frames.isEmpty else { return }
@@ -294,7 +304,8 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
            let remembered = central.retrievePeripherals(withIdentifiers: [identifier]).first {
             peripheral = remembered
             remembered.delegate = self
-            statusText = localized("Bluetooth: підключення до збереженого адаптера…")
+            rememberBridgeName(remembered.name)
+            statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
             central.connect(remembered, options: nil)
             return
         }
@@ -380,9 +391,10 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         rssi RSSI: NSNumber
     ) {
         guard isRunning else { return }
+        rememberBridgeName(advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name)
         self.peripheral = peripheral
         peripheral.delegate = self
-        statusText = localized("Bluetooth: підключення до ESP32…")
+        statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
         central.stopScan()
         central.connect(peripheral, options: nil)
     }
@@ -392,6 +404,7 @@ extension BLEKeyboardBridge: CBCentralManagerDelegate {
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         reconnectAttempt = 0
+        rememberBridgeName(peripheral.name)
         UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: lastPeripheralKey)
         statusText = localized("Bluetooth: перевірка сервісу…")
         peripheral.delegate = self
@@ -450,12 +463,19 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
             return
         }
         writeChar = characteristic
-        statusText = localized("ESP32 підключено")
+        statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
         isReady = true
     }
 
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
         drainWriteQueue(type: .withoutResponse)
+    }
+
+    func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
+        rememberBridgeName(peripheral.name)
+        if isReady {
+            statusText = localizedFormat("Підключено · %@", bridgeDisplayName)
+        }
     }
 
     func peripheral(

@@ -4,6 +4,7 @@
  */
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 // ---- BLE (Peripheral) via NimBLE ----
 #include <NimBLEDevice.h>
@@ -20,6 +21,87 @@
 // =====================
 static const char* kServiceUUID = "2D2A0001-8A5A-4E76-A2E3-1E57D9A1B001";
 static const char* kWriteCharUUID = "2D2A0002-8A5A-4E76-A2E3-1E57D9A1B001";
+static const char* kDefaultBridgeName = "InpuDeck Bridge";
+static const char* kPreferencesNamespace = "inpudeck";
+static const char* kBridgeNameKey = "bridge_name";
+static constexpr size_t kMaxBridgeNameBytes = 28;
+
+static String gBridgeName = kDefaultBridgeName;
+static String gSerialCommand;
+
+static bool isValidBridgeName(const String& name) {
+  const size_t length = name.length();
+  if (length == 0 || length > kMaxBridgeNameBytes) return false;
+
+  for (size_t i = 0; i < length; ++i) {
+    const uint8_t byte = static_cast<uint8_t>(name[i]);
+    if (byte < 0x20 || byte == 0x7F) return false;
+  }
+  return true;
+}
+
+static String loadBridgeName() {
+  Preferences preferences;
+  if (!preferences.begin(kPreferencesNamespace, true)) return kDefaultBridgeName;
+  String name = preferences.getString(kBridgeNameKey, kDefaultBridgeName);
+  preferences.end();
+  name.trim();
+  return isValidBridgeName(name) ? name : String(kDefaultBridgeName);
+}
+
+static bool storeBridgeName(const String& name) {
+  Preferences preferences;
+  if (!preferences.begin(kPreferencesNamespace, false)) return false;
+  const size_t storedLength = preferences.putString(kBridgeNameKey, name);
+  preferences.end();
+  return storedLength == name.length();
+}
+
+static void handleSerialCommand(String command) {
+  command.trim();
+
+  if (command == "INPUDECK GET-NAME") {
+    Serial.printf("INPUDECK NAME %s\n", gBridgeName.c_str());
+    return;
+  }
+
+  static const String prefix = "INPUDECK SET-NAME ";
+  if (!command.startsWith(prefix)) return;
+
+  String name = command.substring(prefix.length());
+  name.trim();
+  if (!isValidBridgeName(name)) {
+    Serial.printf("INPUDECK ERROR NAME must be 1-%u UTF-8 bytes without control characters\n",
+                  static_cast<unsigned>(kMaxBridgeNameBytes));
+    return;
+  }
+
+  if (!storeBridgeName(name)) {
+    Serial.println("INPUDECK ERROR failed to save NAME");
+    return;
+  }
+
+  Serial.printf("INPUDECK OK NAME %s\n", name.c_str());
+  Serial.flush();
+  delay(150);
+  ESP.restart();
+}
+
+static void processSerialCommands() {
+  while (Serial.available() > 0) {
+    const char byte = static_cast<char>(Serial.read());
+    if (byte == '\n' || byte == '\r') {
+      if (gSerialCommand.length() > 0) {
+        handleSerialCommand(gSerialCommand);
+        gSerialCommand = "";
+      }
+    } else if (gSerialCommand.length() < 96) {
+      gSerialCommand += byte;
+    } else {
+      gSerialCommand = "";
+    }
+  }
+}
 
 // =====================
 // Protocol Commands
@@ -468,7 +550,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 };
 
 static void setupBle() {
-  NimBLEDevice::init("InpuDeck Bridge");
+  NimBLEDevice::init(gBridgeName.c_str());
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
   pServer = NimBLEDevice::createServer();
@@ -485,10 +567,11 @@ static void setupBle() {
 
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
   adv->addServiceUUID(kServiceUUID);
-  adv->setName("InpuDeck Bridge");
+  adv->enableScanResponse(true);
+  adv->setName(gBridgeName.c_str());
   adv->start();
 
-  Serial.println("BLE advertising started.");
+  Serial.printf("BLE advertising started as %s.\n", gBridgeName.c_str());
 }
 
 static void setupUsbHid() {
@@ -507,14 +590,18 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+  gBridgeName = loadBridgeName();
   Serial.println("Starting InpuDeck ESP32-S3 BLE -> USB HID bridge...");
 
   setupUsbHid();
   setupBle();
+  Serial.printf("INPUDECK READY NAME %s\n", gBridgeName.c_str());
 }
 
 void loop() {
   static uint32_t lastHidProbeAtMs = 0;
+
+  processSerialCommands();
 
   if (!gUsbRestartRequested
       && gUsbMounted

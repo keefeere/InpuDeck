@@ -131,12 +131,14 @@
 "Bluetooth: невідомий стан" = "Bluetooth: unknown state";
 "Bluetooth: відновлення з’єднання…" = "Bluetooth: restoring connection…";
 "Bluetooth: підключення до ESP32…" = "Bluetooth: connecting to ESP32…";
+"Bluetooth: підключення до %@…" = "Bluetooth: connecting to %@…";
 "Bluetooth: перевірка сервісу…" = "Bluetooth: checking service…";
 "Помилка BLE-сервісу: %@" = "BLE service error: %@";
 "ESP32 не має потрібного BLE-сервісу" = "ESP32 does not provide the required BLE service";
 "Помилка BLE-команди: %@" = "BLE command error: %@";
 "ESP32 не має каналу команд" = "ESP32 does not provide a command channel";
 "ESP32 підключено" = "ESP32 connected";
+"Підключено · %@" = "Connected · %@";
 "Прямий Bluetooth вимкнено" = "Direct Bluetooth is off";
 "Вмикаємо прямий Bluetooth…" = "Turning on direct Bluetooth…";
 "%@ не відповідає. Підключи iPhone на пристрої." = "%@ is not responding. Connect the iPhone from the device.";
