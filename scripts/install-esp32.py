@@ -29,6 +29,7 @@ ESPRESSIF_USB_VID = 0x303A
 TRANSIENT_PORT_SCAN_ERRORS = (OSError, TypeError, ValueError)
 RECENT_PORT_MAX_AGE_SECONDS = 120
 RECENT_PORT_MIN_LEAD_SECONDS = 1
+PREFERRED_PORT_RECONNECT_GRACE_SECONDS = 5
 
 
 class InstallerError(RuntimeError):
@@ -110,7 +111,13 @@ def wait_for_available_ports(timeout: float) -> list:
     raise InstallerError("could not enumerate an ESP32 serial port." + detail)
 
 
-def candidate_port_names(preferred: str, ports: Iterable, ports_before_flash: set[str]) -> list[str]:
+def candidate_port_names(
+    preferred: str,
+    ports: Iterable,
+    ports_before_flash: set[str],
+    *,
+    include_existing_fallback: bool = True,
+) -> list[str]:
     ports = list(ports)
     names: list[str] = []
 
@@ -126,9 +133,10 @@ def candidate_port_names(preferred: str, ports: Iterable, ports_before_flash: se
     for port in ports:
         if port.device not in ports_before_flash:
             add(port.device)
-    for port in ports:
-        if getattr(port, "vid", None) == ESPRESSIF_USB_VID:
-            add(port.device)
+    if include_existing_fallback:
+        for port in ports:
+            if getattr(port, "vid", None) == ESPRESSIF_USB_VID:
+                add(port.device)
     return names
 
 
@@ -403,7 +411,12 @@ def provision_bridge(
 ) -> str:
     command = serial_set_name_command(name) if passkey is None else serial_provision_command(name, passkey)
     expected_ack = f"INPUDECK OK NAME {name}" if passkey is None else f"INPUDECK OK PROVISION {name}"
-    deadline = time.monotonic() + timeout
+    started_at = time.monotonic()
+    deadline = started_at + timeout
+    existing_fallback_after = min(
+        deadline,
+        started_at + PREFERRED_PORT_RECONNECT_GRACE_SECONDS,
+    )
     last_error: Exception | None = None
     legacy_firmware_seen = False
 
@@ -416,7 +429,12 @@ def provision_bridge(
             last_error = error
             time.sleep(0.4)
             continue
-        candidates = candidate_port_names(preferred_port, ports, ports_before_flash)
+        candidates = candidate_port_names(
+            preferred_port,
+            ports,
+            ports_before_flash,
+            include_existing_fallback=time.monotonic() >= existing_fallback_after,
+        )
         for port in candidates:
             try:
                 ensure_serial_port_access(port, allow_sudo)

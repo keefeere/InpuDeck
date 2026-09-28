@@ -137,6 +137,18 @@ class PortSelectionTests(unittest.TestCase):
             ["/dev/ttyACM2"],
         )
 
+    def test_waits_for_preferred_port_instead_of_probing_an_existing_espressif_device(self):
+        ports = [self.port("/dev/ttyACM1", installer.ESPRESSIF_USB_VID)]
+        self.assertEqual(
+            installer.candidate_port_names(
+                "/dev/ttyACM0",
+                ports,
+                {"/dev/ttyACM0", "/dev/ttyACM1"},
+                include_existing_fallback=False,
+            ),
+            [],
+        )
+
     def test_auto_detects_one_espressif_port(self):
         ports = [self.port("/dev/ttyS0"), self.port("/dev/ttyACM3", installer.ESPRESSIF_USB_VID)]
         self.assertEqual(installer.auto_detect_port(ports), "/dev/ttyACM3")
@@ -311,6 +323,37 @@ class PortPermissionTests(unittest.TestCase):
     @mock.patch.object(installer, "available_ports")
     @mock.patch.object(installer, "ensure_serial_port_access")
     @mock.patch.object(installer, "_open_serial")
+    def test_provisioning_does_not_touch_an_existing_decoy_while_preferred_port_reconnects(
+        self, open_serial, ensure_access, available_ports, _sleep
+    ):
+        decoy = types.SimpleNamespace(device="/dev/ttyACM1", vid=installer.ESPRESSIF_USB_VID)
+        target = types.SimpleNamespace(device="/dev/ttyACM0", vid=installer.ESPRESSIF_USB_VID)
+        available_ports.side_effect = [[decoy], [decoy, target]]
+        connection = mock.MagicMock()
+        connection.readline.side_effect = [
+            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
+            b"INPUDECK OK PROVISION Television\n",
+        ]
+        connection.__enter__.return_value = connection
+        open_serial.return_value = connection
+
+        configured_port = installer.provision_bridge(
+            "/dev/ttyACM0",
+            "Television",
+            {"/dev/ttyACM0", "/dev/ttyACM1"},
+            timeout=1,
+            allow_sudo=True,
+            passkey=483921,
+        )
+
+        self.assertEqual(configured_port, "/dev/ttyACM0")
+        ensure_access.assert_called_once_with("/dev/ttyACM0", True)
+        open_serial.assert_called_once_with("/dev/ttyACM0")
+
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    @mock.patch.object(installer, "ensure_serial_port_access")
+    @mock.patch.object(installer, "_open_serial")
     def test_provisioning_retries_a_transient_pyserial_scan_failure(
         self, open_serial, _ensure_access, available_ports, _sleep
     ):
@@ -395,6 +438,11 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("--skip-flash", bootstrap)
         self.assertIn("--rotate-passkey", bootstrap)
         self.assertIn("--passkey", bootstrap)
+
+    def test_bootstrap_warns_that_full_provisioning_replaces_the_ios_bond(self):
+        bootstrap = BOOTSTRAP.read_text()
+        self.assertIn("IMPORTANT FOR A PREVIOUSLY PAIRED BOARD", bootstrap)
+        self.assertIn("iPhone Settings > Bluetooth", bootstrap)
 
     def test_bootstrap_user_interface_is_english(self):
         bootstrap = BOOTSTRAP.read_text()

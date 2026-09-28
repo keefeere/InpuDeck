@@ -207,4 +207,12 @@ echo
 echo "Done. The ESP now advertises as '${bridge_name}'."
 if [[ "$skip_flash" == false || "$rotate_passkey" == true ]]; then
   echo "Pairing is open temporarily. In InpuDeck, select this ESP and enter the security passkey shown above."
+  cat <<'EOF'
+
+IMPORTANT FOR A PREVIOUSLY PAIRED BOARD:
+This operation replaced its BLE passkey and erased its bonds. Forget the old
+adapter in iPhone Settings > Bluetooth and in InpuDeck before pairing it again.
+An old cached name or a pairing prompt that repeatedly disappears means the
+previous iOS bond still needs to be removed.
+EOF
 fi
