@@ -229,6 +229,10 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("--wait-for-reset", bootstrap)
         self.assertIn("--skip-flash", bootstrap)
 
+    def test_bootstrap_user_interface_is_english(self):
+        bootstrap = BOOTSTRAP.read_text()
+        self.assertNotRegex(bootstrap, r"[А-Яа-яІіЇїЄєҐґ]")
+
 
 if __name__ == "__main__":
     unittest.main()

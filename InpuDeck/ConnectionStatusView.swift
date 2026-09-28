@@ -28,40 +28,38 @@ struct ConnectionStatusView: View {
                             Button { input.selectESPBridge(bridge.id) } label: {
                                 destinationLabel(
                                     developerMode ? bridge.diagnosticName : bridge.name,
-                                    protocolIcon: "externaldrive.connected.to.line.below",
+                                    protocolIcon: Image(systemName: "cpu"),
                                     selected: input.mode == .esp && esp.selectedBridgeID == bridge.id,
                                     connected: input.mode == .esp && esp.connectedBridgeID == bridge.id
                                 )
                             }
                         }
                     }
-                    Button("Знайти ESP-адаптер", systemImage: "antenna.radiowaves.left.and.right") {
-                        input.prepareESPDiscovery()
-                        showsESPBridges = true
-                    }
                 }
                 Section("Прямий Bluetooth") {
                     if visibleSavedHosts.isEmpty {
-                        Text("Немає збережених комп’ютерів")
+                        Text("Немає збережених BT-пристроїв")
                     } else {
                         ForEach(visibleSavedHosts) { host in
                             Button { input.selectDirectHost(host.id) } label: {
                                 destinationLabel(
                                     developerMode ? host.diagnosticName : host.name,
-                                    protocolIcon: "desktopcomputer",
+                                    protocolIcon: Image("BluetoothProtocolIcon"),
                                     selected: input.mode == .bluetooth && direct.selectedHostID == host.id,
                                     connected: input.mode == .bluetooth && direct.connectedHostID == host.id
                                 )
                             }
                         }
                     }
-                    Button("Сполучити інший комп’ютер", systemImage: "link.badge.plus") {
-                        input.prepareDirectManagement()
-                        showsBluetooth = true
-                    }
                 }
             } label: {
                 HStack(spacing: 8) {
+                    activeProtocolIcon
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: compact ? 15 : 17, height: compact ? 15 : 17)
+                        .foregroundStyle(.secondary)
                     Circle().fill(input.isReady ? .green : .orange).frame(width: 7, height: 7)
                     statusLabel
                     Image(systemName: "chevron.down")
@@ -82,7 +80,7 @@ struct ConnectionStatusView: View {
                     input.prepareESPDiscovery()
                     showsESPBridges = true
                 }
-                Button("Додати комп’ютер через Direct Bluetooth", systemImage: "link.badge.plus") {
+                Button("Додати BT-пристрій", systemImage: "link.badge.plus") {
                     input.prepareDirectManagement()
                     showsBluetooth = true
                 }
@@ -129,15 +127,22 @@ struct ConnectionStatusView: View {
         return input.statusText
     }
 
+    private var activeProtocolIcon: Image {
+        input.mode == .esp ? Image(systemName: "cpu") : Image("BluetoothProtocolIcon")
+    }
+
     @ViewBuilder
     private func destinationLabel(
         _ name: String,
-        protocolIcon: String,
+        protocolIcon: Image,
         selected: Bool,
         connected: Bool
     ) -> some View {
         HStack {
-            Label(name, systemImage: protocolIcon)
+            protocolIcon
+                .renderingMode(.template)
+                .frame(width: 20)
+            Text(name)
             if connected {
                 Image(systemName: "checkmark")
             } else if selected {
@@ -278,7 +283,7 @@ private struct ESPBridgeSheet: View {
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "externaldrive.connected.to.line.below")
+                Image(systemName: "cpu")
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name)
@@ -351,7 +356,10 @@ private struct DirectBluetoothSheet: View {
                         ForEach(visibleSavedHosts) { host in
                             HStack(spacing: 12) {
                                 Button { transport.connect(to: host.id) } label: {
-                                    HStack {
+                                    HStack(spacing: 12) {
+                                        Image("BluetoothProtocolIcon")
+                                            .renderingMode(.template)
+                                            .frame(width: 20)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(host.name)
                                             if developerMode {
@@ -393,22 +401,22 @@ private struct DirectBluetoothSheet: View {
                             .buttonStyle(.borderless)
                         }
                     } header: {
-                        Text("Мої комп’ютери")
+                        Text("Мої BT-пристрої")
                     } footer: {
                         if !expertMode {
-                            Text("Натисни на комп’ютер, щоб спрямувати ввід до нього. Якщо назва недоступна, задай її через меню ⋯.")
+                            Text("Натисни на BT-пристрій, щоб спрямувати ввід до нього. Якщо назва недоступна, задай її через меню ⋯.")
                             if developerMode {
                                 Text("UUID — ідентифікатор у цьому iPhone; справжню Bluetooth MAC-адресу iOS застосунку не надає.")
                             }
                         }
                     }
                 }
-                Section("Сполучення з комп’ютера") {
+                Section("Сполучення з BT-пристрою") {
                     if !expertMode {
-                        Text("У налаштуваннях Bluetooth комп’ютера вибери «\(transport.advertisedName)» або ім’я цього iPhone. Підтвердь системний запит, якщо він з’явиться.")
+                        Text("У налаштуваннях Bluetooth пристрою вибери «\(transport.advertisedName)» або ім’я цього iPhone. Підтвердь системний запит, якщо він з’явиться.")
                             .font(.subheadline)
                         if developerMode {
-                            Text("Linux: звичайна команда «З’єднатися» вмикає всі профілі спареного iPhone, разом з аудіо. Щоб підключити лише клавіатуру й мишу, запусти на комп’ютері:")
+                            Text("Linux: звичайна команда «З’єднатися» вмикає всі профілі спареного iPhone, разом з аудіо. Щоб підключити лише клавіатуру й мишу, запусти на пристрої:")
                                 .font(.caption).foregroundStyle(.secondary)
                             Text("./scripts/inpudeck-hid.sh")
                                 .font(.caption2.monospaced()).textSelection(.enabled)
@@ -424,16 +432,16 @@ private struct DirectBluetoothSheet: View {
                 Section("Сполучення з iPhone") {
                     if !expertMode {
                         if developerMode {
-                            Text("Якщо Mac уже знає iPhone й не показує його як клавіатуру, відкрий Bluetooth на Mac, запусти пошук тут і вибери Mac. Комп’ютер має бути доступний через Bluetooth LE.")
+                            Text("Якщо Mac уже знає iPhone й не показує його як клавіатуру, відкрий Bluetooth на Mac, запусти пошук тут і вибери Mac. Пристрій має бути доступний через Bluetooth LE.")
                                 .font(.subheadline)
-                            Text("Linux тут зазвичай не з’являється: комп’ютер під BlueZ сам не рекламує себе через Bluetooth LE, тому знайти його з iPhone неможливо. З’єднання завжди починає комп’ютер, а iPhone лише лишається видимим.")
+                            Text("Linux тут зазвичай не з’являється: пристрій із BlueZ сам не рекламує себе через Bluetooth LE, тому знайти його з iPhone неможливо. З’єднання завжди починає пристрій, а iPhone лише лишається видимим.")
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
-                            Text("Натисни «Знайти комп’ютер» і вибери Mac зі списку. Для Linux починай сполучення з комп’ютера.")
+                            Text("Натисни «Знайти BT-пристрій» і вибери Mac зі списку. Для Linux починай сполучення з пристрою.")
                                 .font(.subheadline)
                         }
                     }
-                    Button(localized(browser.isScanning ? "Зупинити пошук" : "Знайти комп’ютер")) {
+                    Button(localized(browser.isScanning ? "Зупинити пошук" : "Знайти BT-пристрій")) {
                         if browser.isScanning { browser.stopScan() } else { browser.scan() }
                     }
                     .disabled(!transport.canPair)
@@ -444,7 +452,10 @@ private struct DirectBluetoothSheet: View {
                         Button {
                             transport.connect(to: device.id)
                         } label: {
-                            HStack {
+                            HStack(spacing: 12) {
+                                Image("BluetoothProtocolIcon")
+                                    .renderingMode(.template)
+                                    .frame(width: 20)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(device.name)
                                     if developerMode {
@@ -474,13 +485,13 @@ private struct DirectBluetoothSheet: View {
                     }
                 }
                 if developerMode {
-                    Section("Пробудження комп’ютера") {
+                    Section("Пробудження пристрою") {
                         Button("Спробувати пробудити", systemImage: "sun.max") {
                             transport.requestWakeProbe()
                         }
                         .disabled(!transport.canPair || transport.selectedHostID == nil)
                         if !expertMode {
-                            Text("Надсилає натискання й відпускання Shift вибраному комп’ютеру, якщо HID підключено. Перевір, чи він прокинувся; результат відправлення буде в журналі.")
+                            Text("Надсилає натискання й відпускання Shift вибраному пристрою, якщо HID підключено. Перевір, чи він прокинувся; результат відправлення буде в журналі.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -492,7 +503,7 @@ private struct DirectBluetoothSheet: View {
                             Label("Поділитися журналом", systemImage: "square.and.arrow.up")
                         }
                         if !expertMode {
-                            Text("Журнал містить назви й UUID комп’ютерів, стан BLE та HID, етапи підключення і спроби пробудження, без введеного тексту.")
+                            Text("Журнал містить назви й UUID пристроїв, стан BLE та HID, етапи підключення і спроби пробудження, без введеного тексту.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         ForEach(Array(transport.diagnostics.suffix(12).enumerated()), id: \.offset) { _, line in
@@ -509,7 +520,7 @@ private struct DirectBluetoothSheet: View {
                 }
             }
         }
-        .alert("Назва комп’ютера", isPresented: Binding(
+        .alert("Назва BT-пристрою", isPresented: Binding(
             get: { hostToRename != nil },
             set: { if !$0 { hostToRename = nil } }
         ), presenting: hostToRename) { host in
@@ -522,7 +533,7 @@ private struct DirectBluetoothSheet: View {
         } message: { _ in
             Text("Ця назва використовується лише в InpuDeck. Порожнє поле повертає автоматичну назву.")
         }
-        .alert("Забути комп’ютер?", isPresented: Binding(
+        .alert("Забути BT-пристрій?", isPresented: Binding(
             get: { hostToForget != nil },
             set: { if !$0 { hostToForget = nil } }
         ), presenting: hostToForget) { host in
@@ -532,7 +543,7 @@ private struct DirectBluetoothSheet: View {
             }
             Button("Скасувати", role: .cancel) { hostToForget = nil }
         } message: { host in
-            Text("\(host.name) буде вилучено зі списку та автопідключення застосунку. Системне спарювання залишиться. Щоб видалити і його: Налаштування iPhone → Bluetooth → ⓘ → Забути цей пристрій або видали iPhone на комп’ютері.")
+            Text("\(host.name) буде вилучено зі списку та автопідключення застосунку. Системне спарювання залишиться. Щоб видалити і його: Налаштування iPhone → Bluetooth → ⓘ → Забути цей пристрій або видали iPhone на BT-пристрої.")
         }
         .onDisappear { browser.stopScan() }
     }
