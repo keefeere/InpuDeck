@@ -23,6 +23,7 @@ from typing import Iterable
 DEFAULT_BRIDGE_NAME = "InpuDeck Bridge"
 MAX_BRIDGE_NAME_BYTES = 28
 ESPRESSIF_USB_VID = 0x303A
+TRANSIENT_PORT_SCAN_ERRORS = (OSError, TypeError, ValueError)
 
 
 class InstallerError(RuntimeError):
@@ -66,6 +67,23 @@ def _serial_modules():
 def available_ports() -> list:
     _, list_ports = _serial_modules()
     return list(list_ports.comports())
+
+
+def wait_for_available_ports(timeout: float) -> list:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            ports = available_ports()
+            if ports:
+                return ports
+            last_error = InstallerError("no serial ports are visible yet")
+        except TRANSIENT_PORT_SCAN_ERRORS as error:
+            last_error = error
+        time.sleep(0.4)
+
+    detail = f" Last error: {last_error}" if last_error else ""
+    raise InstallerError("could not enumerate an ESP32 serial port." + detail)
 
 
 def candidate_port_names(preferred: str, ports: Iterable, ports_before_flash: set[str]) -> list[str]:
@@ -267,7 +285,15 @@ def provision_bridge_name(
     last_error: Exception | None = None
 
     while time.monotonic() < deadline:
-        candidates = candidate_port_names(preferred_port, available_ports(), ports_before_flash)
+        try:
+            ports = available_ports()
+        except TRANSIENT_PORT_SCAN_ERRORS as error:
+            # Linux sysfs entries can disappear between pyserial discovering a
+            # composite USB device and reading its VID/PID during re-enumeration.
+            last_error = error
+            time.sleep(0.4)
+            continue
+        candidates = candidate_port_names(preferred_port, ports, ports_before_flash)
         for port in candidates:
             try:
                 ensure_serial_port_access(port, allow_sudo)
@@ -351,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_flash and not args.firmware:
         raise InstallerError("--firmware is required unless --skip-flash is used")
 
-    ports = available_ports()
+    ports = wait_for_available_ports(args.timeout)
     port = auto_detect_port(ports) if args.port == "auto" else args.port
     if args.port == "auto":
         print(f"Detected ESP32 serial port: {port}", flush=True)
