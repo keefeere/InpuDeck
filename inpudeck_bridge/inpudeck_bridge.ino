@@ -1,10 +1,19 @@
 /**
  * Tools > USB Mode > USB-OTG (TinyUSB)
+ * Tools > USB CDC On Boot > Enabled
  * Install library NimBLEDevice
  */
 
 #include <Arduino.h>
 #include <Preferences.h>
+
+#if !defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE != 0
+#error "InpuDeck requires Tools > USB Mode > USB-OTG (TinyUSB)"
+#endif
+
+#if !defined(ARDUINO_USB_CDC_ON_BOOT) || ARDUINO_USB_CDC_ON_BOOT != 1
+#error "InpuDeck provisioning requires Tools > USB CDC On Boot > Enabled"
+#endif
 
 // ---- BLE (Peripheral) via NimBLE ----
 #include <NimBLEDevice.h>
