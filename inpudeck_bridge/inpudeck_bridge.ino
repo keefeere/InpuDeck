@@ -26,6 +26,8 @@
 #include "USBHIDMouse.h"
 #include "USBHIDConsumerControl.h"
 
+enum class BridgeLedState : uint8_t;
+
 // =====================
 // UUIDs (MUST MATCH iOS)
 // =====================
@@ -373,6 +375,82 @@ static volatile bool gUsbRestartRequested = false;
 static volatile uint32_t gUsbStoppedAtMs = 0;
 static volatile uint32_t gLastBleCommandAtMs = 0;
 static volatile uint8_t gHidProbeFailures = 0;
+
+enum class BridgeLedState : uint8_t {
+  ready,
+  usbOnly,
+  bleOnly,
+  powerOnly,
+  pairing,
+  usbError,
+};
+
+static BridgeLedState currentLedState() {
+  if (gUsbRestartRequested) return BridgeLedState::usbError;
+  if (gPairingWindowOpen) return BridgeLedState::pairing;
+  if (gUsbMounted && gConnectedSecure) return BridgeLedState::ready;
+  if (gUsbMounted) return BridgeLedState::usbOnly;
+  if (gConnectedSecure) return BridgeLedState::bleOnly;
+  return BridgeLedState::powerOnly;
+}
+
+static void writeStatusLed(uint8_t red, uint8_t green, uint8_t blue) {
+#ifdef RGB_BUILTIN
+  static uint8_t previousRed = 0xFF;
+  static uint8_t previousGreen = 0xFF;
+  static uint8_t previousBlue = 0xFF;
+  if (red == previousRed && green == previousGreen && blue == previousBlue) return;
+  previousRed = red;
+  previousGreen = green;
+  previousBlue = blue;
+  rgbLedWrite(RGB_BUILTIN, red, green, blue);
+#else
+  (void)red;
+  (void)green;
+  (void)blue;
+#endif
+}
+
+static void updateStatusLed(uint32_t now) {
+  switch (currentLedState()) {
+    case BridgeLedState::ready:
+      // Full path is ready: authenticated iPhone -> BLE -> USB HID host.
+      writeStatusLed(0, 12, 2);
+      break;
+
+    case BridgeLedState::usbOnly:
+      // A PC enumerated USB HID, but no authenticated iPhone is connected.
+      writeStatusLed(0, 3, 14);
+      break;
+
+    case BridgeLedState::bleOnly: {
+      // The iPhone is connected, but USB supplies power without a data host.
+      const uint32_t phase = now % 1600;
+      const bool illuminated = phase < 130 || (phase >= 280 && phase < 410);
+      writeStatusLed(illuminated ? 16 : 0, illuminated ? 5 : 0, 0);
+      break;
+    }
+
+    case BridgeLedState::powerOnly:
+      // Neither side is connected. A short red heartbeat confirms power.
+      writeStatusLed((now % 2400) < 90 ? 10 : 0, 0, 0);
+      break;
+
+    case BridgeLedState::pairing: {
+      // Purple pulse while a new authenticated bond is physically allowed.
+      const uint32_t phase = now % 1200;
+      const uint8_t level = phase < 600
+        ? static_cast<uint8_t>(2 + (phase * 10 / 600))
+        : static_cast<uint8_t>(2 + ((1200 - phase) * 10 / 600));
+      writeStatusLed(level, 0, level);
+      break;
+    }
+
+    case BridgeLedState::usbError:
+      writeStatusLed((now % 240) < 120 ? 18 : 0, 0, 0);
+      break;
+  }
+}
 
 static void requestUsbRecovery() {
   if (gUsbRestartRequested) return;
@@ -904,6 +982,8 @@ void loop() {
       disconnectPeer(gConnectedHandle);
     }
   }
+
+  updateStatusLed(now);
 
   if (!gUsbRestartRequested
       && gUsbMounted
