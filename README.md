@@ -151,6 +151,12 @@ accessible, it requests `sudo` only to add a temporary ACL to that device node
 root. Every tagged release contains the matching firmware, checksum, and
 installer scripts rather than relying on an expiring Actions artifact.
 
+If several Espressif serial devices are connected, the installer prefers the
+port that was just recreated by the BOOT/RESET sequence. If that signal is
+ambiguous, it shows the USB product, serial number, and physical location and
+asks for a numbered choice in the same run; there is no need to restart it with
+a guessed `/dev/ttyACM*` path. `--port` remains available for automation.
+
 Store the passkey printed at the end. In InpuDeck, select the new ESP adapter
 and enter that code in the iOS system pairing prompt. The first-pairing window
 stays open for five minutes after provisioning and closes immediately after a

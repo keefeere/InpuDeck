@@ -27,6 +27,8 @@ MIN_PASSKEY = 100000
 MAX_PASSKEY = 999999
 ESPRESSIF_USB_VID = 0x303A
 TRANSIENT_PORT_SCAN_ERRORS = (OSError, TypeError, ValueError)
+RECENT_PORT_MAX_AGE_SECONDS = 120
+RECENT_PORT_MIN_LEAD_SECONDS = 1
 
 
 class InstallerError(RuntimeError):
@@ -130,14 +132,107 @@ def candidate_port_names(preferred: str, ports: Iterable, ports_before_flash: se
     return names
 
 
-def auto_detect_port(ports: Iterable) -> str:
+def recently_reenumerated_port(
+    ports: Iterable,
+    *,
+    now: float | None = None,
+    stat_port=os.stat,
+) -> str | None:
+    """Return the one USB node that was recreated noticeably most recently."""
     ports = list(ports)
-    espressif = [port.device for port in ports if getattr(port, "vid", None) == ESPRESSIF_USB_VID]
+    changed: list[tuple[float, str]] = []
+    for port in ports:
+        try:
+            changed.append((stat_port(port.device).st_ctime, port.device))
+        except (OSError, TypeError, ValueError):
+            continue
+
+    if len(changed) != len(ports):
+        return None
+    changed.sort(reverse=True)
+    current_time = time.time() if now is None else now
+    newest_time, newest_port = changed[0]
+    if newest_time > current_time or current_time - newest_time > RECENT_PORT_MAX_AGE_SECONDS:
+        return None
+    if len(changed) > 1 and newest_time - changed[1][0] < RECENT_PORT_MIN_LEAD_SECONDS:
+        return None
+    return newest_port
+
+
+def serial_port_description(port) -> str:
+    details: list[str] = []
+    for attribute in ("product", "manufacturer", "serial_number", "location"):
+        value = getattr(port, attribute, None)
+        if value:
+            cleaned = "".join(character if character.isprintable() else "?" for character in str(value))
+            if cleaned not in details:
+                details.append(cleaned)
+    suffix = f" — {'; '.join(details)}" if details else ""
+    return f"{port.device}{suffix}"
+
+
+def _choose_serial_port_on_terminal(ports: list, terminal) -> str:
+    terminal.write("Multiple Espressif serial ports are connected:\n")
+    for index, port in enumerate(ports, start=1):
+        terminal.write(f"  {index}. {serial_port_description(port)}\n")
+    while True:
+        terminal.write(f"Select the ESP32-S3-Zero to flash [1-{len(ports)}]: ")
+        terminal.flush()
+        answer = terminal.readline()
+        if not answer:
+            raise InstallerError("interactive serial-port selection ended before a port was chosen")
+        try:
+            selected = int(answer.strip())
+        except ValueError:
+            selected = 0
+        if 1 <= selected <= len(ports):
+            return ports[selected - 1].device
+        terminal.write("Enter one of the listed numbers.\n")
+
+
+def choose_serial_port_interactively(ports: Iterable, terminal=None) -> str:
+    ports = list(ports)
+    if terminal is not None:
+        return _choose_serial_port_on_terminal(ports, terminal)
+    if os.name == "posix":
+        try:
+            with open("/dev/tty", "r+", encoding="utf-8", buffering=1) as controlling_terminal:
+                return _choose_serial_port_on_terminal(ports, controlling_terminal)
+        except OSError:
+            pass
+    raise InstallerError(
+        "multiple Espressif serial ports found and interactive selection is unavailable; "
+        "rerun with --port: " + ", ".join(port.device for port in ports)
+    )
+
+
+def auto_detect_port(
+    ports: Iterable,
+    *,
+    interactive: bool = False,
+    terminal=None,
+    now: float | None = None,
+    stat_port=os.stat,
+) -> str:
+    ports = list(ports)
+    espressif = [port for port in ports if getattr(port, "vid", None) == ESPRESSIF_USB_VID]
     if len(espressif) == 1:
-        return espressif[0]
+        return espressif[0].device
     if len(espressif) > 1:
+        recent = recently_reenumerated_port(espressif, now=now, stat_port=stat_port)
+        if recent:
+            ignored = ", ".join(port.device for port in espressif if port.device != recent)
+            print(
+                f"Multiple Espressif ports found; using recently reconnected {recent} "
+                f"and ignoring {ignored}.",
+                flush=True,
+            )
+            return recent
+        if interactive:
+            return choose_serial_port_interactively(espressif, terminal=terminal)
         raise InstallerError(
-            "multiple Espressif serial ports found; rerun with --port: " + ", ".join(espressif)
+            "multiple Espressif serial ports found; rerun with --port: "
+            + ", ".join(port.device for port in espressif)
         )
 
     likely = [
@@ -442,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
     ) if (not args.skip_flash or args.rotate_passkey) else None
 
     ports = wait_for_available_ports(args.timeout)
-    port = auto_detect_port(ports) if args.port == "auto" else args.port
+    port = auto_detect_port(ports, interactive=True) if args.port == "auto" else args.port
     if args.port == "auto":
         print(f"Detected ESP32 serial port: {port}", flush=True)
     ports_before_flash = {candidate.device for candidate in ports}
