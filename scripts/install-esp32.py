@@ -244,9 +244,13 @@ def _open_serial(port: str):
     connection.baudrate = 115200
     connection.timeout = 0.25
     connection.write_timeout = 1
-    connection.dtr = False
-    connection.rts = False
+    # TinyUSB CDC will accept OUT data without these line states, but blocks
+    # Serial writes until the host asserts DTR. Assert both before opening so
+    # the provisioning response can travel back to the installer.
+    connection.dtr = True
+    connection.rts = True
     connection.open()
+    time.sleep(0.15)
     return connection
 
 
@@ -317,6 +321,8 @@ def provision_bridge_name(
                             raise InstallerError(line)
                     if sent_name:
                         last_error = InstallerError("the bridge restarted before acknowledging the saved name")
+                    else:
+                        last_error = InstallerError(f"{port} opened but did not answer the provisioning protocol")
             except SerialPortUnavailableError as error:
                 last_error = error
             except InstallerError:

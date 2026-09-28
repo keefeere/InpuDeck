@@ -152,7 +152,7 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.5
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.1.6
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -381,7 +381,7 @@ helper and distribution-specific testing is optional.
 - **Direct BLE HID on macOS and Windows** - Pairing, keyboard and mouse input, reconnect, and host switching are stable in repeated physical testing. Windows works without repeated pairing through the companion BlueVein improvements. Linux input is functional, with optional helper and distro-specific follow-up retained outside the release roadmap.
 - **Global keep-awake option** - Since 3.0.3, an app-wide setting can keep the display awake independently of Mouse Jiggler while InpuDeck is active. Backgrounding the app or disabling the option restores normal system sleep behavior. Confirmed on-device.
 - **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
-- **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.5 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, runtime USB CDC, and resilient port discovery with a no-reflash recovery path.
+- **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.6 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, runtime USB CDC, resilient port discovery, a no-reflash recovery path, and the CDC control-line handshake required for bidirectional provisioning.
 
 ### Completed in iOS 2.2
 
