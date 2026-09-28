@@ -194,6 +194,25 @@ class PortPermissionTests(unittest.TestCase):
         self.assertEqual(available_ports.call_count, 2)
 
 
+class SerialConnectionTests(unittest.TestCase):
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "_serial_modules")
+    def test_open_asserts_cdc_control_lines_before_provisioning(self, serial_modules, sleep):
+        serial = mock.MagicMock()
+        connection = mock.MagicMock()
+        serial.Serial.return_value = connection
+        serial_modules.return_value = (serial, mock.MagicMock())
+
+        self.assertIs(installer._open_serial("/dev/ttyACM0"), connection)
+
+        self.assertEqual(connection.port, "/dev/ttyACM0")
+        self.assertEqual(connection.baudrate, 115200)
+        self.assertIs(connection.dtr, True)
+        self.assertIs(connection.rts, True)
+        connection.open.assert_called_once_with()
+        sleep.assert_called_once_with(0.15)
+
+
 class BootstrapContractTests(unittest.TestCase):
     def test_bootstrap_downloads_release_assets_and_uses_uv_script_metadata(self):
         bootstrap = BOOTSTRAP.read_text()
