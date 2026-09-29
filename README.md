@@ -197,11 +197,11 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.12
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.13
 ```
 
 Both one-command wrappers expose the same no-reflash recovery path. On Windows,
-append `-SkipFlash`; `-Name`, `-Port COM5`, and `-Version 3.3.12` are optional:
+append `-SkipFlash`; `-Name`, `-Port COM5`, and `-Version 3.3.13` are optional:
 
 ```powershell
 & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.ps1').Content)) -SkipFlash -Name "InpuDeck Office"
@@ -519,7 +519,7 @@ helper and distribution-specific testing is optional.
 - **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.6 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, runtime USB CDC, resilient port discovery, a no-reflash recovery path, and the CDC control-line handshake required for bidirectional provisioning.
 - **Universal multi-connect** - Completed in 3.2.0-3.2.2. One destination selector manages any mix of saved Direct Bluetooth devices and multiple named ESP32 bridges, releases held input before switching routes, and reconnects each adapter through its own CoreBluetooth identity. Pairing and discovery remain in the adjacent action menu, while protocol icons distinguish ESP and Direct Bluetooth routes. Two-adapter discovery, switching, reconnect, and USB HID input were confirmed on-device.
 - **ESP32-S3-Zero status LED** - Completed in 3.3.9 and physically validated on the Waveshare board. A restrained green solid light means the full BLE-to-USB path is ready; blue-cyan means USB HID only; an amber double blink means authenticated Bluetooth with USB power but no USB HID host; a red heartbeat means neither data side is connected; purple pulsing marks the physical pairing window; and rapid red reports USB recovery. Returning a host restores the correct live state instead of leaving the LED stuck.
-- **Native Windows ESP installer** - Added in 3.3.12. A one-command PowerShell wrapper performs the same full flash, rename-only, and passkey/identity rotation flows as Linux/macOS, auto-detects Windows COM ports through the shared Python core, bootstraps a checksum-pinned temporary `uv`, and verifies exact-tag Sigstore provenance before executing downloaded release assets. CI parses the script on `windows-latest`, and tagged releases publish the wrapper with its own provenance bundle.
+- **Native Windows ESP installer** - Added in 3.3.12 and hardened in 3.3.13. A one-command PowerShell wrapper performs the same full flash, rename-only, and passkey/identity rotation flows as Linux/macOS, auto-detects Windows COM ports through the shared Python core, bootstraps a checksum-pinned temporary `uv`, and verifies exact-tag Sigstore provenance before executing downloaded release assets. Version 3.3.13 safely probes ambiguous Espressif COM ports with a no-reset, no-stub `read-mac` operation and uses a numeric Windows console chooser only when probing cannot identify exactly one board. CI parses the script on `windows-latest`, and tagged releases publish the wrapper with its own provenance bundle.
 
 ### Completed in iOS 2.2
 
