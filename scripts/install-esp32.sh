@@ -17,9 +17,10 @@ Usage: install-esp32.sh [--name NAME] [--passkey 123456] [--port PORT]
                         [--version VERSION] [--skip-flash] [--rotate-passkey]
 
 Downloads and verifies the released ESP32-S3-Zero firmware, then flashes and
-securely provisions the bridge with a unique BLE passkey. Use --skip-flash to
-rename compatible firmware, or add --rotate-passkey to replace its passkey and
-delete existing bonds. Without arguments it prompts on the controlling terminal.
+securely provisions the bridge with a unique BLE passkey and identity. Use
+--skip-flash to rename compatible firmware, or add --rotate-passkey to replace
+its passkey, BLE identity, and bonds. Every mutation requires the physical BOOT
+window. Without arguments it prompts on the controlling terminal.
 EOF
 }
 
@@ -160,7 +161,7 @@ if [[ "$skip_flash" == false ]]; then
     printf 'Press Enter when ready; %s will be used. ' "$serial_port" >/dev/tty
   fi
   IFS= read -r _ </dev/tty
-elif [[ "$rotate_passkey" == true ]]; then
+elif [[ "$skip_flash" == true ]]; then
   cat >/dev/tty <<'EOF'
 
 Open the physical provisioning window: hold BOOT for 3–7 seconds while the
@@ -210,9 +211,17 @@ if [[ "$skip_flash" == false || "$rotate_passkey" == true ]]; then
   cat <<'EOF'
 
 IMPORTANT FOR A PREVIOUSLY PAIRED BOARD:
-This operation replaced its BLE passkey and erased its bonds. Forget the old
-adapter in iPhone Settings > Bluetooth and in InpuDeck before pairing it again.
+This operation replaced its BLE passkey and identity and erased its bonds.
+Forget the old adapter in iPhone Settings > Bluetooth and in InpuDeck before
+pairing it again.
 An old cached name or a pairing prompt that repeatedly disappears means the
 previous iOS bond still needs to be removed.
+EOF
+else
+  cat <<'EOF'
+
+The existing BLE identity and bonds were preserved. iOS may retain the previous
+name in its system Bluetooth list. To replace that system identity as well, run
+again with --skip-flash --rotate-passkey and pair the adapter as a new device.
 EOF
 fi

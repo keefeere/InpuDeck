@@ -451,6 +451,11 @@ def provision_bridge(
                         if not line and legacy_response:
                             break
                         if line.startswith("INPUDECK INFO SECURITY 1 ") and not sent_command:
+                            if passkey is not None and " IDENTITY 1 " not in f" {line} ":
+                                raise InstallerError(
+                                    "this firmware cannot rotate its BLE identity. Fully reflash the bridge "
+                                    "before replacing its passkey."
+                                )
                             connection.write(command)
                             connection.flush()
                             sent_command = True
@@ -519,7 +524,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--rotate-passkey",
         action="store_true",
-        help="replace the passkey and delete existing bonds; requires the physical pairing window",
+        help="replace the passkey, BLE identity, and bonds; requires the physical provisioning window",
     )
     result.add_argument("--timeout", type=float, default=90, help="seconds to wait for firmware USB Serial")
     result.add_argument(
@@ -568,7 +573,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("Firmware written. Press the ESP32 RESET button once if the port does not reconnect.", flush=True)
 
-    action = "secure identity" if provisioned_passkey is not None else "BLE name"
+    action = "secure BLE identity" if provisioned_passkey is not None else "BLE name"
     print(f"Provisioning {action} for {args.name!r}…", flush=True)
     configured_port = provision_bridge(
         port,
