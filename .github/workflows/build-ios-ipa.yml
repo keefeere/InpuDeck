@@ -151,17 +151,29 @@ jobs:
   windows-installer:
     runs-on: windows-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shell: [powershell, pwsh]
 
     steps:
       - name: Check out source
         uses: actions/checkout@v6
 
-      - name: Parse PowerShell installer (${{ matrix.shell }})
-        shell: ${{ matrix.shell }}
+      - name: Parse installer with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $path = (Resolve-Path "scripts/install-esp32.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell installer has syntax errors."
+          }
+
+      - name: Parse installer with PowerShell 7
+        shell: pwsh
         run: |
           $tokens = $null
           $parseErrors = $null
