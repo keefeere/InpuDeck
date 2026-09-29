@@ -1,5 +1,6 @@
 import argparse
 import importlib.util
+import io
 import types
 import unittest
 from pathlib import Path
@@ -225,6 +226,51 @@ class PortSelectionTests(unittest.TestCase):
                 stat_port=lambda device: types.SimpleNamespace(st_ctime=changed_at[device]),
             )
 
+    def test_auto_detection_probes_ambiguous_windows_bootloader_ports(self):
+        ports = [
+            self.port("COM4", installer.ESPRESSIF_USB_VID),
+            self.port("COM5", installer.ESPRESSIF_USB_VID),
+        ]
+        probed = []
+
+        def probe(device):
+            probed.append(device)
+            return device == "COM4"
+
+        self.assertEqual(
+            installer.auto_detect_port(
+                ports,
+                probe_port=probe,
+                now=1000,
+                stat_port=lambda _device: types.SimpleNamespace(st_ctime=100),
+            ),
+            "COM4",
+        )
+        self.assertEqual(probed, ["COM4", "COM5"])
+
+    def test_windows_interactive_fallback_uses_console_streams(self):
+        ports = [
+            self.port("COM4", installer.ESPRESSIF_USB_VID, product="Hub controller"),
+            self.port(
+                "COM5",
+                installer.ESPRESSIF_USB_VID,
+                product="USB JTAG/serial debug unit",
+            ),
+        ]
+        console_input = io.StringIO("2\n")
+        console_output = io.StringIO()
+
+        with (
+            mock.patch.object(installer.os, "name", "nt"),
+            mock.patch.object(installer.sys, "stdin", console_input),
+            mock.patch.object(installer.sys, "stdout", console_output),
+        ):
+            selected = installer.choose_serial_port_interactively(ports)
+
+        self.assertEqual(selected, "COM5")
+        self.assertIn("1. COM4", console_output.getvalue())
+        self.assertIn("2. COM5", console_output.getvalue())
+
     def test_interactive_fallback_shows_usb_details_and_selects_without_rerun(self):
         ports = [
             self.port(
@@ -262,6 +308,43 @@ class PortSelectionTests(unittest.TestCase):
 
         self.assertEqual(installer.wait_for_available_ports(1), [port])
         self.assertEqual(available_ports.call_count, 2)
+
+
+class BootloaderProbeTests(unittest.TestCase):
+    def test_probe_is_read_only_and_does_not_reset_the_candidate(self):
+        completed = types.SimpleNamespace(returncode=0)
+        with (
+            mock.patch.object(
+                installer, "esptool_command", return_value=["python", "-m", "esptool"]
+            ),
+            mock.patch.object(installer.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertTrue(installer.esp32s3_bootloader_responds("COM4"))
+
+        run.assert_called_once_with(
+            [
+                "python",
+                "-m",
+                "esptool",
+                "--chip",
+                "esp32s3",
+                "--port",
+                "COM4",
+                "--before",
+                "no-reset",
+                "--after",
+                "no-reset",
+                "--no-stub",
+                "--connect-attempts",
+                "1",
+                "--silent",
+                "read-mac",
+            ],
+            check=False,
+            stdout=installer.subprocess.DEVNULL,
+            stderr=installer.subprocess.DEVNULL,
+            timeout=4,
+        )
 
 
 class PasskeyTests(unittest.TestCase):

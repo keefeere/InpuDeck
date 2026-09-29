@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 
 DEFAULT_BRIDGE_NAME = "InpuDeck Bridge"
@@ -179,14 +179,18 @@ def serial_port_description(port) -> str:
     return f"{port.device}{suffix}"
 
 
-def _choose_serial_port_on_terminal(ports: list, terminal) -> str:
-    terminal.write("Multiple Espressif serial ports are connected:\n")
+def _choose_serial_port_on_terminal(
+    ports: list, input_terminal, output_terminal=None
+) -> str:
+    if output_terminal is None:
+        output_terminal = input_terminal
+    output_terminal.write("Multiple Espressif serial ports are connected:\n")
     for index, port in enumerate(ports, start=1):
-        terminal.write(f"  {index}. {serial_port_description(port)}\n")
+        output_terminal.write(f"  {index}. {serial_port_description(port)}\n")
     while True:
-        terminal.write(f"Select the ESP32-S3-Zero to flash [1-{len(ports)}]: ")
-        terminal.flush()
-        answer = terminal.readline()
+        output_terminal.write(f"Select the ESP32-S3-Zero to flash [1-{len(ports)}]: ")
+        output_terminal.flush()
+        answer = input_terminal.readline()
         if not answer:
             raise InstallerError("interactive serial-port selection ended before a port was chosen")
         try:
@@ -195,7 +199,7 @@ def _choose_serial_port_on_terminal(ports: list, terminal) -> str:
             selected = 0
         if 1 <= selected <= len(ports):
             return ports[selected - 1].device
-        terminal.write("Enter one of the listed numbers.\n")
+        output_terminal.write("Enter one of the listed numbers.\n")
 
 
 def choose_serial_port_interactively(ports: Iterable, terminal=None) -> str:
@@ -208,6 +212,8 @@ def choose_serial_port_interactively(ports: Iterable, terminal=None) -> str:
                 return _choose_serial_port_on_terminal(ports, controlling_terminal)
         except OSError:
             pass
+    elif os.name == "nt":
+        return _choose_serial_port_on_terminal(ports, sys.stdin, sys.stdout)
     raise InstallerError(
         "multiple Espressif serial ports found and interactive selection is unavailable; "
         "rerun with --port: " + ", ".join(port.device for port in ports)
@@ -221,6 +227,7 @@ def auto_detect_port(
     terminal=None,
     now: float | None = None,
     stat_port=os.stat,
+    probe_port: Callable[[str], bool] | None = None,
 ) -> str:
     ports = list(ports)
     espressif = [port for port in ports if getattr(port, "vid", None) == ESPRESSIF_USB_VID]
@@ -236,6 +243,21 @@ def auto_detect_port(
                 flush=True,
             )
             return recent
+        if probe_port is not None:
+            responding = [port for port in espressif if probe_port(port.device)]
+            if len(responding) == 1:
+                selected = responding[0].device
+                ignored = ", ".join(
+                    port.device for port in espressif if port.device != selected
+                )
+                print(
+                    f"Multiple Espressif ports found; {selected} answered as an "
+                    f"ESP32-S3 bootloader, ignoring {ignored}.",
+                    flush=True,
+                )
+                return selected
+            if responding:
+                espressif = responding
         if interactive:
             return choose_serial_port_interactively(espressif, terminal=terminal)
         raise InstallerError(
@@ -341,6 +363,35 @@ def esptool_command() -> list[str]:
             f"'{sys.executable} -m pip install esptool'"
         )
     return [sys.executable, "-m", "esptool"]
+
+
+def esp32s3_bootloader_responds(port: str) -> bool:
+    command = esptool_command() + [
+        "--chip",
+        "esp32s3",
+        "--port",
+        port,
+        "--before",
+        "no-reset",
+        "--after",
+        "no-reset",
+        "--no-stub",
+        "--connect-attempts",
+        "1",
+        "--silent",
+        "read-mac",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=4,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
 
 
 def flash_firmware(port: str, firmware: Path) -> None:
@@ -560,7 +611,15 @@ def main(argv: list[str] | None = None) -> int:
     ) if (not args.skip_flash or args.rotate_passkey) else None
 
     ports = wait_for_available_ports(args.timeout)
-    port = auto_detect_port(ports, interactive=True) if args.port == "auto" else args.port
+    port = (
+        auto_detect_port(
+            ports,
+            interactive=True,
+            probe_port=esp32s3_bootloader_responds if not args.skip_flash else None,
+        )
+        if args.port == "auto"
+        else args.port
+    )
     if args.port == "auto":
         print(f"Detected ESP32 serial port: {port}", flush=True)
     ports_before_flash = {candidate.device for candidate in ports}
