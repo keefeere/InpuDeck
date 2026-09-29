@@ -1,5 +1,19 @@
 # Direct Bluetooth HID on Linux
 
+## TL;DR
+
+Pair the iPhone once, then run this as your normal desktop user:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-linux.sh | bash
+```
+
+That one command installs the required BlueZ LE setting, the device-scoped
+address-resolution fix, and the sandboxed reconnect service. It preserves
+existing bonds and audio settings. If several paired phones are present, it
+asks which exact Bluetooth address to use; if Bluetooth must restart once, it
+asks before disconnecting anything.
+
 This guide is for **Direct Bluetooth** in InpuDeck. The ESP32 USB adapter does
 not need this Linux setup.
 
@@ -28,11 +42,13 @@ kernel HID device. It does not fall back to a Classic connection. BlueZ and the
 kernel then handle the input reports normally; the helper does not relay keys,
 create a network server, or need to stay running for input to work.
 
-**Start with the on-demand helper.** BlueZ may reconnect by itself; that worked
-in an initial test, but a later logout/login failed. An always-running watcher
-is optional. Repeating connection requests alone did not fix the recorded
-reboot failure. The helper now refreshes LE discovery before an offline
-connection attempt and backs off after failures; this is not a kernel fix.
+The TL;DR installer enables the sandboxed watcher because that is the most
+reliable tested setup. When diagnosing manually, start with the on-demand
+helper; the watcher remains optional in the manual installation. BlueZ may
+reconnect by itself, but that worked in one test and failed after a later
+logout/login. Repeating connection requests alone did not fix the recorded
+reboot failure. The helper refreshes LE discovery before an offline connection
+attempt and backs off after failures; this is not a kernel fix.
 
 BlueZ's [HoG profile][BlueZ HoG] already requests native automatic connection.
 An extra watcher is not inherently required for a BLE keyboard. Profile discovery
@@ -65,13 +81,13 @@ No UUID discovery filter is set: matching UUID filters can crash BlueZ 5.87
 | --- | --- | --- |
 | BlueZ userspace API | One systemd drop-in adds `--experimental` | Host-wide API exposure; `inpudeck-le-setup.py disable` removes our drop-in |
 | On-demand helper | Two files under `~/.local/libexec/inpudeck` and a launcher `~/.local/bin/inpudeck-hid` | Per user; `inpudeck-hid --uninstall` |
-| Reconnect service | Not installed | Optional sandboxed per-user unit pinned to one exact address; remove with `--uninstall-service` |
+| Reconnect service | The one-command installer enables it; manual helper installation does not | Sandboxed per-user unit pinned to one exact address; remove with `--uninstall-service` |
 | Audio configuration | Not changed | Audio restrictions need separate configuration; see limitations below |
 | Audio receiver switch | Separate optional installation | User menu/panel launcher; persistent receiving-role override only while off; `on` or `uninstall` restores underlying roles |
 | Pairing / trust | Preserved | Pair or `--trust` only when explicitly requested |
 | Transport preference | Preserved by installation | Optional per-phone `--preferred-bearer le`; restore the previous value with the same option |
 | LE discovery | Up to 12 seconds before each offline connection attempt | Temporary; stopped before connecting, no scan while LE is connected |
-| BlueZ 5.87 address-resolution workaround | Optional `bluetooth.service` startup hook scoped to exact configured InpuDeck/iPhone identity addresses | Kernel flag only; remove the installed hook files and device list, then reload systemd |
+| BlueZ 5.87 address-resolution workaround | The one-command installer adds a `bluetooth.service` startup hook scoped to exact configured InpuDeck/iPhone identity addresses | Kernel flag only; remove the installed hook files and device list, then reload systemd |
 | GATT cache experiment | Optional host-wide `Cache=no` in BlueZ; currently rolled back | `inpudeck-gatt-cache.py disable` restores the exact pre-change config; a Bluetooth restart applies either direction |
 | Kernel / drivers / privacy / discoverability | Not configured by the helper | Existing host policy continues to apply; BlueZ manages controller privacy during normal discovery/connection |
 
@@ -85,7 +101,11 @@ paths. It refuses custom daemon arguments or locally modified files at its own
 paths instead of overwriting them. Because the drop-in overrides `ExecStart`,
 review it if a distribution later changes its daemon command or path.
 
-## Setup once, safely repeat later
+## Manual setup and reference
+
+The TL;DR installer above is the recommended setup and is safe to repeat for
+updates. The remaining commands document each component separately for
+debugging, custom installations, and rollback.
 
 Run these commands from the repository. Python 3, `python3-dbus`, BlueZ, and
 systemd are required. First check dependencies:
@@ -515,7 +535,7 @@ Run regression checks without Bluetooth hardware or root:
 
 ```bash
 python3 -B -m unittest discover -s Tests -p 'test_linux_*.py'
-bash -n scripts/inpudeck-hid.sh scripts/inpudeck-le-api-test.sh
+bash -n scripts/install-linux.sh scripts/inpudeck-hid.sh scripts/inpudeck-le-api-test.sh
 ```
 
 These cover transport selection, adapter/object identity, HID matching,

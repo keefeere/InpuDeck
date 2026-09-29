@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/inpudeck-hid.sh"
+LINUX_INSTALLER = Path(__file__).resolve().parents[1] / "scripts/install-linux.sh"
 
 
 @unittest.skipIf(os.geteuid() == 0, "user installer intentionally refuses root")
@@ -120,11 +121,74 @@ esac
 ''')
         mock.chmod(0o755)
 
+    def stub_one_command_installer_host(self):
+        self.stub_paired_phone_without_cached_hid()
+        mockbin = self.root / 'bin'
+        for command, content in {
+            'bluetoothctl': '#!/bin/sh\nprintf "Device 10:A2:D3:01:47:A1 iPhone\\n"\n',
+            'btmgmt': '#!/bin/sh\nexit 0\n',
+            'sudo': '''#!/bin/sh
+printf '%s\n' "$*" >> "$ESP_TEST_SUDO_LOG"
+case "$1" in
+  -v) exit 0 ;;
+  test)
+    shift
+    if [ "$1" = "!" ] && [ "$2" = "-L" ]; then exit 0; fi
+    if [ "$1" = "-e" ]; then exit 1; fi
+    exit 0
+    ;;
+  install|systemctl|python3) exit 0 ;;
+  cat) exit 1 ;;
+esac
+exit 2
+''',
+        }.items():
+            path = mockbin / command
+            path.write_text(content)
+            path.chmod(0o755)
+        self.env.update(
+            HOME=str(self.root / 'home'),
+            ESP_TEST_SUDO_LOG=str(self.root / 'sudo.log'),
+        )
+
+    def test_one_command_installer_configures_scoped_service_without_audio_changes(self):
+        self.stub_one_command_installer_host()
+        result = subprocess.run(
+            ['bash', str(LINUX_INSTALLER), '--device', '10:a2:d3:01:47:a1', '--yes'],
+            env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Done. Linux Direct Bluetooth HID is installed', result.stdout)
+        sudo_calls = (self.root / 'sudo.log').read_text()
+        self.assertIn('inpudeck-le-setup.py enable', sudo_calls)
+        self.assertIn('/etc/inpudeck/address-resolution-devices', sudo_calls)
+        self.assertIn('/usr/local/libexec/inpudeck-le-address-resolution.py', sudo_calls)
+        unit = self.config / 'systemd/user/inpudeck-hid.service'
+        self.assertIn('--device 10:A2:D3:01:47:A1 --watch', unit.read_text())
+        self.assertNotIn('audio', sudo_calls.lower())
+
+        repeated = subprocess.run(
+            ['bash', str(LINUX_INSTALLER), '--device', '10:A2:D3:01:47:A1', '--yes'],
+            env=self.env, text=True, capture_output=True)
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+
     def test_explicit_status_reports_missing_hid_without_connecting(self):
         self.stub_paired_phone_without_cached_hid()
         result = self.run_helper('--device', '10:A2:D3:01:47:A1', '--status')
         self.assertIn('HID=not-ready', result.stdout)
         self.assertFalse((self.root / 'le-ready').exists())
+
+    def test_resolve_device_prints_paired_address_without_connecting(self):
+        self.stub_paired_phone_without_cached_hid()
+        result = self.run_helper(
+            '--device', '10:a2:d3:01:47:a1', '--resolve-device')
+        self.assertEqual(result.stdout, '10:A2:D3:01:47:A1\n')
+        self.assertFalse((self.root / 'le-ready').exists())
+
+    def test_resolve_device_rejects_another_action(self):
+        self.stub_paired_phone_without_cached_hid()
+        result = self.run_helper(
+            '--device', '10:A2:D3:01:47:A1', '--resolve-device', '--trust', ok=False)
+        self.assertIn('cannot be combined', result.stderr)
 
     def test_explicit_connect_can_rediscover_uncached_hid(self):
         self.stub_paired_phone_without_cached_hid()
