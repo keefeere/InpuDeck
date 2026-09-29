@@ -25,6 +25,7 @@ trust=0
 status_only=0
 debug_only=0
 why_only=0
+resolve_only=0
 install_files=0
 install_service=0
 uninstall_service=0
@@ -63,6 +64,8 @@ Usage: inpudeck-hid.sh [options]
       --why              Check host settings that can stop it
                          from reconnecting to the phone by itself, then exit.
                          Run with sudo to check bond key presence (not values).
+      --resolve-device   Print the exact paired address selected by the helper
+                         and exit without changing or connecting anything.
       --install          Install/update inpudeck-hid in the user prefix.
                          Copies files only; no service, trust or audio changes.
       --prefix <path>    Installation prefix (default: ~/.local).
@@ -532,6 +535,7 @@ while [ $# -gt 0 ]; do
     --status) status_only=1; shift ;;
     --debug) debug_only=1; shift ;;
     --why) why_only=1; shift ;;
+    --resolve-device) resolve_only=1; shift ;;
     --install) install_files=1; shift ;;
     --prefix) prefix="${2:?--prefix requires an absolute path}"; shift 2 ;;
     --install-service) install_service=1; shift ;;
@@ -543,6 +547,14 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$reset_le" -eq 0 ] || [ "$reset_device" -eq 0 ] || die "choose --reset-le or --reset-device"
+if [ "$resolve_only" -eq 1 ]; then
+  [ "$reset_le" -eq 0 ] && [ "$reset_device" -eq 0 ] && [ "$watch" -eq 0 ] \
+    && [ "$install_files" -eq 0 ] && [ "$install_service" -eq 0 ] \
+    && [ "$uninstall_files" -eq 0 ] && [ "$uninstall_service" -eq 0 ] \
+    && [ "$status_only" -eq 0 ] && [ "$debug_only" -eq 0 ] && [ "$why_only" -eq 0 ] \
+    && [ "$drop_audio" -eq 0 ] && [ "$trust" -eq 0 ] && [ -z "$preferred_bearer" ] \
+    || die "--resolve-device cannot be combined with another action"
+fi
 if [ -n "$preferred_bearer" ]; then
   case "$preferred_bearer" in le|bredr|last-used|last-seen) ;; *) die "invalid preferred bearer" ;; esac
   [ "$reset_le" -eq 0 ] && [ "$reset_device" -eq 0 ] && [ "$watch" -eq 0 ] \
@@ -581,6 +593,15 @@ if [ -z "$device" ]; then
   fi
 fi
 device="$(printf '%s' "$device" | tr 'a-z' 'A-Z')"
+[[ "$device" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]] || die "device must be a Bluetooth MAC address"
+
+if [ "$resolve_only" -eq 1 ]; then
+  resolved_info="$(device_info "$device")" || die "cannot read paired device $device"
+  info_says Paired "$resolved_info" || die "device is not paired: $device"
+  ! info_says Blocked "$resolved_info" || die "device is blocked: $device"
+  printf '%s\n' "$device"
+  exit 0
+fi
 
 if [ -n "$preferred_bearer" ]; then
   bluez preferred-bearer "$device" "$preferred_bearer"

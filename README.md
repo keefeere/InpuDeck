@@ -66,11 +66,13 @@ the selected mode and host.
 4. Use the existing keyboard and trackpad. Return to **ESP adapter** to use the
    USB bridge. Switching releases held input and cancels queued text.
 5. On Linux, start the connection from the computer using explicit LE; see
-   [the Linux guide](docs/linux-direct-hid.md) and
-   `./scripts/inpudeck-hid.sh`. The helper requires `python3-dbus` and the
-   experimental BlueZ LE bearer API described in the guide. After testing it,
-   `--install` adds the on-demand command; a background service is optional
-   (`--install-service`). Installation leaves audio settings unchanged.
+   [the Linux guide](docs/linux-direct-hid.md). The recommended complete setup is:
+   `curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-linux.sh | bash`.
+   The helper requires `python3-dbus` and the experimental BlueZ LE bearer API
+   described in the guide. The complete installer enables the sandboxed
+   reconnect service. For manual installations, `--install` adds only the
+   on-demand command and `--install-service` is optional. Installation leaves
+   audio settings unchanged.
    Audio prevention for a single phone remains unresolved.
    To disable reception from **all phones** while retaining headphones, the
    optional `python3 scripts/inpudeck-audio-receiver.py install` adds a KDE menu
