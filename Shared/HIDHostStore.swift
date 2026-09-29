@@ -16,6 +16,45 @@ struct SavedHIDHost: Codable, Identifiable, Equatable {
     var diagnosticName: String { "\(name) [\(id.uuidString.prefix(8))]" }
 }
 
+/// A Direct Bluetooth peer the user explicitly denied. This is kept outside
+/// the saved-host registry so adding the field cannot invalidate registries
+/// written by older app versions.
+struct RejectedHIDHost: Codable, Identifiable, Equatable {
+    let id: UUID
+    var discoveredName: String?
+    let rejectedAt: Date
+
+    var name: String { discoveredName ?? localized("Відхилений BT-пристрій") }
+    var diagnosticName: String { "\(name) [\(id.uuidString.prefix(8))]" }
+}
+
+enum HIDHostApprovalDecision: Equatable {
+    case route
+    case requestApproval
+    case awaitDecision
+    case block
+}
+
+/// Decides whether an encrypted Direct Bluetooth peer may reach the HID route.
+/// The system Bluetooth bond alone is intentionally insufficient for a new
+/// peer: it also needs either an explicit in-app selection or approval.
+enum HIDHostApprovalPolicy {
+    static func decision(
+        for id: UUID,
+        routedHost: UUID?,
+        preferredHost: UUID?,
+        knownHosts: Set<UUID>,
+        rejectedHosts: Set<UUID>,
+        pairingOpen: Bool,
+        pendingHost: UUID?
+    ) -> HIDHostApprovalDecision {
+        if routedHost == id || preferredHost == id { return .route }
+        if knownHosts.contains(id) || rejectedHosts.contains(id) || !pairingOpen { return .block }
+        guard let pendingHost else { return .requestApproval }
+        return pendingHost == id ? .awaitDecision : .block
+    }
+}
+
 /// App-local host selection, not the system Bluetooth bond database. The Share
 /// extension intentionally uses a separate defaults container and host key.
 final class HIDHostStore {
@@ -28,9 +67,12 @@ final class HIDHostStore {
     private let defaults: UserDefaults
     private let hostKey: String
     private let registryKey: String
+    private let rejectedRegistryKey: String
     private var snapshot: Snapshot
+    private var rejectedSnapshot: [RejectedHIDHost]
 
     var hosts: [SavedHIDHost] { snapshot.hosts }
+    var rejectedHosts: [RejectedHIDHost] { rejectedSnapshot }
     var selectedHostID: UUID? { snapshot.selectedHostID }
     var shouldPairOnStart: Bool { !snapshot.hasManagedHosts && selectedHostID == nil }
 
@@ -38,6 +80,13 @@ final class HIDHostStore {
         self.defaults = defaults
         self.hostKey = hostKey
         registryKey = hostKey + ".registry"
+        rejectedRegistryKey = hostKey + ".rejected"
+        if let data = defaults.data(forKey: rejectedRegistryKey),
+           let decoded = try? JSONDecoder().decode([RejectedHIDHost].self, from: data) {
+            rejectedSnapshot = decoded
+        } else {
+            rejectedSnapshot = []
+        }
         if let data = defaults.data(forKey: registryKey),
            let decoded = try? JSONDecoder().decode(Snapshot.self, from: data) {
             snapshot = decoded
@@ -61,8 +110,10 @@ final class HIDHostStore {
     }
 
     func host(_ id: UUID) -> SavedHIDHost? { hosts.first { $0.id == id } }
+    func isRejected(_ id: UUID) -> Bool { rejectedSnapshot.contains { $0.id == id } }
 
     func select(_ id: UUID, name: String?, supportsOutgoing: Bool) {
+        rejectedSnapshot.removeAll { $0.id == id }
         if let index = snapshot.hosts.firstIndex(where: { $0.id == id }) {
             if let name = Self.clean(name) { snapshot.hosts[index].discoveredName = name }
             snapshot.hosts[index].supportsOutgoingConnection = snapshot.hosts[index].supportsOutgoingConnection || supportsOutgoing
@@ -72,6 +123,7 @@ final class HIDHostStore {
         snapshot.selectedHostID = id
         snapshot.hasManagedHosts = true
         persist()
+        persistRejectedHosts()
     }
 
     func connected(_ id: UUID, name: String?, supportsOutgoing: Bool) {
@@ -106,6 +158,26 @@ final class HIDHostStore {
         persist()
     }
 
+    func reject(_ id: UUID, name: String?) {
+        let rejected = RejectedHIDHost(
+            id: id,
+            discoveredName: Self.clean(name),
+            rejectedAt: Date()
+        )
+        if let index = rejectedSnapshot.firstIndex(where: { $0.id == id }) {
+            rejectedSnapshot[index] = rejected
+        } else {
+            rejectedSnapshot.append(rejected)
+        }
+        persistRejectedHosts()
+    }
+
+    func allowAgain(_ id: UUID) {
+        guard rejectedSnapshot.contains(where: { $0.id == id }) else { return }
+        rejectedSnapshot.removeAll { $0.id == id }
+        persistRejectedHosts()
+    }
+
     private static func clean(_ name: String?) -> String? {
         guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
         return String(name.prefix(80))
@@ -115,6 +187,12 @@ final class HIDHostStore {
         if let data = try? JSONEncoder().encode(snapshot) { defaults.set(data, forKey: registryKey) }
         if let selectedHostID { defaults.set(selectedHostID.uuidString, forKey: hostKey) }
         else { defaults.removeObject(forKey: hostKey) }
+    }
+
+    private func persistRejectedHosts() {
+        if let data = try? JSONEncoder().encode(rejectedSnapshot) {
+            defaults.set(data, forKey: rejectedRegistryKey)
+        }
     }
 }
 

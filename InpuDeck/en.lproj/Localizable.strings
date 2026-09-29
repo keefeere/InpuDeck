@@ -195,6 +195,17 @@
 "Скрипт сам знаходить адресу iPhone. Вручну її покаже bluetoothctl devices Paired, далі bluetoothctl connect <адреса> 00001812-…. Підставити адресу сюди не можна: iOS не дає застосункам Bluetooth-адресу пристрою." = "The script finds the iPhone address automatically. To find it manually, run bluetoothctl devices Paired, then bluetoothctl connect <address> 00001812-…. The address cannot be entered here because iOS does not provide device Bluetooth addresses to apps.";
 "Сполучення відкрите · поновити" = "Pairing open · renew";
 "Дозволити нове сполучення" = "Allow new pairing";
+"Новий BT-пристрій" = "New PC";
+"Дозволити новий BT-пристрій?" = "Allow a new PC?";
+"«%@» хоче отримувати введення з InpuDeck. Дозволяй лише пристрою, який сполучаєш зараз. Відхилення буде запам’ятовано; системне Bluetooth-спарювання за потреби видаляється окремо." = "“%@” wants to receive input from InpuDeck. Allow only the PC you are pairing now. Rejection is remembered; remove the system Bluetooth pairing separately if needed.";
+"Відхилити" = "Reject";
+"Дозволити" = "Allow";
+"Очікуємо дозволу для %@" = "Waiting for approval for %@";
+"Відхилений BT-пристрій" = "Rejected PC";
+"Відхилені BT-пристрої" = "Rejected PCs";
+"Ввід до цього пристрою заблоковано" = "Input to this PC is blocked";
+"Дозволити знову" = "Allow again";
+"InpuDeck не питатиме про них знову. «Дозволити знову» лише знімає блокування; після цього відкрий нове сполучення." = "InpuDeck will not ask about them again. Allow Again only removes the block; then open a new pairing window.";
 "Сполучення з iPhone" = "Pairing from iPhone";
 "Якщо Mac уже знає iPhone й не показує його як клавіатуру, відкрий Bluetooth на Mac, запусти пошук тут і вибери Mac. Пристрій має бути доступний через Bluetooth LE." = "If the Mac already knows the iPhone but does not show it as a keyboard, open Bluetooth on the Mac, start a search here, and select the Mac. The PC must be discoverable over Bluetooth LE.";
 "Linux тут зазвичай не з’являється: пристрій із BlueZ сам не рекламує себе через Bluetooth LE, тому знайти його з iPhone неможливо. З’єднання завжди починає пристрій, а iPhone лише лишається видимим." = "Linux usually does not appear here: a PC using BlueZ does not advertise itself over Bluetooth LE, so the iPhone cannot find it. The PC always initiates the connection while the iPhone remains discoverable.";

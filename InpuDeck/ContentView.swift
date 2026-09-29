@@ -107,6 +107,7 @@ struct ContentView: View {
         .sheet(isPresented: $showsSettings) {
             settingsView
         }
+        .directHostApprovalAlert(transport: ble.direct)
         .alert("Mouse Jiggler активний", isPresented: $showsJigglerNotice) {
             Button("Зрозуміло", role: .cancel) {}
         } message: {
