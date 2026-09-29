@@ -184,6 +184,10 @@ if the bond belongs to another adapter.
 
 A successful result requires `Bearer.LE1.Connected` plus a Bluetooth HID device
 whose `HID_UNIQ` is the peer address and `HID_PHYS` is the local adapter.
+A matching entry in `/proc/bus/input/devices` is accepted as equivalent kernel
+evidence when the HID parent is not visible to the sandboxed watcher; it must
+still match Bluetooth bus `0005`, the exact peer identity, and the exact local
+adapter. Mutable device names are never used for readiness.
 A retained UHID object alone can outlive a lost link. `ServicesResolved` is printed
 separately: BlueZ 5.87 resets this shared flag on a Classic disconnection even
 when LE remains connected, so it cannot gate HID status.

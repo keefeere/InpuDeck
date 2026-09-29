@@ -246,7 +246,10 @@ class TransportTests(unittest.TestCase):
                     (True, False, True), (True, True, True)):
                 interfaces[le.LE]["Connected"] = connected
                 interfaces[le.DEVICE]["ServicesResolved"] = resolved
-                self.assertEqual(le.hid_ready(interfaces, MAC, LOCAL, root), expected)
+                self.assertEqual(
+                    le.hid_ready(interfaces, MAC, LOCAL, root, root / "input-devices"),
+                    expected,
+                )
 
     def test_absent_or_ambiguous_identity_is_not_guessed(self):
         bus = FakeBus()
@@ -262,7 +265,11 @@ class TransportTests(unittest.TestCase):
         client = bus.client()
         client.connect(*client.target(MAC))
         self.assertEqual(bus.calls, [(PATH, le.LE, "Connect")])
-        self.assertFalse(le.hid_ready(bus.objects[PATH], MAC, LOCAL))
+        self.assertFalse(le.hid_ready(
+            bus.objects[PATH], MAC, LOCAL,
+            Path("/definitely-missing-hid-root"),
+            Path("/definitely-missing-input-devices"),
+        ))
 
     def test_unpaired_blocked_or_powered_off_targets_do_not_connect(self):
         for key, value in (("Paired", False), ("Blocked", True)):
@@ -312,6 +319,7 @@ class TransportTests(unittest.TestCase):
     def test_kernel_readiness_requires_target_and_adapter_on_bluetooth(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            input_devices = root / "input-devices"
             device = root / "device"
             device.mkdir()
             uevent = device / "uevent"
@@ -322,9 +330,34 @@ class TransportTests(unittest.TestCase):
                     ("0005", MAC.lower(), LOCAL.lower(), True)):
                 uevent.write_text(f"HID_ID={bus}:00000000:00000000\n"
                                   f"HID_NAME=InpuDeck\nHID_UNIQ={peer}\nHID_PHYS={adapter}\n")
-                self.assertEqual(le.hid_attached(MAC, LOCAL, root), expected)
+                self.assertEqual(
+                    le.hid_attached(MAC, LOCAL, root, input_devices), expected)
             uevent.unlink()
-            self.assertFalse(le.hid_attached(MAC, LOCAL, root))
+            self.assertFalse(le.hid_attached(MAC, LOCAL, root, input_devices))
+
+    def test_kernel_input_registry_is_an_exact_hid_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hid_root = root / "hid"
+            hid_root.mkdir()
+            input_devices = root / "input-devices"
+            template = (
+                'I: Bus={bus} Vendor=ffff Product=0001 Version=0000\n'
+                'N: Name="iPhone 15 ProMax"\n'
+                'P: Phys={phys}\n'
+                'S: Sysfs=/devices/virtual/misc/uhid/0005:FFFF:0001.0001/input/input1\n'
+                'U: Uniq={uniq}\n'
+                'H: Handlers=sysrq kbd event1\n'
+            )
+            for bus, phys, uniq, expected in (
+                    ("0003", LOCAL, MAC, False),
+                    ("0005", "AA:BB:CC:DD:EE:FF", MAC, False),
+                    ("0005", LOCAL, "AA:BB:CC:DD:EE:FF", False),
+                    ("0005", LOCAL.lower(), MAC.lower(), True)):
+                input_devices.write_text(template.format(
+                    bus=bus, phys=phys, uniq=uniq))
+                self.assertEqual(
+                    le.hid_attached(MAC, LOCAL, hid_root, input_devices), expected)
 
 
 if __name__ == "__main__":
