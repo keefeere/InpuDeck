@@ -633,6 +633,7 @@ private struct DirectBluetoothSheet: View {
     private var visibleBrowserDevices: [BluetoothHostCandidate] {
         browser.devices.filter { device in
             !transport.savedHosts.contains { $0.id == device.id }
+                && !transport.rejectedHosts.contains { $0.id == device.id }
                 && (developerMode || device.hasDisplayName)
         }
     }
