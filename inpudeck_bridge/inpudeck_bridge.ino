@@ -452,10 +452,10 @@ static void writeStatusLed(uint8_t red, uint8_t green, uint8_t blue) {
   previousRed = red;
   previousGreen = green;
   previousBlue = blue;
-  // Waveshare ESP32-S3-Zero wires its onboard WS2812 in RGB order, while the
-  // Arduino-ESP32 convenience wrapper defaults to GRB.
+  // The tested ESP32-S3-Zero's onboard LED accepts GRB data even though the
+  // Arduino-ESP32 Waveshare board profile declares RGB.
   rgbLedWriteOrdered(
-      RGB_BUILTIN, LED_COLOR_ORDER_RGB, red, green, blue);
+      RGB_BUILTIN, LED_COLOR_ORDER_GRB, red, green, blue);
 #else
   (void)red;
   (void)green;
@@ -517,6 +517,38 @@ static void requestUsbRecovery() {
   gUsbRestartRequested = true;
 }
 
+static void recordUsbMounted(const char* message) {
+  if (gUsbMounted) return;
+
+  gUsbWasMounted = true;
+  gUsbMounted = true;
+  gUsbSuspended = false;
+  gHidProbeFailures = 0;
+  Serial.println(message);
+}
+
+static void recordUsbUnmounted(const char* message) {
+  if (!gUsbMounted) return;
+
+  gUsbMounted = false;
+  gUsbSuspended = false;
+  Serial.println(message);
+  if (gUsbWasMounted) {
+    requestUsbRecovery();
+  }
+}
+
+static void synchronizeUsbMountState() {
+  // Arduino posts mount events asynchronously. Poll its authoritative TinyUSB
+  // state as well so hot-plugging data after a power-only boot cannot leave the
+  // bridge stuck in the BLE-only LED state.
+  if (static_cast<bool>(USB)) {
+    recordUsbMounted("USB mount state synchronized.");
+  } else {
+    recordUsbUnmounted("USB unmount state synchronized.");
+  }
+}
+
 static void usbEventCallback(
   void*,
   esp_event_base_t eventBase,
@@ -526,20 +558,11 @@ static void usbEventCallback(
 
   switch (eventId) {
     case ARDUINO_USB_STARTED_EVENT:
-      gUsbWasMounted = true;
-      gUsbMounted = true;
-      gUsbSuspended = false;
-      gHidProbeFailures = 0;
-      Serial.println("USB mounted.");
+      recordUsbMounted("USB mounted.");
       break;
 
     case ARDUINO_USB_STOPPED_EVENT:
-      gUsbMounted = false;
-      gUsbSuspended = false;
-      Serial.println("USB unmounted.");
-      if (gUsbWasMounted) {
-        requestUsbRecovery();
-      }
+      recordUsbUnmounted("USB unmounted.");
       break;
 
     case ARDUINO_USB_SUSPEND_EVENT:
@@ -1064,6 +1087,7 @@ void loop() {
     }
   }
 
+  synchronizeUsbMountState();
   updateStatusLed(now);
 
   if (!gUsbRestartRequested

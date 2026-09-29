@@ -120,10 +120,17 @@ class BridgeNameTests(unittest.TestCase):
             "const uint32_t phase = now % 1600",
             "phase * 18 / 500",
             "rgbLedWriteOrdered(",
-            "LED_COLOR_ORDER_RGB",
+            "LED_COLOR_ORDER_GRB",
+            "static_cast<bool>(USB)",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, firmware)
+
+        loop = firmware.split("void loop()", 1)[1]
+        self.assertLess(
+            loop.index("synchronizeUsbMountState();"),
+            loop.index("updateStatusLed(now);"),
+        )
 
     def test_release_builds_enable_tinyusb_cdc_for_post_flash_provisioning(self):
         repository = SCRIPT.parents[1]
