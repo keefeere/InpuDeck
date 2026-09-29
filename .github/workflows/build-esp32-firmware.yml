@@ -7,6 +7,7 @@ on:
       - "inpudeck_bridge/**"
       - "scripts/install-esp32.py"
       - "scripts/install-esp32.sh"
+      - "scripts/install-esp32.ps1"
       - "Tests/test_esp32_installer.py"
       - ".github/workflows/build-esp32-firmware.yml"
   push:
@@ -14,6 +15,7 @@ on:
       - "inpudeck_bridge/**"
       - "scripts/install-esp32.py"
       - "scripts/install-esp32.sh"
+      - "scripts/install-esp32.ps1"
       - "Tests/test_esp32_installer.py"
       - ".github/workflows/build-esp32-firmware.yml"
 
@@ -62,6 +64,7 @@ jobs:
           cp "$merged_bin" dist/InpuDeck-ESP32-S3-Zero.bin
           cp scripts/install-esp32.py dist/install-esp32.py
           cp scripts/install-esp32.sh dist/install-esp32.sh
+          cp scripts/install-esp32.ps1 dist/install-esp32.ps1
           chmod +x dist/install-esp32.py
           chmod +x dist/install-esp32.sh
           cd dist
@@ -77,5 +80,6 @@ jobs:
             dist/InpuDeck-ESP32-S3-Zero.bin.sha256
             dist/install-esp32.py
             dist/install-esp32.sh
+            dist/install-esp32.ps1
           if-no-files-found: error
           retention-days: 30

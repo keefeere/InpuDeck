@@ -17,6 +17,7 @@ on:
       - "scripts/update-sidestore-source.py"
       - "scripts/install-esp32.py"
       - "scripts/install-esp32.sh"
+      - "scripts/install-esp32.ps1"
       - "Tests/test_esp32_installer.py"
       - "inpudeck_bridge/**"
       - ".github/workflows/build-ios-ipa.yml"
@@ -39,6 +40,7 @@ on:
       - "scripts/update-sidestore-source.py"
       - "scripts/install-esp32.py"
       - "scripts/install-esp32.sh"
+      - "scripts/install-esp32.ps1"
       - "Tests/test_esp32_installer.py"
       - "inpudeck_bridge/**"
       - ".github/workflows/build-ios-ipa.yml"
@@ -92,6 +94,7 @@ jobs:
           cp "$merged_bin" dist/esp32/InpuDeck-ESP32-S3-Zero.bin
           cp scripts/install-esp32.py dist/esp32/install-esp32.py
           cp scripts/install-esp32.sh dist/esp32/install-esp32.sh
+          cp scripts/install-esp32.ps1 dist/esp32/install-esp32.ps1
           chmod +x dist/esp32/install-esp32.py dist/esp32/install-esp32.sh
           cd dist/esp32
           sha256sum InpuDeck-ESP32-S3-Zero.bin \
@@ -118,6 +121,13 @@ jobs:
         with:
           subject-path: dist/esp32/install-esp32.sh
 
+      - name: Attest PowerShell installer provenance
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        id: attest_powershell_installer
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/esp32/install-esp32.ps1
+
       - name: Stage Sigstore provenance bundles
         if: startsWith(github.ref, 'refs/tags/ios-v')
         run: |
@@ -127,6 +137,8 @@ jobs:
             dist/esp32/install-esp32.py.sigstore.json
           cp "${{ steps.attest_shell_installer.outputs.bundle-path }}" \
             dist/esp32/install-esp32.sh.sigstore.json
+          cp "${{ steps.attest_powershell_installer.outputs.bundle-path }}" \
+            dist/esp32/install-esp32.ps1.sigstore.json
 
       - name: Upload release firmware
         uses: actions/upload-artifact@v7
@@ -136,8 +148,48 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Parse installer with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $path = (Resolve-Path "scripts/install-esp32.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell installer has syntax errors."
+          }
+
+      - name: Parse installer with PowerShell 7
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $path = (Resolve-Path "scripts/install-esp32.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell installer has syntax errors."
+          }
+
   build:
-    needs: firmware
+    needs: [firmware, windows-installer]
     runs-on: macos-26
     timeout-minutes: 20
     permissions:
@@ -197,6 +249,8 @@ jobs:
             dist/esp32/install-esp32.py.sigstore.json \
             dist/esp32/install-esp32.sh \
             dist/esp32/install-esp32.sh.sigstore.json \
+            dist/esp32/install-esp32.ps1 \
+            dist/esp32/install-esp32.ps1.sigstore.json \
             --generate-notes
 
       - name: Publish update to SideStore source
