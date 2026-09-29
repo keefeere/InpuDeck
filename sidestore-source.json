@@ -40,6 +40,14 @@
       ],
       "versions": [
         {
+          "version": "3.3.7",
+          "date": "2026-09-29",
+          "downloadURL": "https://github.com/keefeere/InpuDeck/releases/download/ios-v3.3.7/InpuDeck-unsigned.ipa",
+          "size": 1024734,
+          "minOSVersion": "17.0",
+          "localizedDescription": "InpuDeck 3.3.7"
+        },
+        {
           "version": "3.3.6",
           "date": "2026-09-29",
           "downloadURL": "https://github.com/keefeere/InpuDeck/releases/download/ios-v3.3.6/InpuDeck-unsigned.ipa",
