@@ -71,7 +71,7 @@ No UUID discovery filter is set: matching UUID filters can crash BlueZ 5.87
 | Pairing / trust | Preserved | Pair or `--trust` only when explicitly requested |
 | Transport preference | Preserved by installation | Optional per-phone `--preferred-bearer le`; restore the previous value with the same option |
 | LE discovery | Up to 12 seconds before each offline connection attempt | Temporary; stopped before connecting, no scan while LE is connected |
-| BlueZ 5.87 address-resolution workaround | Optional `bluetooth.service` startup hook for bonded dual-mode peers | Kernel flag only; remove the installed hook files and reload systemd |
+| BlueZ 5.87 address-resolution workaround | Optional `bluetooth.service` startup hook scoped to exact configured InpuDeck/iPhone identity addresses | Kernel flag only; remove the installed hook files and device list, then reload systemd |
 | GATT cache experiment | Optional host-wide `Cache=no` in BlueZ; currently rolled back | `inpudeck-gatt-cache.py disable` restores the exact pre-change config; a Bluetooth restart applies either direction |
 | Kernel / drivers / privacy / discoverability | Not configured by the helper | Existing host policy continues to apply; BlueZ manages controller privacy during normal discovery/connection |
 
@@ -217,9 +217,21 @@ the subsequent filtered connection timed out. Setting the kernel device flag
 `0x04` once made the next LE/HID attempt connect in five seconds, and physical
 keyboard and mouse input worked. The flag is lost when bluetoothd restarts.
 
-For this BlueZ version, install the small startup hook from the repository:
+For this BlueZ version, first identify the paired iPhone's stable identity
+address. Use the address from BlueZ's paired-device list, not a rotating address
+seen during LE discovery:
 
 ```bash
+bluetoothctl devices Paired
+```
+
+Then install the small startup hook from the repository, substituting that exact
+address. The device file is root-owned and must not be group/world writable:
+
+```bash
+inpudeck_phone_address='10:A2:D3:01:47:A1'
+printf '%s\n' "$inpudeck_phone_address" \
+  | sudo install -Dm644 /dev/stdin /etc/inpudeck/address-resolution-devices
 sudo install -Dm755 scripts/inpudeck-le-address-resolution.py \
   /usr/local/libexec/inpudeck-le-address-resolution.py
 sudo install -Dm644 scripts/91-inpudeck-address-resolution.conf \
@@ -227,13 +239,25 @@ sudo install -Dm644 scripts/91-inpudeck-address-resolution.conf \
 sudo systemctl daemon-reload
 ```
 
-It runs within the existing `bluetooth.service` after each daemon start. It
-only sets a management flag for bonds with both BR/EDR and LE keys plus an IRK;
-it does not scan, connect, alter keys, or restart Bluetooth. The existing
+Put additional explicitly approved iPhone identity addresses on separate lines
+if needed. Do not select devices by a friendly name: names are mutable and are
+not a security boundary.
+
+The hook runs within the existing `bluetooth.service` after each daemon start.
+It refuses a missing, symlinked, non-root-owned, or group/world-writable device
+file. Every configured address must resolve to an existing BlueZ bond with both
+BR/EDR and LE keys plus an IRK. It never enumerates or modifies other bonds, and
+it refuses to write if the current kernel flags cannot be read and preserved.
+It does not scan, connect, alter keys, or restart Bluetooth. The existing
 optional user watcher remains responsible for requesting an LE connection.
-To remove the hook, delete the two installed files and run `systemctl
-daemon-reload`; no immediate Bluetooth restart is needed. A future BlueZ fix
-can replace this workaround. This does not explain delayed Windows reconnects.
+
+Earlier revisions of this hook enumerated every eligible dual-mode bond. Upgrade
+both the script and drop-in and create the scoped device file above; the current
+script fails closed if an older drop-in invokes it without a target. To remove
+the hook, delete the two installed hook files and
+`/etc/inpudeck/address-resolution-devices`, then run `systemctl daemon-reload`;
+no immediate Bluetooth restart is needed. A future BlueZ fix can replace this
+workaround. This does not explain delayed Windows reconnects.
 
 ### BlueZ 5.87 GATT cache after an iPhone Bluetooth toggle
 
