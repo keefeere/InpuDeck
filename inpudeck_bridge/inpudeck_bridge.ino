@@ -452,7 +452,10 @@ static void writeStatusLed(uint8_t red, uint8_t green, uint8_t blue) {
   previousRed = red;
   previousGreen = green;
   previousBlue = blue;
-  rgbLedWrite(RGB_BUILTIN, red, green, blue);
+  // Waveshare ESP32-S3-Zero wires its onboard WS2812 in RGB order, while the
+  // Arduino-ESP32 convenience wrapper defaults to GRB.
+  rgbLedWriteOrdered(
+      RGB_BUILTIN, LED_COLOR_ORDER_RGB, red, green, blue);
 #else
   (void)red;
   (void)green;

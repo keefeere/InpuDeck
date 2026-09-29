@@ -119,7 +119,8 @@ class BridgeNameTests(unittest.TestCase):
             "writeStatusLed(0, 8, 14)",
             "const uint32_t phase = now % 1600",
             "phase * 18 / 500",
-            "rgbLedWrite(RGB_BUILTIN, red, green, blue)",
+            "rgbLedWriteOrdered(",
+            "LED_COLOR_ORDER_RGB",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, firmware)
