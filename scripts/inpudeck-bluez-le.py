@@ -20,6 +20,8 @@ BREDR = "org.bluez.Bearer.BREDR1"
 PROPERTIES = "org.freedesktop.DBus.Properties"
 HID = "00001812-0000-1000-8000-00805f9b34fb"
 AUDIO = ("110a", "110c", "110e", "111f", "1112")
+SYS_HID = Path("/sys/bus/hid/devices")
+PROC_INPUT = Path("/proc/bus/input/devices")
 
 
 def find_device(objects, adapter_path, address):
@@ -39,7 +41,28 @@ def has_method(xml, interface, method):
                for node in iface.findall("method"))
 
 
-def hid_attached(address, adapter_address, root=Path("/sys/bus/hid/devices")):
+def input_attached(address, adapter_address, path=PROC_INPUT):
+    """Check the kernel input registry when the HID parent is not visible.
+
+    A working Bluetooth keyboard must have an input device. Match its Bluetooth
+    bus, peer identity, and local adapter rather than a mutable display name.
+    """
+    try:
+        blocks = path.read_text().split("\n\n")
+    except OSError:
+        return False
+    for block in blocks:
+        bus = re.search(r"^I:\s+Bus=([0-9A-Fa-f]+)\b", block, re.M)
+        phys = re.search(r"^P:\s+Phys=(.*)$", block, re.M)
+        uniq = re.search(r"^U:\s+Uniq=(.*)$", block, re.M)
+        if (bus and int(bus.group(1), 16) == 0x0005
+                and phys and phys.group(1).strip().lower() == adapter_address.lower()
+                and uniq and uniq.group(1).strip().lower() == address.lower()):
+            return True
+    return False
+
+
+def hid_attached(address, adapter_address, root=SYS_HID, input_devices=PROC_INPUT):
     # BlueZ UHID supplies the peer as HID_UNIQ and the local adapter as
     # HID_PHYS. Names alone also match USB bridges and other InpuDeck phones.
     for path in root.glob("*/uevent"):
@@ -51,15 +74,15 @@ def hid_attached(address, adapter_address, root=Path("/sys/bus/hid/devices")):
                 and fields.get("HID_UNIQ", "").lower() == address.lower()
                 and fields.get("HID_PHYS", "").lower() == adapter_address.lower()):
             return True
-    return False
+    return input_attached(address, adapter_address, input_devices)
 
 
-def hid_ready(interfaces, address, adapter_address, root=Path("/sys/bus/hid/devices")):
+def hid_ready(interfaces, address, adapter_address, root=SYS_HID, input_devices=PROC_INPUT):
     # UHID can survive a dropped connection: also require the LE bearer.
     # BlueZ 5.87 clears Device1.ServicesResolved when either bearer disconnects,
     # including Classic while LE HID stays attached. Report it separately.
     return bool(interfaces.get(LE, {}).get("Connected")
-                and hid_attached(address, adapter_address, root))
+                and hid_attached(address, adapter_address, root, input_devices))
 
 
 class BlueZ:
