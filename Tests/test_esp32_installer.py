@@ -101,6 +101,9 @@ class BridgeNameTests(unittest.TestCase):
             "BridgeLedState::powerOnly",
             "BridgeLedState::pairing",
             "BridgeLedState::usbError",
+            "writeStatusLed(0, 8, 14)",
+            "const uint32_t phase = now % 1600",
+            "phase * 18 / 500",
             "rgbLedWrite(RGB_BUILTIN, red, green, blue)",
         ):
             with self.subTest(contract=contract):

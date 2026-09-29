@@ -426,7 +426,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
             peers[identifier] = remembered
             peripheral = remembered
             remembered.delegate = self
-            bridgeStore.updateDiscoveredName(remembered.name, for: identifier)
+            bridgeStore.updateCachedNameIfMissing(remembered.name, for: identifier)
             publishStore()
             statusText = localizedFormat("Bluetooth: підключення до %@…", bridgeDisplayName)
             central.connect(remembered, options: nil)
@@ -696,8 +696,7 @@ extension BLEKeyboardBridge: CBPeripheralDelegate {
     func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
         // This callback exposes CoreBluetooth's cached GAP name. Keep it only
         // as a fallback for migrated entries that have no better name yet.
-        guard bridgeStore.bridge(peripheral.identifier)?.advertisedName == nil else { return }
-        bridgeStore.updateDiscoveredName(peripheral.name, for: peripheral.identifier)
+        bridgeStore.updateCachedNameIfMissing(peripheral.name, for: peripheral.identifier)
         publishStore()
         if isReady {
             statusText = localizedFormat("Підключено · %@", bridgeDisplayName)

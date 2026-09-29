@@ -350,10 +350,10 @@ into standard HID keyboard/mouse commands.
 | Indicator | Pattern | Status |
 | --- | --- | --- |
 | 🟢 Green | Solid | Authenticated Bluetooth and USB HID are both ready |
-| 🔵 Blue | Solid | The PC/USB HID side is ready; Bluetooth is waiting |
+| 🔵 Blue-cyan | Solid | The PC/USB HID side is ready; Bluetooth is waiting |
 | 🟠 Amber | Double blink | Authenticated Bluetooth is connected; USB supplies power but HID is not ready |
 | 🔴 Red | Short heartbeat | Neither Bluetooth nor USB HID has a data connection |
-| 🟣 Purple | Pulse | The physical pairing window is open |
+| 🟣 Purple | Slow pulse with a dark pause | The physical pairing window is open |
 | 🔴 Red | Rapid blink | USB HID is stalled and automatic recovery is about to restart the bridge |
 
 ### ESP bridge security

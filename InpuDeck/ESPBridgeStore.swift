@@ -147,6 +147,14 @@ final class ESPBridgeStore {
         persist()
     }
 
+    func updateCachedNameIfMissing(_ name: String?, for id: UUID) {
+        // CBPeripheral.name may remain stale across a firmware rename. It is
+        // useful only for a migrated or otherwise nameless registry entry.
+        guard bridge(id)?.advertisedName == nil else { return }
+        remember(id, name: name)
+        persist()
+    }
+
     func rename(_ id: UUID, to name: String) {
         guard let index = snapshot.bridges.firstIndex(where: { $0.id == id }) else { return }
         snapshot.bridges[index].customName = Self.clean(name)

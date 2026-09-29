@@ -35,6 +35,19 @@ struct ESPBridgeStoreTests {
             store.bridge(television)?.advertisedName == "Телевізор",
             "A cached CoreBluetooth name cannot replace the current advertised name"
         )
+        store.updateCachedNameIfMissing("InpuDeck Bridge", for: television)
+        check(
+            store.bridge(television)?.advertisedName == "Телевізор",
+            "A retrieved CBPeripheral cannot restore its stale cached name before reconnect"
+        )
+        let migratedWithoutName = UUID()
+        store.select(migratedWithoutName, name: nil)
+        store.updateCachedNameIfMissing("Fallback bridge", for: migratedWithoutName)
+        check(
+            store.bridge(migratedWithoutName)?.advertisedName == "Fallback bridge",
+            "The CoreBluetooth cache remains a fallback for a genuinely nameless entry"
+        )
+        store.select(television, name: nil)
         store.rename(television, to: "Вітальня")
         check(store.bridge(television)?.name == "Вітальня", "An app-local label overrides the advertised name")
 
@@ -57,11 +70,17 @@ struct ESPBridgeStoreTests {
             legacySelectionKey: "legacy.bridge"
         )
         check(store.selectedBridgeID == television, "Selection persists")
-        check(Set(store.bridges.map(\.id)) == Set([legacy, television]), "Registry persists every adapter")
+        check(
+            Set(store.bridges.map(\.id)) == Set([legacy, television, migratedWithoutName]),
+            "Registry persists every adapter"
+        )
 
         store.forget(television)
         check(store.selectedBridgeID == nil, "Forgetting the active bridge clears the selection")
-        check(store.bridges.map(\.id) == [legacy], "Forgetting one bridge preserves the others")
+        check(
+            Set(store.bridges.map(\.id)) == Set([legacy, migratedWithoutName]),
+            "Forgetting one bridge preserves the others"
+        )
 
         print("PASS: ESP bridge registry migration, authenticated UTF-8 names, cached-name isolation, multi-adapter selection and forgetting")
     }

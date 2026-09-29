@@ -421,7 +421,9 @@ static void updateStatusLed(uint32_t now) {
 
     case BridgeLedState::usbOnly:
       // A PC enumerated USB HID, but no authenticated iPhone is connected.
-      writeStatusLed(0, 3, 14);
+      // Keep enough green in the blue to distinguish it from pairing purple
+      // on the tiny onboard LED without making it look like ready green.
+      writeStatusLed(0, 8, 14);
       break;
 
     case BridgeLedState::bleOnly: {
@@ -438,11 +440,15 @@ static void updateStatusLed(uint32_t now) {
       break;
 
     case BridgeLedState::pairing: {
-      // Purple pulse while a new authenticated bond is physically allowed.
-      const uint32_t phase = now % 1200;
-      const uint8_t level = phase < 600
-        ? static_cast<uint8_t>(2 + (phase * 10 / 600))
-        : static_cast<uint8_t>(2 + ((1200 - phase) * 10 / 600));
+      // An unmistakable purple breath followed by a dark pause while a new
+      // authenticated bond is physically allowed. The previous 2..12 range
+      // never turned fully off and looked solid at the LED's low brightness.
+      const uint32_t phase = now % 1600;
+      const uint8_t level = phase < 500
+        ? static_cast<uint8_t>(phase * 18 / 500)
+        : phase < 1000
+          ? static_cast<uint8_t>((1000 - phase) * 18 / 500)
+          : 0;
       writeStatusLed(level, 0, level);
       break;
     }
