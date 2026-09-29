@@ -40,6 +40,8 @@ static const char* kPreferencesNamespace = "inpudeck";
 static const char* kBridgeNameKey = "bridge_name";
 static const char* kPasskeyKey = "passkey";
 static const char* kPairOnBootKey = "pair_on_boot";
+static const char* kBleIdentityKey = "ble_identity";
+static constexpr size_t kBleIdentityBytes = 6;
 static constexpr size_t kMaxBridgeNameBytes = 28;
 static constexpr uint32_t kMinimumPasskey = 100000;
 static constexpr uint32_t kMaximumPasskey = 999999;
@@ -68,6 +70,8 @@ static volatile bool gConnectedWasBonded = false;
 static volatile bool gConnectedSecure = false;
 static volatile bool gConnectionSecurityStarted = false;
 static volatile uint32_t gConnectedAtMs = 0;
+static uint8_t gBleIdentity[kBleIdentityBytes] = {};
+static bool gHasBleIdentity = false;
 
 static bool isValidBridgeName(const String& name) {
   const size_t length = name.length();
@@ -105,6 +109,39 @@ static uint32_t generatePasskey() {
   return kMinimumPasskey + (esp_random() % (kMaximumPasskey - kMinimumPasskey + 1));
 }
 
+static void generateBleIdentity(uint8_t* identity) {
+  esp_fill_random(identity, kBleIdentityBytes);
+  // A static random BLE address has its two most-significant bits set. Force
+  // one zero and one one in the random part as well, satisfying the Bluetooth
+  // requirement without a statistically improbable retry loop.
+  identity[0] = (identity[0] & 0xFC) | 0x01;
+  identity[5] = (identity[5] & 0x3F) | 0xC0;
+}
+
+static bool isValidBleIdentity(const uint8_t* identity) {
+  if ((identity[5] & 0xC0) != 0xC0) return false;
+  bool hasZero = false;
+  bool hasOne = false;
+  for (size_t i = 0; i < kBleIdentityBytes; ++i) {
+    const uint8_t mask = i == kBleIdentityBytes - 1 ? 0x3F : 0xFF;
+    const uint8_t byte = identity[i] & mask;
+    if (byte != mask) hasZero = true;
+    if (byte != 0x00) hasOne = true;
+  }
+  return hasZero && hasOne;
+}
+
+static bool loadBleIdentity(uint8_t* identity) {
+  Preferences preferences;
+  if (!preferences.begin(kPreferencesNamespace, true)) return false;
+  const size_t storedLength = preferences.getBytesLength(kBleIdentityKey);
+  const size_t loaded = storedLength == kBleIdentityBytes
+      ? preferences.getBytes(kBleIdentityKey, identity, kBleIdentityBytes)
+      : 0;
+  preferences.end();
+  return loaded == kBleIdentityBytes && isValidBleIdentity(identity);
+}
+
 static uint32_t loadPasskey(bool* wasGenerated = nullptr) {
   Preferences preferences;
   uint32_t passkey = 0;
@@ -137,13 +174,19 @@ static bool consumePairOnBoot() {
 }
 
 static bool storeProvisioning(const String& name, uint32_t passkey) {
+  uint8_t identity[kBleIdentityBytes];
+  generateBleIdentity(identity);
   Preferences preferences;
   if (!preferences.begin(kPreferencesNamespace, false)) return false;
   const bool nameStored = preferences.putString(kBridgeNameKey, name) == name.length();
   const bool passkeyStored = preferences.putUInt(kPasskeyKey, passkey) == sizeof(uint32_t);
   const bool pairingStored = preferences.putBool(kPairOnBootKey, true) == sizeof(uint8_t);
+  const bool identityStored = preferences.putBytes(
+    kBleIdentityKey,
+    identity,
+    sizeof(identity)) == sizeof(identity);
   preferences.end();
-  return nameStored && passkeyStored && pairingStored;
+  return nameStored && passkeyStored && pairingStored && identityStored;
 }
 
 static void setPairingWindow(bool enabled, uint32_t durationMs = 0) {
@@ -170,7 +213,7 @@ static void handleSerialCommand(String command) {
   }
 
   if (command == "INPUDECK GET-INFO") {
-    Serial.printf("INPUDECK INFO SECURITY 1 NAME %s\n", gBridgeName.c_str());
+    Serial.printf("INPUDECK INFO SECURITY 1 IDENTITY 1 NAME %s\n", gBridgeName.c_str());
     return;
   }
 
@@ -216,6 +259,11 @@ static void handleSerialCommand(String command) {
 
   static const String prefix = "INPUDECK SET-NAME ";
   if (!command.startsWith(prefix)) return;
+
+  if (!gPairingWindowOpen) {
+    Serial.println("INPUDECK ERROR physical provisioning window is closed");
+    return;
+  }
 
   String name = command.substring(prefix.length());
   name.trim();
@@ -919,6 +967,15 @@ void setup() {
   // Initialize the Bluetooth controller before drawing passkeys so esp_random
   // has the RF entropy source available, including for manual source uploads.
   NimBLEDevice::init(gBridgeName.c_str());
+  gHasBleIdentity = loadBleIdentity(gBleIdentity);
+  if (gHasBleIdentity) {
+    const bool addressSet = NimBLEDevice::setOwnAddr(gBleIdentity);
+    const bool typeSet = addressSet && NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    if (!typeSet) {
+      Serial.println("ERROR: failed to restore the provisioned BLE identity.");
+      gHasBleIdentity = false;
+    }
+  }
   bool generatedPasskey = false;
   gPasskey = loadPasskey(&generatedPasskey);
   gHiddenPasskey = generatePasskey();
@@ -935,7 +992,8 @@ void setup() {
   setupUsbHid();
   setupBle();
   Serial.printf(
-    "INPUDECK READY SECURITY 1 PAIRING %s NAME %s\n",
+    "INPUDECK READY SECURITY 1 IDENTITY %u PAIRING %s NAME %s\n",
+    gHasBleIdentity ? 1 : 0,
     gPairingWindowOpen ? "OPEN" : "CLOSED",
     gBridgeName.c_str());
 }

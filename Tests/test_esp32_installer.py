@@ -67,6 +67,21 @@ class BridgeNameTests(unittest.TestCase):
             "NimBLEDevice::deleteAllBonds()",
             "Rejected unknown BLE peer while the pairing window is closed.",
             "gHiddenPasskey = generatePasskey()",
+            '"INPUDECK ERROR physical provisioning window is closed"',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, firmware)
+
+    def test_secure_provisioning_rotates_a_persisted_random_static_identity(self):
+        firmware = (SCRIPT.parents[1] / "inpudeck_bridge" / "inpudeck_bridge.ino").read_text()
+        for contract in (
+            'kBleIdentityKey = "ble_identity"',
+            "esp_fill_random(identity, kBleIdentityBytes)",
+            "identity[5] = (identity[5] & 0x3F) | 0xC0",
+            "preferences.putBytes(",
+            "NimBLEDevice::setOwnAddr(gBleIdentity)",
+            "NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM)",
+            '"INPUDECK INFO SECURITY 1 IDENTITY 1 NAME %s\\n"',
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, firmware)
@@ -304,7 +319,7 @@ class PortPermissionTests(unittest.TestCase):
         ensure_access.side_effect = [installer.SerialPortUnavailableError("reconnecting"), None]
         connection = mock.MagicMock()
         connection.readline.side_effect = [
-            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
+            b"INPUDECK INFO SECURITY 1 IDENTITY 1 NAME InpuDeck Bridge\n",
             "INPUDECK OK PROVISION Телевізор\n".encode(),
         ]
         connection.__enter__.return_value = connection
@@ -334,7 +349,7 @@ class PortPermissionTests(unittest.TestCase):
         available_ports.side_effect = [[decoy], [decoy, target]]
         connection = mock.MagicMock()
         connection.readline.side_effect = [
-            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
+            b"INPUDECK INFO SECURITY 1 IDENTITY 1 NAME InpuDeck Bridge\n",
             b"INPUDECK OK PROVISION Television\n",
         ]
         connection.__enter__.return_value = connection
@@ -352,6 +367,38 @@ class PortPermissionTests(unittest.TestCase):
         self.assertEqual(configured_port, "/dev/ttyACM0")
         ensure_access.assert_called_once_with("/dev/ttyACM0", True)
         open_serial.assert_called_once_with("/dev/ttyACM0")
+
+    @mock.patch.object(installer.time, "sleep")
+    @mock.patch.object(installer, "available_ports")
+    @mock.patch.object(installer, "ensure_serial_port_access")
+    @mock.patch.object(installer, "_open_serial")
+    def test_passkey_rotation_requires_identity_capable_firmware(
+        self, open_serial, _ensure_access, available_ports, _sleep
+    ):
+        port = types.SimpleNamespace(device="/dev/ttyACM0", vid=installer.ESPRESSIF_USB_VID)
+        available_ports.return_value = [port]
+        connection = mock.MagicMock()
+        connection.readline.side_effect = [
+            b"INPUDECK INFO SECURITY 1 NAME InpuDeck Bridge\n",
+        ]
+        connection.__enter__.return_value = connection
+        open_serial.return_value = connection
+
+        with self.assertRaisesRegex(installer.InstallerError, "cannot rotate its BLE identity"):
+            installer.provision_bridge(
+                "/dev/ttyACM0",
+                "Television",
+                {"/dev/ttyACM0"},
+                timeout=1,
+                allow_sudo=True,
+                passkey=483921,
+            )
+
+        connection.write.assert_any_call(b"INPUDECK GET-INFO\n")
+        self.assertNotIn(
+            installer.serial_provision_command("Television", 483921),
+            [call.args[0] for call in connection.write.call_args_list],
+        )
 
     @mock.patch.object(installer.time, "sleep")
     @mock.patch.object(installer, "available_ports")
@@ -446,6 +493,8 @@ class BootstrapContractTests(unittest.TestCase):
         bootstrap = BOOTSTRAP.read_text()
         self.assertIn("IMPORTANT FOR A PREVIOUSLY PAIRED BOARD", bootstrap)
         self.assertIn("iPhone Settings > Bluetooth", bootstrap)
+        self.assertIn("BLE passkey and identity", bootstrap)
+        self.assertIn("Every mutation requires the physical BOOT", bootstrap)
 
     def test_bootstrap_user_interface_is_english(self):
         bootstrap = BOOTSTRAP.read_text()

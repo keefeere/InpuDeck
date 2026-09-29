@@ -140,8 +140,8 @@ curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/inst
 
 It downloads the latest firmware and checksum from the GitHub Release, verifies
 the image, asks for the bridge name, generates a unique six-digit security
-passkey, explains the BOOT/RESET sequence, detects a
-single Espressif serial port, and runs the Python installer in an isolated `uv`
+passkey and random static BLE identity, explains the BOOT/RESET sequence,
+detects a single Espressif serial port, and runs the Python installer in an isolated `uv`
 environment. If `uv` is not installed, the script places a temporary pinned copy
 in its working directory and removes it afterward. No system Python packages are
 changed. After flashing, it pauses until RESET has been pressed and the user has
@@ -162,18 +162,19 @@ and enter that code in the iOS system pairing prompt. The first-pairing window
 stays open for five minutes after provisioning and closes immediately after a
 successful authenticated bond.
 
-A full flash or passkey rotation deletes the adapter's previous bonds. If that
-physical board was already paired, forget its old entry in both iPhone Settings
-→ Bluetooth and InpuDeck before pairing it again. Otherwise iOS can retain the
-old name and repeatedly dismiss the new passkey prompt because its stored key
-no longer matches the adapter.
+A full flash or passkey rotation replaces the adapter's BLE identity and deletes
+its previous bonds. This prevents iOS from reusing a stale system pairing name
+for the board's hardware address. If that physical board was already paired,
+forget its old entry in both iPhone Settings → Bluetooth and InpuDeck before
+pairing it again. Otherwise the obsolete system entry remains alongside the new
+identity.
 
 The name must occupy 1–28 UTF-8 bytes. The installer stores it in the `inpudeck`
 NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.0
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.7
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -184,10 +185,13 @@ installer exposes the same recovery path without rewriting firmware:
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash -s -- --skip-flash
 ```
 
-`--skip-flash` refuses firmware older than 3.3.0 because renaming cannot make
-the old command channel safe. To replace a passkey and deliberately invalidate
-all existing iPhone bonds, hold BOOT for 3–7 seconds while the firmware is
-running, then use:
+Every `--skip-flash` mutation requires a physical BOOT window: hold BOOT for
+3–7 seconds while the firmware is running before confirming the installer.
+A rename without rotation preserves the BLE identity and bonds, so iOS may keep
+the previous label in its system Bluetooth list even though InpuDeck and new
+scans show the stored name. `--skip-flash` refuses firmware older than 3.3.0
+because renaming cannot make the old command channel safe. To replace the BLE
+identity and passkey and deliberately invalidate all existing iPhone bonds, use:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh \
@@ -363,8 +367,11 @@ passkey authentication, 128-bit link encryption, and an explicit physical
 pairing window. Both the command characteristic and the app's readiness probe
 require authenticated encryption, and the firmware independently rejects HID
 commands unless the current connection is bonded, encrypted, and authenticated.
-The installer gives every adapter a random passkey and a full reflash rotates
-it and clears old bonds. InpuDeck refuses the legacy service shape instead of
+The installer gives every adapter a random passkey. Firmware 3.3.7 adds a stored
+random static BLE identity; a full reflash or explicit passkey rotation replaces
+both identity and passkey and clears old bonds, preventing iOS from reattaching
+the old system pairing label. Mutable USB-serial commands require the physical
+BOOT window. InpuDeck refuses the legacy service shape instead of
 silently operating against an unsafe adapter. Firmware 3.3.3 also exposes its
 stored UTF-8 name through a read-only authenticated characteristic, avoiding a
 stale CoreBluetooth name after renaming or reflashing. Unsafe or incompatible
@@ -430,8 +437,8 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Bluetooth security hardening (3.3.2 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; verified installer downloads; Linux helper/service hardening; and a physical window for mutable ESP USB-serial commands.
-- **Secure ESP enrollment and bonded commands (3.3.0-3.3.3 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing window, preserved bonds, deliberate bond reset, and a protected app readiness probe. The authenticated adapter-name channel avoids stale iOS name caches, while unsafe or unknown firmware now produces a blocking popup. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate first pairing and the advertised name, unattended reconnect, two-adapter switching, reboot recovery, rejected unknown clients, pairing-window timeout, bond reset, and the unsafe-firmware popup on physical devices.
+- **Bluetooth security hardening (3.3.2 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; verified installer downloads; and Linux helper/service hardening.
+- **Secure ESP enrollment and bonded commands (3.3.0-3.3.7 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing/provisioning window, preserved bonds, deliberate bond reset, a protected app readiness probe, and a provisioned random static BLE identity. Full provisioning rotates the BLE identity with the passkey so iOS cannot silently reuse the old system pairing label; name-only serial writes are physically gated as well. The authenticated adapter-name channel avoids stale CoreBluetooth names inside InpuDeck, while unsafe or unknown firmware produces a blocking popup. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate the rotated identity and iOS system pairing name, unattended reconnect, reboot recovery, rejected unknown clients, pairing-window timeout, bond reset, and the unsafe-firmware popup on physical devices.
 - **ESP32-S3-Zero status LED (3.3.1 device validation)** - The firmware now distinguishes a complete BLE-to-USB path, PC/USB only, authenticated Bluetooth with power-only USB, neither data side, the physical pairing window, and USB recovery. Confirm the colors and patterns on the onboard WS2812 before marking it complete.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
 - **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.
