@@ -138,18 +138,30 @@ one command:
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash
 ```
 
-It downloads the latest firmware and checksum from the GitHub Release, verifies
-the image, asks for the bridge name, generates a unique six-digit security
-passkey and random static BLE identity, explains the BOOT/RESET sequence,
-detects a single Espressif serial port, and runs the Python installer in an isolated `uv`
-environment. If `uv` is not installed, the script places a temporary pinned copy
-in its working directory and removes it afterward. No system Python packages are
-changed. After flashing, it pauses until RESET has been pressed and the user has
-confirmed that the board may reconnect. On Linux, if the serial device is not
-accessible, it requests `sudo` only to add a temporary ACL to that device node
-(and reapplies it after USB re-enumeration); neither `uv` nor `esptool` runs as
-root. Every tagged release contains the matching firmware, checksum, and
-installer scripts rather than relying on an expiring Actions artifact.
+It resolves `latest` to an exact release tag, downloads the firmware and Python
+installer, checks the firmware SHA-256, and verifies separate Sigstore provenance
+bundles for both executable assets before parsing or running downloaded code.
+The accepted signing identity is restricted to this repository's tagged release
+workflow and the exact selected tag. It then asks for the bridge name, generates
+a unique six-digit security passkey and random static BLE identity, explains the
+BOOT/RESET sequence, detects a single Espressif serial port, and runs the Python
+installer in an isolated `uv` environment. If `uv` is not installed, the script
+downloads its versioned installer only after validating that installer's pinned
+SHA-256; the upstream installer also validates the selected `uv` binary. The
+temporary tools are removed afterward and no system Python packages are changed.
+After flashing, the installer pauses until RESET has been pressed and the user
+has confirmed that the board may reconnect. On Linux, if the serial device is
+not accessible, it requests `sudo` only to add a temporary ACL to that device
+node (and reapplies it after USB re-enumeration); neither `uv` nor `esptool` runs
+as root. Every tagged release contains the matching firmware, checksum,
+installer scripts, and signed provenance bundles rather than relying on an
+expiring Actions artifact.
+
+The short `curl ... | bash` command still treats the HTTPS copy of
+`install-esp32.sh` from the repository's `main` branch as its initial trust anchor.
+For auditing or a manually bootstrapped installation, the tagged release also
+contains `install-esp32.sh.sigstore.json`, which authenticates the exact released
+shell installer independently through Sigstore's public transparency log.
 
 If several Espressif serial devices are connected, the installer prefers the
 port that was just recreated by the BOOT/RESET sequence. If that signal is
@@ -174,7 +186,7 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.7
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.10
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -437,7 +449,7 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Bluetooth security hardening (3.3.2 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; verified installer downloads; and Linux helper/service hardening.
+- **Bluetooth security hardening (3.3.2-3.3.10 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Release firmware and installer executables now carry Sigstore build-provenance attestations, and the bootstrap verifies the selected tag's workflow identity before running downloaded Python. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; and Linux helper/service hardening.
 - **Secure ESP enrollment and bonded commands (3.3.0-3.3.7 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing/provisioning window, preserved bonds, deliberate bond reset, a protected app readiness probe, and a provisioned random static BLE identity. Full provisioning rotates the BLE identity with the passkey so iOS cannot silently reuse the old system pairing label; the rotated identity and provisioned name are verified in the iOS system pairing list, and name-only serial writes are physically gated as well. The authenticated adapter-name channel avoids stale CoreBluetooth names inside InpuDeck, while unsafe or unknown firmware produces a blocking popup. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate unattended reconnect, reboot recovery, rejected unknown clients, pairing-window timeout, bond reset, and the unsafe-firmware popup on physical devices.
 - **ESP32-S3-Zero status LED (3.3.9 device validation)** - The firmware now distinguishes a complete BLE-to-USB path, PC/USB only, authenticated Bluetooth with power-only USB, neither data side, the physical pairing window, and USB recovery. Physical testing showed that the onboard LED accepts GRB data despite the Arduino-ESP32 Waveshare board profile declaring RGB. Version 3.3.8 therefore made no electrical change; 3.3.9 overrides the profile with the observed GRB order and polls TinyUSB's authoritative mount state so moving from a power-only cable to a data host cannot leave the indicator stuck in BLE-only mode. Confirm every corrected color, transition, and pattern on the onboard WS2812 before marking it complete.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.

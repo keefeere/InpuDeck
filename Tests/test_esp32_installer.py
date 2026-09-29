@@ -485,17 +485,53 @@ class BootstrapContractTests(unittest.TestCase):
         for asset in (
             "InpuDeck-ESP32-S3-Zero.bin",
             "InpuDeck-ESP32-S3-Zero.bin.sha256",
+            "InpuDeck-ESP32-S3-Zero.bin.sigstore.json",
             "install-esp32.py",
+            "install-esp32.py.sigstore.json",
         ):
             self.assertIn(asset, bootstrap)
-        self.assertIn("releases/latest/download", bootstrap)
+        self.assertIn('"https://github.com/${repository}/releases/latest"', bootstrap)
+        self.assertIn('release_tag="${latest_url##*/}"', bootstrap)
         self.assertIn('run --no-project --script "$workdir/install-esp32.py"', bootstrap)
         self.assertIn("UV_UNMANAGED_INSTALL", bootstrap)
+        self.assertIn("uv_installer_sha256=", bootstrap)
         self.assertIn("--grant-port-access", bootstrap)
         self.assertIn("--wait-for-reset", bootstrap)
         self.assertIn("--skip-flash", bootstrap)
         self.assertIn("--rotate-passkey", bootstrap)
         self.assertIn("--passkey", bootstrap)
+
+    def test_bootstrap_verifies_provenance_before_executing_downloaded_installer(self):
+        bootstrap = BOOTSTRAP.read_text()
+        self.assertIn('sigstore_version="4.1.0"', bootstrap)
+        self.assertIn("sigstore verify identity", bootstrap)
+        self.assertIn("--cert-identity", bootstrap)
+        self.assertIn("--cert-oidc-issuer", bootstrap)
+        verification = bootstrap.index(
+            'verify_provenance \\\n  "$workdir/install-esp32.py"'
+        )
+        execution = bootstrap.index(
+            'run --no-project --script "$workdir/install-esp32.py" --help'
+        )
+        self.assertLess(verification, execution)
+
+    def test_release_workflow_attests_every_executable_esp_asset(self):
+        workflow = (SCRIPT.parents[1] / ".github/workflows/build-ios-ipa.yml").read_text()
+        self.assertIn("attestations: write", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertEqual(
+            workflow.count(
+                "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
+            ),
+            3,
+        )
+        for asset in (
+            "InpuDeck-ESP32-S3-Zero.bin.sigstore.json",
+            "install-esp32.py.sigstore.json",
+            "install-esp32.sh.sigstore.json",
+        ):
+            with self.subTest(asset=asset):
+                self.assertIn(asset, workflow)
 
     def test_bootstrap_warns_that_full_provisioning_replaces_the_ios_bond(self):
         bootstrap = BOOTSTRAP.read_text()

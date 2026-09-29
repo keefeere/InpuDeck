@@ -10,6 +10,9 @@ serial_port="auto"
 skip_flash=false
 rotate_passkey=false
 uv_version="0.12.19"
+uv_installer_sha256="61b349611f1b6e1ba33645f30c36da5287df2609dd7af8605d96a031435eb35b"
+sigstore_version="4.1.0"
+sigstore_oidc_issuer="https://token.actions.githubusercontent.com"
 
 usage() {
   cat <<'EOF'
@@ -22,6 +25,27 @@ securely provisions the bridge with a unique BLE passkey and identity. Use
 its passkey, BLE identity, and bonds. Every mutation requires the physical BOOT
 window. Without arguments it prompts on the controlling terminal.
 EOF
+}
+
+sha256_digest() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+verify_sha256_value() {
+  local expected="$1"
+  local path="$2"
+  local actual
+  actual="$(sha256_digest "$path")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "error: SHA-256 mismatch for $(basename "$path")" >&2
+    echo "expected: $expected" >&2
+    echo "actual:   $actual" >&2
+    exit 1
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -84,19 +108,48 @@ command -v curl >/dev/null 2>&1 || { echo "error: curl is required" >&2; exit 1;
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/inpudeck-installer.XXXXXX")"
 trap 'rm -rf -- "$workdir"' EXIT
 
+release_tag=""
 if [[ -n "${INPUDECK_RELEASE_BASE:-}" ]]; then
+  if [[ "$version" == "latest" ]]; then
+    echo "error: INPUDECK_RELEASE_BASE requires an explicit --version" >&2
+    exit 2
+  fi
+  version="${version#ios-v}"
   release_base="$INPUDECK_RELEASE_BASE"
 elif [[ "$version" == "latest" ]]; then
-  release_base="https://github.com/${repository}/releases/latest/download"
+  latest_url="$(
+    curl --fail --location --silent --show-error --retry 3 \
+      --output /dev/null --write-out '%{url_effective}' \
+      "https://github.com/${repository}/releases/latest"
+  )"
+  release_tag="${latest_url##*/}"
+  if [[ ! "$release_tag" =~ ^ios-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: latest release did not resolve to an InpuDeck iOS tag: $latest_url" >&2
+    exit 1
+  fi
+  version="${release_tag#ios-v}"
+  release_base="https://github.com/${repository}/releases/download/${release_tag}"
 else
   version="${version#ios-v}"
-  release_base="https://github.com/${repository}/releases/download/ios-v${version}"
+fi
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "error: VERSION must use the numeric X.Y.Z form" >&2
+  exit 2
+fi
+release_tag="${release_tag:-ios-v${version}}"
+if [[ -z "${release_base:-}" ]]; then
+  release_base="https://github.com/${repository}/releases/download/${release_tag}"
 fi
 
-assets=(install-esp32.py)
+assets=(install-esp32.py install-esp32.py.sigstore.json)
 if [[ "$skip_flash" == false ]]; then
   echo "Downloading InpuDeck firmware (${version})…"
-  assets=(InpuDeck-ESP32-S3-Zero.bin InpuDeck-ESP32-S3-Zero.bin.sha256 "${assets[@]}")
+  assets=(
+    InpuDeck-ESP32-S3-Zero.bin
+    InpuDeck-ESP32-S3-Zero.bin.sha256
+    InpuDeck-ESP32-S3-Zero.bin.sigstore.json
+    "${assets[@]}"
+  )
 else
   echo "Downloading the InpuDeck installer (${version}); firmware will not be reflashed…"
 fi
@@ -106,24 +159,22 @@ for asset in "${assets[@]}"; do
 done
 
 if [[ "$skip_flash" == false ]]; then
-  (
-    cd "$workdir"
-    if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum --check InpuDeck-ESP32-S3-Zero.bin.sha256
-    else
-      shasum -a 256 --check InpuDeck-ESP32-S3-Zero.bin.sha256
-    fi
-  )
+  IFS=' ' read -r published_digest published_name extra \
+    <"$workdir/InpuDeck-ESP32-S3-Zero.bin.sha256"
+  if [[ ! "$published_digest" =~ ^[0-9a-f]{64}$ \
+        || "$published_name" != "InpuDeck-ESP32-S3-Zero.bin" \
+        || -n "${extra:-}" ]]; then
+    echo "error: malformed firmware checksum file" >&2
+    exit 1
+  fi
+  verify_sha256_value \
+    "$published_digest" "$workdir/InpuDeck-ESP32-S3-Zero.bin"
 fi
 
-if [[ -z "$bridge_name" ]]; then
-  printf 'Adapter name [InpuDeck Bridge]: ' >/dev/tty
-  IFS= read -r bridge_name </dev/tty
-  bridge_name="${bridge_name:-InpuDeck Bridge}"
-fi
-
-# Prepare every dependency before asking the user to open the time-limited
-# physical provisioning window.
+# Establish a trusted verifier before executing any downloaded release code.
+# The versioned Astral installer embeds hashes for the uv binaries; pinning the
+# installer itself here keeps that bootstrap independent from the release being
+# verified.
 if command -v uv >/dev/null 2>&1; then
   uv_command="$(command -v uv)"
 else
@@ -131,11 +182,44 @@ else
   mkdir -p "$workdir/uv"
   curl --fail --location --silent --show-error \
     "https://astral.sh/uv/${uv_version}/install.sh" \
-    | env UV_UNMANAGED_INSTALL="$workdir/uv" sh
+    --output "$workdir/uv-install.sh"
+  verify_sha256_value "$uv_installer_sha256" "$workdir/uv-install.sh"
+  env UV_UNMANAGED_INSTALL="$workdir/uv" sh "$workdir/uv-install.sh"
   uv_command="$workdir/uv/uv"
 fi
+
+certificate_identity="https://github.com/${repository}/.github/workflows/build-ios-ipa.yml@refs/tags/${release_tag}"
+verify_provenance() {
+  local asset="$1"
+  local bundle="$2"
+  echo "Verifying signed provenance for $(basename "$asset")…"
+  UV_CACHE_DIR="$workdir/uv-cache" \
+    "$uv_command" run --no-project --with "sigstore==${sigstore_version}" \
+      sigstore verify identity \
+      --bundle "$bundle" \
+      --cert-identity "$certificate_identity" \
+      --cert-oidc-issuer "$sigstore_oidc_issuer" \
+      "$asset" >/dev/null
+}
+
+verify_provenance \
+  "$workdir/install-esp32.py" \
+  "$workdir/install-esp32.py.sigstore.json"
+if [[ "$skip_flash" == false ]]; then
+  verify_provenance \
+    "$workdir/InpuDeck-ESP32-S3-Zero.bin" \
+    "$workdir/InpuDeck-ESP32-S3-Zero.bin.sigstore.json"
+fi
+
+# Only the authenticated Python installer may now be parsed or executed.
 UV_CACHE_DIR="$workdir/uv-cache" \
   "$uv_command" run --no-project --script "$workdir/install-esp32.py" --help >/dev/null
+
+if [[ -z "$bridge_name" ]]; then
+  printf 'Adapter name [InpuDeck Bridge]: ' >/dev/tty
+  IFS= read -r bridge_name </dev/tty
+  bridge_name="${bridge_name:-InpuDeck Bridge}"
+fi
 
 if [[ "$skip_flash" == false ]]; then
   cat >/dev/tty <<'EOF'
