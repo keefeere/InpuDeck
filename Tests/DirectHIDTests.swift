@@ -14,6 +14,7 @@ struct DirectHIDTests {
         notificationBackpressure()
         wakeProbe()
         hostSelection()
+        hostApprovalPolicy()
         inputReadIsolation()
         disconnectPolicy()
         reconnectWatchdog()
@@ -171,6 +172,64 @@ struct DirectHIDTests {
         check(queue.isEmpty, "A host switch must discard any unsent wake probe")
     }
 
+    static func hostApprovalPolicy() {
+        let selected = UUID(), unknown = UUID(), rejected = UUID(), other = UUID()
+        check(HIDHostApprovalPolicy.decision(
+            for: selected,
+            routedHost: nil,
+            preferredHost: selected,
+            knownHosts: [selected],
+            rejectedHosts: [],
+            pairingOpen: false,
+            pendingHost: nil
+        ) == .route, "An explicitly selected host is already approved")
+        check(HIDHostApprovalPolicy.decision(
+            for: unknown,
+            routedHost: nil,
+            preferredHost: nil,
+            knownHosts: [selected],
+            rejectedHosts: [rejected],
+            pairingOpen: true,
+            pendingHost: nil
+        ) == .requestApproval, "A new encrypted peer still needs in-app approval")
+        check(HIDHostApprovalPolicy.decision(
+            for: unknown,
+            routedHost: nil,
+            preferredHost: nil,
+            knownHosts: [],
+            rejectedHosts: [],
+            pairingOpen: true,
+            pendingHost: unknown
+        ) == .awaitDecision, "The pending host remains blocked until the user decides")
+        check(HIDHostApprovalPolicy.decision(
+            for: other,
+            routedHost: nil,
+            preferredHost: nil,
+            knownHosts: [],
+            rejectedHosts: [],
+            pairingOpen: true,
+            pendingHost: unknown
+        ) == .block, "A second peer cannot replace the approval prompt")
+        check(HIDHostApprovalPolicy.decision(
+            for: rejected,
+            routedHost: nil,
+            preferredHost: nil,
+            knownHosts: [],
+            rejectedHosts: [rejected],
+            pairingOpen: true,
+            pendingHost: nil
+        ) == .block, "A remembered rejection stays blocked in a later pairing window")
+        check(HIDHostApprovalPolicy.decision(
+            for: unknown,
+            routedHost: nil,
+            preferredHost: nil,
+            knownHosts: [],
+            rejectedHosts: [],
+            pairingOpen: false,
+            pendingHost: nil
+        ) == .block, "An unknown host cannot request approval outside the pairing window")
+    }
+
     static func disconnectPolicy() {
         check(!HIDDisconnectPolicy.invalidatesSession(
             cause: .appCancelledOutgoingLink,
@@ -259,6 +318,17 @@ struct DirectHIDTests {
         check(store.hosts.isEmpty && store.selectedHostID == nil, "Forget persists across relaunch")
         check(!store.shouldPairOnStart, "Forgetting the last host must not immediately accept it again")
         check(defaults.string(forKey: "directHID.outgoingHost") == nil, "Forget removes legacy reconnect data")
+        store.reject(first, name: "Unexpected PC")
+        store = HIDHostStore(defaults: defaults)
+        check(store.isRejected(first) && store.rejectedHosts.first?.name == "Unexpected PC",
+              "Rejecting a new host persists its identity and display name")
+        store.allowAgain(first)
+        store = HIDHostStore(defaults: defaults)
+        check(!store.isRejected(first), "Allow again removes a remembered rejection")
+        store.reject(first, name: nil)
+        store.select(first, name: "MacBook", supportsOutgoing: false)
+        check(!store.isRejected(first), "Explicit selection clears an older rejection")
+        store.forget(first)
         var session = HIDHostSession(preferredHost: store.selectedHostID, allowsPairing: store.shouldPairOnStart)
         check(!session.subscribe(.keyboard, from: first), "Restored subscriptions from a forgotten host are rejected")
         session.allowsPairing = true

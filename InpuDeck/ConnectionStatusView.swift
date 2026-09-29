@@ -442,6 +442,34 @@ private struct DirectBluetoothSheet: View {
                         }
                     }
                 }
+                if !transport.rejectedHosts.isEmpty {
+                    Section {
+                        ForEach(transport.rejectedHosts) { host in
+                            HStack(spacing: 12) {
+                                Image(systemName: "hand.raised.fill")
+                                    .frame(width: 20)
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(developerMode ? host.diagnosticName : host.name)
+                                    Text("Ввід до цього пристрою заблоковано")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Дозволити знову") {
+                                    transport.allowRejectedHost(host.id)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    } header: {
+                        Text("Відхилені BT-пристрої")
+                    } footer: {
+                        if !expertMode {
+                            Text("InpuDeck не питатиме про них знову. «Дозволити знову» лише знімає блокування; після цього відкрий нове сполучення.")
+                        }
+                    }
+                }
                 Section("Сполучення з BT-пристрою") {
                     if !expertMode {
                         Text("У налаштуваннях Bluetooth пристрою вибери «\(transport.advertisedName)» або ім’я цього iPhone. Підтвердь системний запит, якщо він з’явиться.")
@@ -576,6 +604,7 @@ private struct DirectBluetoothSheet: View {
         } message: { host in
             Text("\(host.name) буде вилучено зі списку та автопідключення застосунку. Системне спарювання залишиться. Щоб видалити і його: Налаштування iPhone → Bluetooth → ⓘ → Забути цей пристрій або видали iPhone на BT-пристрої.")
         }
+        .directHostApprovalAlert(transport: transport)
         .onDisappear { browser.stopScan() }
     }
 
@@ -604,7 +633,31 @@ private struct DirectBluetoothSheet: View {
     private var visibleBrowserDevices: [BluetoothHostCandidate] {
         browser.devices.filter { device in
             !transport.savedHosts.contains { $0.id == device.id }
+                && !transport.rejectedHosts.contains { $0.id == device.id }
                 && (developerMode || device.hasDisplayName)
+        }
+    }
+}
+
+extension View {
+    func directHostApprovalAlert(transport: DirectHIDTransport) -> some View {
+        alert(item: Binding(
+            get: { transport.pendingHostApproval },
+            set: { _ in }
+        )) { approval in
+            Alert(
+                title: Text(localized("Дозволити новий BT-пристрій?")),
+                message: Text(localizedFormat(
+                    "«%@» хоче отримувати введення з InpuDeck. Дозволяй лише пристрою, який сполучаєш зараз. Відхилення буде запам’ятовано; системне Bluetooth-спарювання за потреби видаляється окремо.",
+                    approval.name
+                )),
+                primaryButton: .destructive(Text(localized("Відхилити"))) {
+                    transport.rejectPendingHost(approval.id)
+                },
+                secondaryButton: .default(Text(localized("Дозволити"))) {
+                    transport.approvePendingHost(approval.id)
+                }
+            )
         }
     }
 }

@@ -3,6 +3,14 @@ import CoreBluetooth
 import Foundation
 import UIKit
 
+struct DirectHostApproval: Identifiable, Equatable {
+    let id: UUID
+    var discoveredName: String?
+
+    var name: String { discoveredName ?? localized("Новий BT-пристрій") }
+    var diagnosticName: String { "\(name) [\(id.uuidString.prefix(8))]" }
+}
+
 /// HOGP peripheral implemented with public CoreBluetooth APIs. SIG UUIDs use
 /// their canonical 128-bit representation when publishing on iOS.
 final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPeripheralManagerDelegate {
@@ -13,6 +21,8 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
     @Published private(set) var lastError: String?
     @Published private(set) var diagnostics: [String] = []
     @Published private(set) var savedHosts: [SavedHIDHost] = []
+    @Published private(set) var rejectedHosts: [RejectedHIDHost] = []
+    @Published private(set) var pendingHostApproval: DirectHostApproval?
     @Published private(set) var selectedHostID: UUID?
     @Published private(set) var connectedHostID: UUID?
     let advertisedName = "InpuDeck"
@@ -83,10 +93,15 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         hostStore = HIDHostStore(hostKey: hostKey)
         super.init()
         savedHosts = hostStore.hosts
+        rejectedHosts = hostStore.rejectedHosts
         selectedHostID = hostStore.selectedHostID
         browser.onDiagnostic = { [weak self] event in self?.record(event) }
         browser.onNameDiscovered = { [weak self] id, name in
-            guard let self, self.hostStore.host(id) != nil else { return }
+            guard let self else { return }
+            if self.pendingHostApproval?.id == id {
+                self.pendingHostApproval?.discoveredName = name
+            }
+            guard self.hostStore.host(id) != nil else { return }
             self.hostStore.updateDiscoveredName(name, for: id)
             self.savedHosts = self.hostStore.hosts
             if self.isRunning { self.refreshStatus() }
@@ -183,6 +198,7 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
             self.isRunning = false
             self.canPair = false
             self.isPairing = false
+            self.pendingHostApproval = nil
             self.pairingTimer?.cancel()
             self.cancelRecovery()
             self.watchdog.reset()
@@ -251,6 +267,40 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
     func beginPairing() { prepareHost(nil) }
     func connect(to id: UUID) { prepareHost(id) }
 
+    func approvePendingHost(_ id: UUID) {
+        guard let approval = pendingHostApproval, approval.id == id, isPairing else { return }
+        pendingHostApproval = nil
+        pairingTimer?.cancel()
+        isPairing = false
+        let name = approval.discoveredName ?? browser.resolvedName(for: id)
+        hostStore.select(id, name: name, supportsOutgoing: false)
+        savedHosts = hostStore.hosts
+        rejectedHosts = hostStore.rejectedHosts
+        selectHost(id, allowsPairing: false, reason: "New host approved: \(peerTag(id))")
+        if adoptLiveSubscriptions(of: id) {
+            record("Approved host adopted its live HID subscriptions: \(peerTag(id))")
+        }
+        refreshStatus()
+    }
+
+    func rejectPendingHost(_ id: UUID) {
+        guard let approval = pendingHostApproval, approval.id == id else { return }
+        pendingHostApproval = nil
+        pairingTimer?.cancel()
+        isPairing = false
+        hostStore.reject(id, name: approval.discoveredName ?? browser.resolvedName(for: id))
+        rejectedHosts = hostStore.rejectedHosts
+        record("New host rejected and remembered: \(peerTag(id))")
+        let preferred = hostStore.selectedHostID
+        selectHost(preferred, allowsPairing: false, reason: "Rejected host blocked; restoring selected host")
+    }
+
+    func allowRejectedHost(_ id: UUID) {
+        hostStore.allowAgain(id)
+        rejectedHosts = hostStore.rejectedHosts
+        record("Rejected-host block removed: \(peerTag(id))")
+    }
+
     /// Persists a destination even while the direct transport is inactive.
     /// RemoteInputController can then stop another transport and start Direct
     /// Bluetooth without racing service installation or its pairing gate.
@@ -274,6 +324,7 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         guard canPair, afterDrain == nil else { return }
         cancelRecovery()
         watchdog.reset()
+        pendingHostApproval = nil
         drainReleases { [weak self] in
             guard let self, self.isRunning else { return }
             self.lastError = nil
@@ -288,6 +339,7 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
                 reason: id == nil ? "Pairing window opened" : "Host selected: \(self.peerTag(id))"
             )
             guard id == nil else { self.armPairingTimeout(); return }
+            self.requestApprovalForLiveUnknownSubscriber()
             self.browser.cancelConnection()
             if self.manager?.state == .poweredOn {
                 self.installServices()
@@ -337,28 +389,18 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         func subscribed(_ channel: HIDInputChannel) -> CBCentral? {
             (inputs[channel]?.subscribedCentrals ?? []).first { $0.identifier == id }
         }
-        let boot = session.bootProtocol
-        session.bootProtocol = false
-        var central = subscribed(.keyboard)
-        if central == nil || subscribed(.mouse) == nil {
-            session.bootProtocol = true
-            central = subscribed(.bootKeyboard)
-            if central == nil || subscribed(.bootMouse) == nil {
-                session.bootProtocol = boot
-                return false
-            }
+        let reportChannels: [HIDInputChannel] = [.keyboard, .mouse].filter { subscribed($0) != nil }
+        let bootChannels: [HIDInputChannel] = [.bootKeyboard, .bootMouse].filter { subscribed($0) != nil }
+        let usesBoot = reportChannels.isEmpty && !bootChannels.isEmpty
+        let primaryChannels = usesBoot ? bootChannels : reportChannels
+        let optionalChannels: [HIDInputChannel] = [.consumer, .systemMicrophoneMute].filter {
+            subscribed($0) != nil
         }
-        guard let central else { session.bootProtocol = boot; return false }
-        guard session.subscribe(session.keyboardChannel, from: id),
-              session.subscribe(session.mouseChannel, from: id) else {
-            session.bootProtocol = boot
-            return false
-        }
-        if subscribed(.consumer) != nil {
-            _ = session.subscribe(.consumer, from: id)
-        }
-        if subscribed(.systemMicrophoneMute) != nil {
-            _ = session.subscribe(.systemMicrophoneMute, from: id)
+        let channels = primaryChannels + optionalChannels
+        guard let central = channels.compactMap({ subscribed($0) }).first else { return false }
+        session.bootProtocol = usesBoot
+        for channel in channels {
+            guard session.subscribe(channel, from: id) else { return false }
         }
         host = central
         _ = queue.append([state.keyboard, state.mouse(), state.consumer, state.systemMicrophoneMute])
@@ -453,6 +495,10 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
             guard let self, self.isPairing else { return }
             self.isPairing = false
             self.session.allowsPairing = false
+            if let pending = self.pendingHostApproval {
+                self.record("Host approval expired: \(self.peerTag(pending.id))")
+                self.pendingHostApproval = nil
+            }
             self.record("Pairing window closed")
             guard !self.session.isReady else { self.refreshStatus(); return }
             if self.session.preferredHost != self.hostStore.selectedHostID {
@@ -496,6 +542,7 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         canPair = false
         servicesInstalled = false
         rejectedPeers.removeAll()
+        pendingHostApproval = nil
         loggedATT.removeAll()
         manager.stopAdvertising()
         advertising = HIDAdvertisingState()
@@ -597,6 +644,51 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         if first || repeating { record("Not routed \(action): \(peerTag(id))") }
     }
 
+    /// CoreBluetooth completes the system bond before exposing encrypted HOGP
+    /// traffic to the app. A new central is therefore kept subscribed but gets
+    /// no input until the user separately approves it inside InpuDeck.
+    @discardableResult
+    private func requestHostApprovalIfNeeded(_ id: UUID, trigger: String) -> Bool {
+        let decision = HIDHostApprovalPolicy.decision(
+            for: id,
+            routedHost: session.host,
+            preferredHost: session.preferredHost,
+            knownHosts: Set(hostStore.hosts.map(\.id)),
+            rejectedHosts: Set(hostStore.rejectedHosts.map(\.id)),
+            pairingOpen: isPairing && session.allowsPairing,
+            pendingHost: pendingHostApproval?.id
+        )
+        switch decision {
+        case .route:
+            return false
+        case .block:
+            noteRejectedPeer(id, action: "\(trigger) blocked by host-approval policy", repeating: false)
+            return true
+        case .awaitDecision:
+            return true
+        case .requestApproval:
+            break
+        }
+        pendingHostApproval = DirectHostApproval(
+            id: id,
+            discoveredName: browser.resolvedName(for: id)
+        )
+        browser.resolveName(for: id)
+        record("Waiting for explicit approval of new host: \(peerTag(id)); trigger \(trigger)")
+        refreshStatus()
+        return true
+    }
+
+    private func requestApprovalForLiveUnknownSubscriber() {
+        let ids = Set(inputs.values.flatMap { characteristic in
+            (characteristic.subscribedCentrals ?? []).map(\.identifier)
+        })
+        for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
+            _ = requestHostApprovalIfNeeded(id, trigger: "live subscription at pairing start")
+            if pendingHostApproval != nil { return }
+        }
+    }
+
     private func makeSession(preferredHost: UUID?, allowsPairing: Bool) -> HIDHostSession {
         var session = HIDHostSession(preferredHost: preferredHost, allowsPairing: allowsPairing)
         session.knownHosts = Set(hostStore.hosts.map(\.id))
@@ -649,6 +741,8 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
             statusText = localized("Відпускання клавіш…")
         } else if !servicesInstalled {
             statusText = localized("Готуємо Bluetooth…")
+        } else if let approval = pendingHostApproval {
+            statusText = localizedFormat("Очікуємо дозволу для %@", approval.name)
         } else if let id = session.host ?? browser.requestedHost ?? session.preferredHost {
             statusText = connectingStatus(for: id)
         } else if isPairing {
@@ -930,6 +1024,7 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         } else {
             canPair = false
             servicesInstalled = false
+            pendingHostApproval = nil
             advertising = HIDAdvertisingState()
             addingService = nil
             serviceQueue.removeAll()
@@ -978,6 +1073,9 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
         guard peripheral === manager, isRunning,
               case .input(let channel)? = attributes[ObjectIdentifier(characteristic)] else { return }
+        if requestHostApprovalIfNeeded(central.identifier, trigger: "\(channel) subscription") {
+            return
+        }
         guard session.subscribe(channel, from: central.identifier) else {
             noteRejectedPeer(central.identifier, action: "\(channel) subscription", repeating: true)
             return
@@ -1021,6 +1119,9 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
             noteATT("read", request.characteristic.uuid.uuidString, peer, "attributeNotFound")
             peripheral.respond(to: request, withResult: .attributeNotFound)
             return
+        }
+        if case .reportMap = attribute {
+            _ = requestHostApprovalIfNeeded(peer, trigger: "encrypted report-map read")
         }
         let value: Data
         switch attribute {

@@ -186,7 +186,7 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.10
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.11
 ```
 
 The lower-level `install-esp32.py` asset supports Windows `COM` ports and
@@ -372,6 +372,24 @@ into standard HID keyboard/mouse commands.
 | 🟣 Purple | Slow pulse with a dark pause | The physical pairing window is open |
 | 🔴 Red | Rapid blink | USB HID is stalled and automatic recovery is about to restart the bridge |
 
+### Direct Bluetooth security
+
+Direct Bluetooth accepts HID input subscriptions only from the selected saved
+host. During an open pairing window, a new encrypted peer remains quarantined
+until the user separately approves it in an InpuDeck alert; completing the
+system Bluetooth pairing is not sufficient. Before approval it receives only
+neutral input reports, and its output/control writes are acknowledged without
+being applied. A second peer cannot replace an approval already on screen.
+
+Rejecting the alert closes the pairing window and remembers that iOS peer
+identifier across launches, so later connection attempts stay blocked without
+repeated prompts. Rejected peers are visible in the Bluetooth management sheet
+and can be allowed again deliberately. iOS does not expose system-bond removal
+to apps, so removing that bond still requires iPhone Settings or the peer's
+Bluetooth settings. Already saved destinations reconnect without a new prompt;
+selecting a newly discovered destination inside InpuDeck is itself explicit
+approval.
+
 ### ESP bridge security
 
 Firmware 3.3.0 and newer requires BLE Secure Connections with bonding, MITM
@@ -449,7 +467,7 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **Bluetooth security hardening (3.3.2-3.3.10 code validation)** - Direct Bluetooth input-report reads are now isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report without provoking a new pairing prompt. Release firmware and installer executables now carry Sigstore build-provenance attestations, and the bootstrap verifies the selected tag's workflow identity before running downloaded Python. Remaining work will be delivered in small, independently testable steps: explicit app approval and remembered rejection for new Direct hosts; safe, device-scoped BlueZ address-resolution hooks; and Linux helper/service hardening.
+- **Bluetooth security hardening (3.3.2-3.3.11 device validation)** - Direct Bluetooth input-report reads are isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report. Version 3.3.11 additionally quarantines every new incoming host behind an explicit InpuDeck approval alert, remembers rejection across launches, blocks competing approval attempts, and exposes a deliberate unblock control. Release firmware and installer executables carry Sigstore build-provenance attestations, and the bootstrap verifies the selected tag's workflow identity before running downloaded Python. Validate approval, remembered rejection, manual unblock, and existing-host reconnect on devices; then continue with safe, device-scoped BlueZ address-resolution hooks and Linux helper/service hardening.
 - **Secure ESP enrollment and bonded commands (3.3.0-3.3.7 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing/provisioning window, preserved bonds, deliberate bond reset, a protected app readiness probe, and a provisioned random static BLE identity. Full provisioning rotates the BLE identity with the passkey so iOS cannot silently reuse the old system pairing label; the rotated identity and provisioned name are verified in the iOS system pairing list, and name-only serial writes are physically gated as well. The authenticated adapter-name channel avoids stale CoreBluetooth names inside InpuDeck, while unsafe or unknown firmware produces a blocking popup. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate unattended reconnect, reboot recovery, rejected unknown clients, pairing-window timeout, bond reset, and the unsafe-firmware popup on physical devices.
 - **ESP32-S3-Zero status LED (3.3.9 device validation)** - The firmware now distinguishes a complete BLE-to-USB path, PC/USB only, authenticated Bluetooth with power-only USB, neither data side, the physical pairing window, and USB recovery. Physical testing showed that the onboard LED accepts GRB data despite the Arduino-ESP32 Waveshare board profile declaring RGB. Version 3.3.8 therefore made no electrical change; 3.3.9 overrides the profile with the observed GRB order and polls TinyUSB's authoritative mount state so moving from a power-only cable to a data host cannot leave the indicator stuck in BLE-only mode. Confirm every corrected color, transition, and pattern on the onboard WS2812 before marking it complete.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
