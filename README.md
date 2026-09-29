@@ -140,36 +140,45 @@ one command:
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash
 ```
 
-It resolves `latest` to an exact release tag, downloads the firmware and Python
-installer, checks the firmware SHA-256, and verifies separate Sigstore provenance
-bundles for both executable assets before parsing or running downloaded code.
-The accepted signing identity is restricted to this repository's tagged release
-workflow and the exact selected tag. It then asks for the bridge name, generates
-a unique six-digit security passkey and random static BLE identity, explains the
-BOOT/RESET sequence, detects a single Espressif serial port, and runs the Python
-installer in an isolated `uv` environment. If `uv` is not installed, the script
-downloads its versioned installer only after validating that installer's pinned
-SHA-256; the upstream installer also validates the selected `uv` binary. The
-temporary tools are removed afterward and no system Python packages are changed.
-After flashing, the installer pauses until RESET has been pressed and the user
-has confirmed that the board may reconnect. On Linux, if the serial device is
-not accessible, it requests `sudo` only to add a temporary ACL to that device
-node (and reapplies it after USB re-enumeration); neither `uv` nor `esptool` runs
-as root. Every tagged release contains the matching firmware, checksum,
-installer scripts, and signed provenance bundles rather than relying on an
-expiring Actions artifact.
+On Windows, open PowerShell and run the native one-command wrapper:
 
-The short `curl ... | bash` command still treats the HTTPS copy of
-`install-esp32.sh` from the repository's `main` branch as its initial trust anchor.
-For auditing or a manually bootstrapped installation, the tagged release also
-contains `install-esp32.sh.sigstore.json`, which authenticates the exact released
-shell installer independently through Sigstore's public transparency log.
+```powershell
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.ps1').Content))
+```
+
+Both wrappers resolve `latest` to an exact release tag, download the firmware
+and Python installer, check the firmware SHA-256, and verify separate Sigstore
+provenance bundles for both executable assets before parsing or running
+downloaded code. The accepted signing identity is restricted to this
+repository's tagged release workflow and the exact selected tag. Each wrapper
+then asks for the bridge name, generates a unique six-digit security passkey and
+random static BLE identity, explains the BOOT/RESET sequence, finds the COM or
+serial port, and runs the authenticated Python installer in an isolated `uv`
+environment. If `uv` is absent, the Bash wrapper verifies its pinned upstream
+installer, while the PowerShell wrapper downloads a pinned Windows archive and
+checks its embedded SHA-256 before extraction. Temporary tools are removed
+afterward and no system Python packages are changed.
+
+After flashing, the installer pauses until RESET has been pressed and the board
+has reconnected. On Linux, if the serial device is not accessible, it requests
+`sudo` only to add a temporary ACL to that device node (and reapplies it after
+USB re-enumeration); neither `uv` nor `esptool` runs as root. Every tagged
+release contains the matching firmware, checksum, installer scripts, and signed
+provenance bundles rather than relying on an expiring Actions artifact.
+
+The short one-command bootstraps still treat the HTTPS copies of
+`install-esp32.sh` or `install-esp32.ps1` from the repository's `main` branch
+as their initial trust anchor. For auditing or a manually bootstrapped
+installation, the tagged release also contains a Sigstore bundle for each exact
+released wrapper, independently authenticated through the public transparency
+log.
 
 If several Espressif serial devices are connected, the installer prefers the
 port that was just recreated by the BOOT/RESET sequence. If that signal is
 ambiguous, it shows the USB product, serial number, and physical location and
 asks for a numbered choice in the same run; there is no need to restart it with
-a guessed `/dev/ttyACM*` path. `--port` remains available for automation.
+a guessed `/dev/ttyACM*` path. `--port` (or PowerShell `-Port`) remains available for
+automation.
 
 Store the passkey printed at the end. In InpuDeck, select the new ESP adapter
 and enter that code in the iOS system pairing prompt. The first-pairing window
@@ -188,19 +197,28 @@ NVS namespace; it does not patch or recompile the binary. For explicit or
 non-default choices, download `install-esp32.sh` and run, for example:
 
 ```bash
-./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.11
+./install-esp32.sh --port /dev/ttyACM0 --name "InpuDeck Office" --version 3.3.12
 ```
 
-The lower-level `install-esp32.py` asset supports Windows `COM` ports and
-`--skip-flash` for renaming an already flashed compatible bridge. The one-command
-installer exposes the same recovery path without rewriting firmware:
+Both one-command wrappers expose the same no-reflash recovery path. On Windows,
+append `-SkipFlash`; `-Name`, `-Port COM5`, and `-Version 3.3.12` are optional:
+
+```powershell
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.ps1').Content)) -SkipFlash -Name "InpuDeck Office"
+```
+
+The equivalent Linux/macOS command is:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh | bash -s -- --skip-flash
 ```
 
-Every `--skip-flash` mutation requires a physical BOOT window: hold BOOT for
-3–7 seconds while the firmware is running before confirming the installer.
+The released lower-level `install-esp32.py` remains available for automation on
+all three platforms.
+
+Every `-SkipFlash` or `--skip-flash` mutation requires a physical BOOT window:
+hold BOOT for 3–7 seconds while the firmware is running before confirming the
+installer.
 A rename without rotation preserves the BLE identity and bonds, so iOS may keep
 the previous label in its system Bluetooth list even though InpuDeck and new
 scans show the stored name. `--skip-flash` refuses firmware older than 3.3.0
@@ -210,6 +228,12 @@ identity and passkey and deliberately invalidate all existing iPhone bonds, use:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.sh \
   | bash -s -- --skip-flash --rotate-passkey
+```
+
+On Windows, the corresponding command is:
+
+```powershell
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/keefeere/InpuDeck/main/scripts/install-esp32.ps1').Content)) -SkipFlash -RotatePasskey
 ```
 
 For a new iPhone without rotating the shared adapter identity, hold BOOT for
@@ -471,7 +495,6 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 - **Bluetooth security hardening (3.3.2-3.3.11 device validation)** - Direct Bluetooth input-report reads are isolated as well as notifications: the selected host sees the current report, while another bonded host receives a same-size neutral report. Version 3.3.11 additionally quarantines every new incoming host behind an explicit InpuDeck approval alert, remembers rejection across launches, blocks competing approval attempts, and exposes a deliberate unblock control. Release firmware and installer executables carry Sigstore build-provenance attestations, and the bootstrap verifies the selected tag's workflow identity before running downloaded Python. The optional BlueZ 5.87 address-resolution startup hook is fail-closed and scoped to exact root-controlled iPhone identity addresses instead of enumerating every dual-mode bond. Direct Linux mutations require the exact paired, unblocked target, while the optional reconnect service runs unprivileged with a read-only filesystem/home, no capabilities or privilege escalation, private devices, and D-Bus-only socket access. The planned code hardening is complete; validate app approval/rejection/unblock, existing-host reconnect, the scoped hook, and the sandboxed user service on physical devices.
 - **Secure ESP enrollment and bonded commands (3.3.0-3.3.7 device validation)** - The implementation now requires BLE Secure Connections, authenticated encrypted characteristics, a unique installer-generated passkey, a physical pairing/provisioning window, preserved bonds, deliberate bond reset, a protected app readiness probe, and a provisioned random static BLE identity. Full provisioning rotates the BLE identity with the passkey so iOS cannot silently reuse the old system pairing label; the rotated identity and provisioned name are verified in the iOS system pairing list, and name-only serial writes are physically gated as well. The authenticated adapter-name channel avoids stale CoreBluetooth names inside InpuDeck, while unsafe or unknown firmware produces a blocking popup. Legacy firmware binaries, installers, and firmware-specific Actions artifacts predating 3.3.0 have been removed; historical source, tags, workflow runs, and IPA releases remain available, so rebuilding an unsafe version requires a deliberate source build. Remaining before marking this complete: validate unattended reconnect, reboot recovery, rejected unknown clients, pairing-window timeout, bond reset, and the unsafe-firmware popup on physical devices.
-- **ESP32-S3-Zero status LED (3.3.9 device validation)** - The firmware now distinguishes a complete BLE-to-USB path, PC/USB only, authenticated Bluetooth with power-only USB, neither data side, the physical pairing window, and USB recovery. Physical testing showed that the onboard LED accepts GRB data despite the Arduino-ESP32 Waveshare board profile declaring RGB. Version 3.3.8 therefore made no electrical change; 3.3.9 overrides the profile with the observed GRB order and polls TinyUSB's authoritative mount state so moving from a power-only cable to a data host cannot leave the indicator stuck in BLE-only mode. Confirm every corrected color, transition, and pattern on the onboard WS2812 before marking it complete.
 - **Landscape keyboard swipe pointer** - On the landscape keyboard, distinguish a key press or long press from a drag that crosses a movement threshold. A qualifying drag that begins on an ordinary key should cancel/defer that key action and transition into relative touchpad control; normal taps and long presses must retain their current behavior. Add left- and right-click touch zones beside the `input-keyboard-tools` slider.
 - **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.
 - **Adaptive layouts for iPhone Duo and iPad (wishlist)** - Once the iPhone Duo simulator is available, verify the app in full-screen and half-screen configurations. Also test representative iPad sizes and multitasking widths (Split View and Stage Manager), then consider layouts that make better use of the additional space.
@@ -495,6 +518,8 @@ helper and distribution-specific testing is optional.
 - **Expert mode** - Added in 3.0.4 and refined through 3.0.8. It removes optional guidance, action labels, touchpad text, the composer placeholder, and bottom-navigation captions while preserving keyboard legends and operational status. Confirmed on-device.
 - **Installer-configurable ESP32 identity** - Added in 3.1.0. The firmware stores a validated UTF-8 bridge name in NVS, and the release installer can flash and name an adapter without recompilation. Releases 3.1.1-3.1.6 added the one-command bootstrap, scoped Linux serial permissions, an explicit RESET/re-enumeration flow, runtime USB CDC, resilient port discovery, a no-reflash recovery path, and the CDC control-line handshake required for bidirectional provisioning.
 - **Universal multi-connect** - Completed in 3.2.0-3.2.2. One destination selector manages any mix of saved Direct Bluetooth devices and multiple named ESP32 bridges, releases held input before switching routes, and reconnects each adapter through its own CoreBluetooth identity. Pairing and discovery remain in the adjacent action menu, while protocol icons distinguish ESP and Direct Bluetooth routes. Two-adapter discovery, switching, reconnect, and USB HID input were confirmed on-device.
+- **ESP32-S3-Zero status LED** - Completed in 3.3.9 and physically validated on the Waveshare board. A restrained green solid light means the full BLE-to-USB path is ready; blue-cyan means USB HID only; an amber double blink means authenticated Bluetooth with USB power but no USB HID host; a red heartbeat means neither data side is connected; purple pulsing marks the physical pairing window; and rapid red reports USB recovery. Returning a host restores the correct live state instead of leaving the LED stuck.
+- **Native Windows ESP installer** - Added in 3.3.12. A one-command PowerShell wrapper performs the same full flash, rename-only, and passkey/identity rotation flows as Linux/macOS, auto-detects Windows COM ports through the shared Python core, bootstraps a checksum-pinned temporary `uv`, and verifies exact-tag Sigstore provenance before executing downloaded release assets. CI parses the script on `windows-latest`, and tagged releases publish the wrapper with its own provenance bundle.
 
 ### Completed in iOS 2.2
 

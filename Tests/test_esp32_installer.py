@@ -8,6 +8,7 @@ from unittest import mock
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "install-esp32.py"
 BOOTSTRAP = SCRIPT.with_suffix(".sh")
+POWERSHELL_BOOTSTRAP = SCRIPT.with_suffix(".ps1")
 SPEC = importlib.util.spec_from_file_location("install_esp32", SCRIPT)
 installer = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -515,6 +516,61 @@ class BootstrapContractTests(unittest.TestCase):
         )
         self.assertLess(verification, execution)
 
+    def test_windows_bootstrap_downloads_and_verifies_release_assets(self):
+        bootstrap = POWERSHELL_BOOTSTRAP.read_text()
+        for asset in (
+            "InpuDeck-ESP32-S3-Zero.bin",
+            "InpuDeck-ESP32-S3-Zero.bin.sha256",
+            "InpuDeck-ESP32-S3-Zero.bin.sigstore.json",
+            "install-esp32.py",
+            "install-esp32.py.sigstore.json",
+        ):
+            with self.subTest(asset=asset):
+                self.assertIn(asset, bootstrap)
+        self.assertIn("api.github.com/repos/$Repository/releases/latest", bootstrap)
+        self.assertIn('"sigstore", "verify", "identity"', bootstrap)
+        self.assertIn("--cert-identity", bootstrap)
+        self.assertIn("--cert-oidc-issuer", bootstrap)
+        verification = bootstrap.index(
+            "Verifying signed provenance for install-esp32.py"
+        )
+        execution = bootstrap.index(
+            "$PythonInstaller, \"--help\""
+        )
+        self.assertLess(verification, execution)
+
+    def test_windows_bootstrap_uses_a_pinned_temporary_uv(self):
+        bootstrap = POWERSHELL_BOOTSTRAP.read_text()
+        self.assertIn("$UvVersion = \"0.12.19\"", bootstrap)
+        for checksum in (
+            "6dbb02d79e419522f1c500f0adb1cddcff0cda7d59b0d66ea7f5e3b4a1b2f5f0",
+            "115b54cb823bc48260670f5782001add6067ac8d98d18c8263a833704e287de9",
+            "e1c2d19d1173a0e9f81ba3f95881ad741808133e372610889ff6870629218c7f",
+        ):
+            with self.subTest(checksum=checksum):
+                self.assertIn(checksum, bootstrap)
+        self.assertIn("Assert-Sha256 -Path $Archive", bootstrap)
+        self.assertIn("Expand-Archive", bootstrap)
+
+    def test_windows_bootstrap_exposes_flash_and_existing_firmware_modes(self):
+        bootstrap = POWERSHELL_BOOTSTRAP.read_text()
+        for contract in (
+            "[switch]$SkipFlash",
+            "[switch]$RotatePasskey",
+            "--skip-flash",
+            "--rotate-passkey",
+            "--wait-for-reset",
+            "--passkey",
+            "--port",
+            "COM port",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, bootstrap)
+
+    def test_windows_bootstrap_user_interface_is_english(self):
+        bootstrap = POWERSHELL_BOOTSTRAP.read_text()
+        self.assertNotRegex(bootstrap, r"[А-Яа-яІіЇїЄєҐґ]")
+
     def test_release_workflow_attests_every_executable_esp_asset(self):
         workflow = (SCRIPT.parents[1] / ".github/workflows/build-ios-ipa.yml").read_text()
         self.assertIn("attestations: write", workflow)
@@ -523,15 +579,25 @@ class BootstrapContractTests(unittest.TestCase):
             workflow.count(
                 "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
             ),
-            3,
+            4,
         )
         for asset in (
             "InpuDeck-ESP32-S3-Zero.bin.sigstore.json",
             "install-esp32.py.sigstore.json",
             "install-esp32.sh.sigstore.json",
+            "install-esp32.ps1.sigstore.json",
         ):
             with self.subTest(asset=asset):
                 self.assertIn(asset, workflow)
+        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn("Language.Parser]::ParseFile", workflow)
+        self.assertIn("needs: [firmware, windows-installer]", workflow)
+
+    def test_standalone_firmware_artifact_includes_windows_installer(self):
+        workflow = (
+            SCRIPT.parents[1] / ".github/workflows/build-esp32-firmware.yml"
+        ).read_text()
+        self.assertGreaterEqual(workflow.count("install-esp32.ps1"), 3)
 
     def test_bootstrap_warns_that_full_provisioning_replaces_the_ios_bond(self):
         bootstrap = BOOTSTRAP.read_text()
