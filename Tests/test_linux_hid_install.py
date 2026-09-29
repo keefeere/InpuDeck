@@ -170,8 +170,28 @@ esac
         self.stub_paired_phone_without_cached_hid()
         self.run_helper('--device', '10:A2:D3:01:47:A1', '--install-service')
         unit = self.config / 'systemd/user/inpudeck-hid.service'
-        self.assertIn('--device 10:A2:D3:01:47:A1 --watch', unit.read_text())
+        text = unit.read_text()
+        self.assertIn('--device 10:A2:D3:01:47:A1 --watch', text)
+        for directive in (
+                'NoNewPrivileges=yes',
+                'CapabilityBoundingSet=',
+                'PrivateUsers=yes',
+                'PrivateTmp=yes',
+                'PrivateDevices=yes',
+                'ProtectSystem=strict',
+                'ProtectHome=read-only',
+                'ProtectKernelTunables=yes',
+                'ProtectKernelModules=yes',
+                'ProtectControlGroups=yes',
+                'RestrictNamespaces=yes',
+                'RestrictAddressFamilies=AF_UNIX'):
+            self.assertIn(directive + '\n', text)
         self.assertIn('enable --now inpudeck-hid.service', self.log.read_text())
+
+    def test_installer_rejects_relative_xdg_config_home(self):
+        self.env['XDG_CONFIG_HOME'] = 'relative-config'
+        self.run_helper('--install', ok=False)
+        self.assertFalse(self.prefix.exists())
 
 
 if __name__ == "__main__":

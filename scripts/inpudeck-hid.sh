@@ -396,7 +396,10 @@ copy_if_changed() {
 check_user_install() {
   [ "$(id -u)" -ne 0 ] || die "run helper installation as your desktop user, without sudo"
   [[ "$prefix" = /* ]] || die "installation prefix must be an absolute path"
-  [[ "$prefix" != *$'\n'* ]] || die "installation prefix must not contain newlines"
+  [[ "$user_config" = /* ]] || die "XDG_CONFIG_HOME must be an absolute path"
+  if LC_ALL=C printf '%s' "$prefix$user_config" | grep -q '[[:cntrl:]]'; then
+    die "installation paths must not contain control characters"
+  fi
 }
 
 remove_legacy_user_install() {
@@ -471,7 +474,7 @@ install_user_service() {
   require systemctl
   if systemctl --user is-active --quiet "$service_name"; then was_active=1; fi
   mkdir -p "$units"
-  printf -v text '# Managed by InpuDeck\n[Unit]\nDescription=%s\n\n[Service]\nExecStart="%s/libexec/inpudeck/inpudeck-hid.sh" --adapter %s --device %s %s\nRestart=on-failure\nRestartSec=10\n\n[Install]\nWantedBy=default.target\n' "$description" "$prefix" "$adapter" "$mac" "$service_args"
+  printf -v text '# Managed by InpuDeck\n[Unit]\nDescription=%s\n\n[Service]\nType=simple\nExecStart="%s/libexec/inpudeck/inpudeck-hid.sh" --adapter %s --device %s %s\nRestart=on-failure\nRestartSec=10\nTimeoutStopSec=10\nEnvironment=PYTHONDONTWRITEBYTECODE=1\nUMask=0077\nNoNewPrivileges=yes\nCapabilityBoundingSet=\nAmbientCapabilities=\nPrivateUsers=yes\nPrivateTmp=yes\nPrivateDevices=yes\nProtectSystem=strict\nProtectHome=read-only\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nProtectClock=yes\nProtectHostname=yes\nRestrictSUIDSGID=yes\nRestrictRealtime=yes\nRestrictNamespaces=yes\nLockPersonality=yes\nRestrictAddressFamilies=AF_UNIX\n\n[Install]\nWantedBy=default.target\n' "$description" "$prefix" "$adapter" "$mac" "$service_args"
   local unit="$units/$service_name"
   if [ ! -f "$unit" ] || [ "$(cat "$unit")" != "${text%$'\n'}" ]; then
     printf '%s' "$text" >"$unit"

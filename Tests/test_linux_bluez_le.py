@@ -280,6 +280,24 @@ class TransportTests(unittest.TestCase):
             client.connect(*client.target(MAC))
         self.assertEqual(bus.calls, [])
 
+    def test_mutating_commands_require_the_exact_paired_unblocked_target(self):
+        for action in ("trust", "drop_audio"):
+            for key, value in (("Paired", False), ("Blocked", True)):
+                with self.subTest(action=action, key=key):
+                    bus = FakeBus()
+                    bus.objects[PATH][le.DEVICE][key] = value
+                    client = bus.client()
+                    with self.assertRaisesRegex(RuntimeError, "paired and not blocked"):
+                        getattr(client, action)(*client.target(MAC))
+                    self.assertEqual(bus.calls, [])
+
+        bus = FakeBus()
+        client = bus.client()
+        client.trust(*client.target(MAC))
+        self.assertEqual(bus.calls, [
+            (PATH, le.PROPERTIES, "Set", le.DEVICE, "Trusted", True)
+        ])
+
     def test_manual_audio_drop_preserves_hid_network_and_other_devices(self):
         bus = FakeBus(connected=True)
         bus.objects[PATH][le.DEVICE]['UUIDs'] += [
