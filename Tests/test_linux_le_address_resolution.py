@@ -90,11 +90,41 @@ class AddressResolutionTest(unittest.TestCase):
                     return Result("addr 44:F7:9F:AC:CD:9C version 13")
                 return Result(returncode=1, stderr="not available")
 
+            with self.assertRaisesRegex(RuntimeError, "failed for 1 configured peer"):
+                module.apply("hci0", ["10:A2:D3:01:47:A1"], root, fake_run)
+            self.assertFalse(any("set-flags" in call for call in calls))
+
+    def test_missing_kernel_flag_record_is_initialized_for_exact_bond(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            peer = root / "44:F7:9F:AC:CD:9C" / "10:A2:D3:01:47:A1"
+            peer.mkdir(parents=True)
+            (peer / "info").write_text(
+                "[General]\nAddressType=public\nSupportedTechnologies=BR/EDR;LE;\n"
+                "[IdentityResolvingKey]\nKey=x\n[LinkKey]\nKey=x\n[LongTermKey]\nKey=x\n"
+            )
+            calls = []
+
+            def fake_run(*args):
+                calls.append(args)
+                if args[-1] == "info":
+                    return Result("addr 44:F7:9F:AC:CD:9C version 13")
+                if "get-flags" in args:
+                    return Result(
+                        returncode=1,
+                        stderr="Get device flags failed with status 0x0d (Invalid Parameters)",
+                    )
+                return Result("Set device flags succeeded")
+
             self.assertEqual(
                 module.apply("hci0", ["10:A2:D3:01:47:A1"], root, fake_run),
-                0,
+                1,
             )
-            self.assertFalse(any("set-flags" in call for call in calls))
+            self.assertIn(
+                ("btmgmt", "-i", "hci0", "set-flags", "-t", "1", "-f", "4",
+                 "10:A2:D3:01:47:A1"),
+                calls,
+            )
 
     def test_device_file_is_strict_and_rejects_writable_or_symlinked_input(self):
         with tempfile.TemporaryDirectory() as temporary:

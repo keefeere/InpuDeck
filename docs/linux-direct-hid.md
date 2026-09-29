@@ -273,7 +273,10 @@ The hook runs within the existing `bluetooth.service` after each daemon start.
 It refuses a missing, symlinked, non-root-owned, or group/world-writable device
 file. Every configured address must resolve to an existing BlueZ bond with both
 BR/EDR and LE keys plus an IRK. It never enumerates or modifies other bonds, and
-it refuses to write if the current kernel flags cannot be read and preserved.
+it preserves readable kernel flags. The affected BlueZ path has no kernel device
+flag record at all, so `Get Device Flags` returns `0x0d (Invalid Parameters)`;
+only for that exact response, the hook initializes the explicitly configured
+bond with address resolution (`0x04`). Any other read or write failure is fatal.
 It does not scan, connect, alter keys, or restart Bluetooth. The existing
 optional user watcher remains responsible for requesting an LE connection.
 

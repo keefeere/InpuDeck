@@ -110,18 +110,31 @@ def apply(adapter, devices, storage=STORAGE, execute=run):
         targets.append((address, address_type))
 
     changed = 0
+    failed = 0
     for address, address_type in targets:
         base = ("btmgmt", "-i", adapter)
         flags = execute(*base, "get-flags", "-t", address_type, address)
         if flags.returncode:
-            print(f"Cannot read current flags for {address}: "
-                  f"{flags.stderr.strip() or flags.stdout.strip()}", file=sys.stderr)
-            continue
-        match = re.search(r"Current Flags:\s*0x([0-9a-fA-F]+)", flags.stdout)
-        if not match:
-            print(f"Cannot parse current flags for {address}; leaving it unchanged", file=sys.stderr)
-            continue
-        current = int(match.group(1), 16)
+            detail = flags.stderr.strip() or flags.stdout.strip()
+            # This is the exact BlueZ dual-mode bug we are repairing: the
+            # device was never added to the kernel flag table, so Get Device
+            # Flags returns Invalid Parameters. There are no existing flags to
+            # preserve in that case; initialize the explicit bonded peer with
+            # ADDRESS_RESOLUTION only. Every other read failure stays fatal.
+            if re.search(r"(?:status\s+)?0x0d\b|Invalid Parameters", detail, re.I):
+                current = 0
+                print(f"No kernel device-flag record for {address}; initializing it")
+            else:
+                print(f"Cannot read current flags for {address}: {detail}", file=sys.stderr)
+                failed += 1
+                continue
+        else:
+            match = re.search(r"Current Flags:\s*0x([0-9a-fA-F]+)", flags.stdout)
+            if not match:
+                print(f"Cannot parse current flags for {address}; leaving it unchanged", file=sys.stderr)
+                failed += 1
+                continue
+            current = int(match.group(1), 16)
         if current & FLAG:
             continue
         result = execute(*base, "set-flags", "-t", address_type,
@@ -129,10 +142,13 @@ def apply(adapter, devices, storage=STORAGE, execute=run):
         if result.returncode:
             print(f"Address-resolution flag failed for {address}: "
                   f"{result.stderr.strip() or result.stdout.strip()}", file=sys.stderr)
+            failed += 1
             continue
         print(f"Address resolution enabled for configured InpuDeck peer {address}")
         changed += 1
     print(f"Address-resolution flags changed: {changed}")
+    if failed:
+        raise RuntimeError(f"address-resolution setup failed for {failed} configured peer(s)")
     return changed
 
 
