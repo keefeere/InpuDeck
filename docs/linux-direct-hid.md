@@ -65,7 +65,7 @@ No UUID discovery filter is set: matching UUID filters can crash BlueZ 5.87
 | --- | --- | --- |
 | BlueZ userspace API | One systemd drop-in adds `--experimental` | Host-wide API exposure; `inpudeck-le-setup.py disable` removes our drop-in |
 | On-demand helper | Two files under `~/.local/libexec/inpudeck` and a launcher `~/.local/bin/inpudeck-hid` | Per user; `inpudeck-hid --uninstall` |
-| Reconnect service | Not installed | Optional `--install-service`; remove with `--uninstall-service` |
+| Reconnect service | Not installed | Optional sandboxed per-user unit pinned to one exact address; remove with `--uninstall-service` |
 | Audio configuration | Not changed | Audio restrictions need separate configuration; see limitations below |
 | Audio receiver switch | Separate optional installation | User menu/panel launcher; persistent receiving-role override only while off; `on` or `uninstall` restores underlying roles |
 | Pairing / trust | Preserved | Pair or `--trust` only when explicitly requested |
@@ -204,6 +204,12 @@ radio requests. It does not forcibly drop connections after a timeout. Errors
 remain visible in its log. Repeating service installation reuses the same unit;
 unchanged configuration does not restart the watcher. The service runs as the
 user, not root; it is not a system-wide pre-login or pre-OS keyboard solution.
+Its generated unit has no capabilities or privilege escalation, makes the
+system and home directory read-only, hides host devices behind a private `/dev`,
+allows only Unix-domain sockets needed for D-Bus, and blocks namespace/SUID,
+kernel, control-group, clock, and hostname changes. The helper still reads the
+target's Bluetooth state through system D-Bus and `/sys`, and BlueZ performs the
+actual radio operation for that one paired, unblocked address.
 
 ### BlueZ 5.87 dual-mode address-resolution bug
 

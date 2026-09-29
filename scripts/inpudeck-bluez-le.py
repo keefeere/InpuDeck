@@ -120,12 +120,15 @@ class BlueZ:
             finally:
                 adapter.SetDiscoveryFilter(self.dbus.Dictionary({}, signature="sv"), timeout=5)
 
-    def require_le(self, path, interfaces):
+    def require_paired_target(self, interfaces):
         props = interfaces[DEVICE]
         if not self.adapter.get("Powered"):
             raise RuntimeError("Bluetooth adapter is powered off")
         if not props.get("Paired") or props.get("Blocked"):
             raise RuntimeError("Target must be paired and not blocked")
+
+    def require_le(self, path, interfaces):
+        self.require_paired_target(interfaces)
         # UUIDs are a discovery cache, not pairing identity or a prerequisite
         # for LE.Connect. iOS can remove this app's service while it is stopped;
         # after reboot the paired phone may therefore have no cached HID UUID.
@@ -168,7 +171,14 @@ class BlueZ:
             if error.get_dbus_name() != "org.bluez.Error.NotConnected":
                 raise
 
+    def trust(self, path, interfaces):
+        self.require_paired_target(interfaces)
+        self.interface(path, PROPERTIES).Set(
+            DEVICE, "Trusted", self.dbus.Boolean(True), timeout=5
+        )
+
     def drop_audio(self, path, interfaces):
+        self.require_paired_target(interfaces)
         requested = []
         for short in AUDIO:
             uuid = f"0000{short}-0000-1000-8000-00805f9b34fb"
@@ -253,7 +263,7 @@ def main():
             print(f"Disconnecting LE only: {path}", flush=True)
             bluez.interface(path, LE).Disconnect(timeout=10)
         elif args.command == "trust":
-            bluez.interface(path, PROPERTIES).Set(DEVICE, "Trusted", dbus.Boolean(True), timeout=5)
+            bluez.trust(path, interfaces)
         elif args.command == "drop-audio":
             bluez.drop_audio(path, interfaces)
         elif args.command == "hid-ready":
