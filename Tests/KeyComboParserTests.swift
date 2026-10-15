@@ -12,7 +12,10 @@ struct KeyComboParserTests {
         _ b: [(UInt8, UInt8)]
     ) -> Bool {
         guard a.count == b.count else { return false }
-        return zip(a, b).allSatisfy { $0.0.modifiers == $1.0 && $0.0.keycode == $1.1 }
+        for index in a.indices where a[index].modifiers != b[index].0 || a[index].keycode != b[index].1 {
+            return false
+        }
+        return true
     }
 
     static func main() {
