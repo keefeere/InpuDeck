@@ -134,7 +134,7 @@ enum KeyComboParser {
         for (index, line) in raw.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            parses.append(parseLine(line, lineNumber: index + 1))
+            parses.append(parseLine(String(line), lineNumber: index + 1))
         }
         return parses
     }
