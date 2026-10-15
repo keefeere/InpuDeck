@@ -21,8 +21,8 @@ struct KeyComboParserTests {
         // Case-insensitive tokens and whitespace around "+".
         let spaced = KeyComboParser.parseLine(" win + L ", lineNumber: 2)
         check(
-            spaced.outcome == .tap(ParsedKeyTap(modifiers: HID.modLeftGUI, key: .character("l"))),
-            "win + L parses case-insensitively with spaces")
+            spaced.outcome == .tap(ParsedKeyTap(modifiers: HID.modLeftGUI, key: .character("L"))),
+            "win + L parses case-insensitively with spaces and keeps letter case")
 
         // Function keys.
         check(
@@ -88,34 +88,75 @@ struct KeyComboParserTests {
     }
 
     static func plannerTests() {
+        let shortcut = HostLayoutShortcut.controlSpace
+
         // A simple combo plans to a single tap.
-        let taps = KeyComboPlanner.plan("Ctrl+Shift+Esc")
-        check(taps == [HIDCommand(modifiers: HID.modLeftCtrl | HID.modLeftShift, keycode: HID.keyEscape)],
+        let taps = KeyComboPlanner.makePlan(
+            for: "Ctrl+Shift+Esc",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(taps == [(HID.modLeftCtrl | HID.modLeftShift, HID.keyEscape)],
               "A combo plans to one tap")
 
         // Characters are typed with layout switching for non-English letters.
-        let mixed = KeyComboPlanner.plan("aі")
-        check(mixed.count >= 3, "Mixed-layout text needs a layout switch")
-        check(mixed.last?.keycode == HID.mapCharacterToHID("і", layout: .ukrainianEnhanced)?.keycode,
-              "The final Ukrainian letter uses the Ukrainian layout keycode")
+        let mixed = KeyComboPlanner.makePlan(
+            for: "aі",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        )
+        check(mixed.taps.count >= 3, "Mixed-layout text needs a layout switch")
+        check(mixed.finalLayout == .ukrainianEnhanced, "Planning ends in the Ukrainian layout")
+        check(
+            mixed.taps.last?.keycode == HID.mapCharacterToHID("і", layout: .ukrainianEnhanced)?.keycode,
+            "The final Ukrainian letter uses the Ukrainian layout keycode"
+        )
 
         // Text lines type each character.
-        let text = KeyComboPlanner.plan("hi")
-        check(text == [HIDCommand(keycode: HID.mapCharacterToHID("h", layout: .english)!.keycode),
-                       HIDCommand(keycode: HID.mapCharacterToHID("i", layout: .english)!.keycode)],
+        let text = KeyComboPlanner.makePlan(
+            for: "hi",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(text == [(0, HID.mapCharacterToHID("h", layout: .englishUS)!.keycode),
+                       (0, HID.mapCharacterToHID("i", layout: .englishUS)!.keycode)],
               "Plain text plans one tap per character")
 
-        // Tabs inside text lines type the Tab key.
-        let tabbed = KeyComboPlanner.plan("a\tb")
-        check(tabbed.contains(HIDCommand(keycode: HID.keyTab)), "A tab character plans a Tab tap")
+        // Newlines type Enter; tabs type Tab.
+        let tabbed = KeyComboPlanner.makePlan(
+            for: "a\tb\nc",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(tabbed.contains(where: { $0.keycode == HID.keyTab }),
+              "A tab character plans a Tab tap")
+        check(tabbed.contains(where: { $0.keycode == HID.keyEnter }),
+              "A newline plans an Enter tap")
 
         // Error lines are skipped, valid ones still plan.
-        let partial = KeyComboPlanner.plan("Ctrl+Bogus\nEnter")
-        check(partial == [HIDCommand(keycode: HID.keyEnter)], "Invalid lines are skipped in planning")
+        let partial = KeyComboPlanner.makePlan(
+            for: "Ctrl+Bogus\nEnter",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(partial == [(0, HID.keyEnter)], "Invalid lines are skipped in planning")
 
         // Modifier-only lines plan a keycode-0 tap.
-        let modifierOnly = KeyComboPlanner.plan("Ctrl+Shift")
-        check(modifierOnly == [HIDCommand(modifiers: HID.modLeftCtrl | HID.modLeftShift, keycode: 0)],
+        let modifierOnly = KeyComboPlanner.makePlan(
+            for: "Ctrl+Shift",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(modifierOnly == [(HID.modLeftCtrl | HID.modLeftShift, 0)],
               "A modifier-only line plans a keycode-0 tap")
+
+        // Characters with modifiers combine the character command modifiers.
+        let shiftChar = KeyComboPlanner.makePlan(
+            for: "Shift+a",
+            startingLayout: .englishUS,
+            layoutShortcut: shortcut
+        ).taps
+        check(shiftChar == [(HID.modLeftShift, HID.keyA)],
+              "Shift+character adds the modifier to the character tap")
     }
 }

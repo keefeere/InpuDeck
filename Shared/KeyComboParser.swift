@@ -154,7 +154,7 @@ enum KeyComboParser {
         }
         if lower.hasPrefix("f") {
             if let number = Int(lower.dropFirst()), (1...12).contains(number) {
-                return .special(keycode: UInt8(HID.keyF1 + number - 1))
+                return .special(keycode: HID.keyF1 + UInt8(number - 1))
             }
         }
         if token.count == 1, let character = token.first {
@@ -169,59 +169,94 @@ enum KeyComboParser {
 /// automatic layout switching, mirroring `TextTypingPlanner`.
 enum KeyComboPlanner {
 
-    /// Plans the body starting from `initialLayout` (`.inferred` for fresh
-    /// hosts). Lines that fail to parse are skipped.
-    static func plan(_ body: String, initialLayout: KeyboardLayout = .inferred) -> [HIDCommand] {
-        var commands: [HIDCommand] = []
-        var current = initialLayout
+    /// The planned taps plus the layout left active after planning and the
+    /// characters that have no HID key on either layout.
+    struct Plan {
+        var taps: [(modifiers: UInt8, keycode: UInt8)]
+        var finalLayout: KeyboardLayout
+        var unsupportedCharacters: [Character]
+    }
+
+    /// Plans the body starting from `startingLayout`. Layout switches use
+    /// `layoutShortcut`, the same setting the text input tab uses. Lines that
+    /// fail to parse are skipped.
+    static func makePlan(
+        for body: String,
+        startingLayout: KeyboardLayout,
+        layoutShortcut: HostLayoutShortcut
+    ) -> Plan {
+        var taps: [(modifiers: UInt8, keycode: UInt8)] = []
+        var unsupported: [Character] = []
+        var current = startingLayout
+        let shortcut = layoutShortcut.command
+
         for parse in KeyComboParser.parseBody(body) {
             switch parse.outcome {
             case let .tap(tap):
-                appendTap(tap, current: &current, to: &commands)
+                appendTap(tap, current: &current, to: &taps)
             case let .text(text):
-                typeText(text, current: &current, to: &commands)
+                typeText(text, current: &current, to: &taps, unsupported: &unsupported)
             case .unknownToken, .multipleKeys:
                 continue
             }
         }
-        return commands
+        return Plan(taps: taps, finalLayout: current, unsupportedCharacters: unsupported)
     }
 
-    private static func appendTap(_ tap: ParsedKeyTap, current: inout KeyboardLayout, to commands: inout [HIDCommand]) {
+    private static func appendTap(
+        _ tap: ParsedKeyTap,
+        current: inout KeyboardLayout,
+        to taps: inout [(modifiers: UInt8, keycode: UInt8)]
+    ) {
         switch tap.key {
         case let .special(keycode):
             guard keycode != 0 || tap.modifiers != 0 else { return }
-            commands.append(HIDCommand(modifiers: tap.modifiers, keycode: keycode))
+            taps.append((tap.modifiers, keycode))
         case let .character(character):
-            let layout = KeyboardLayout.inferred(for: character)
-            if layout != current {
-                appendLayoutSwitch(to: layout, current: &current, to: &commands)
+            if let layout = KeyboardLayout.inferred(from: character), layout != current {
+                appendLayoutSwitch(shortcut: shortcut, to: layout, current: &current, to: &taps)
             }
-            guard let keycode = HID.mapCharacterToHID(character, layout: current) else { return }
-            commands.append(HIDCommand(modifiers: tap.modifiers, keycode: keycode))
+            guard let command = HID.mapCharacterToHID(character, layout: current) else {
+                unsupported.append(character)
+                return
+            }
+            taps.append((tap.modifiers | command.modifiers, command.keycode))
         }
     }
 
-    private static func typeText(_ text: String, current: inout KeyboardLayout, to commands: inout [HIDCommand]) {
-        for character in text where !character.isNewline {
-            let layout = KeyboardLayout.inferred(for: character)
-            if layout != current {
-                appendLayoutSwitch(to: layout, current: &current, to: &commands)
-            }
-            if character == "\t" {
-                commands.append(HIDCommand(modifiers: 0, keycode: 0x2B))
+    private static func typeText(
+        _ text: String,
+        current: inout KeyboardLayout,
+        to taps: inout [(modifiers: UInt8, keycode: UInt8)],
+        unsupported: inout [Character]
+    ) {
+        for character in text {
+            if character.isNewline {
+                taps.append((0, HID.keyEnter))
                 continue
             }
-            guard let keycode = HID.mapCharacterToHID(character, layout: current) else { continue }
-            commands.append(HIDCommand(modifiers: 0, keycode: keycode))
+            if character == "\t" {
+                taps.append((0, HID.keyTab))
+                continue
+            }
+            if let layout = KeyboardLayout.inferred(from: character), layout != current {
+                appendLayoutSwitch(shortcut: shortcut, to: layout, current: &current, to: &taps)
+            }
+            guard let command = HID.mapCharacterToHID(character, layout: current) else {
+                unsupported.append(character)
+                continue
+            }
+            taps.append((command.modifiers, command.keycode))
         }
     }
 
-    private static func appendLayoutSwitch(to layout: KeyboardLayout, current: inout KeyboardLayout, to commands: inout [HIDCommand]) {
-        guard let shortcut = HID.layoutShortcuts[layout] else { return }
-        for tap in shortcut.taps {
-            commands.append(HIDCommand(modifiers: tap.modifiers, keycode: tap.keycode))
-        }
+    private static func appendLayoutSwitch(
+        shortcut: HIDCommand,
+        to layout: KeyboardLayout,
+        current: inout KeyboardLayout,
+        to taps: inout [(modifiers: UInt8, keycode: UInt8)]
+    ) {
+        taps.append((shortcut.modifiers, shortcut.keycode))
         current = layout
     }
 }

@@ -65,7 +65,7 @@ final class CommandletStore: ObservableObject {
         guard let index = commandlets.firstIndex(where: { $0.id == commandlet.id }) else { return nil }
         var copy = commandlets[index]
         copy.id = UUID()
-        copy.name += " (копія)"
+        copy.name = localizedFormat("%@ (копія)", commandlet.name)
         commandlets.insert(copy, at: index + 1)
         save()
         return copy

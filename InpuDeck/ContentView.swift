@@ -54,11 +54,15 @@ struct ContentView: View {
             toolsPage
                 .tabItem { tabItemLabel("Інструменти", systemImage: "switch.2") }
                 .tag(2)
+
+            CommandPaletteView(ble: ble)
+                .tabItem { tabItemLabel("Команди", systemImage: "command.square") }
+                .tag(3)
         }
         .id(expertMode)
         .simultaneousGesture(tabSwipeGesture)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if selectedTab == 2 {
+            if selectedTab == 2 || selectedTab == 3 {
                 connectionHeader
             }
         }
@@ -202,7 +206,7 @@ struct ContentView: View {
                 }
 
                 withAnimation(.easeOut(duration: 0.2)) {
-                    if startedAtRightEdge, horizontalDistance < 0, selectedTab < 2 {
+                    if startedAtRightEdge, horizontalDistance < 0, selectedTab < 3 {
                         selectedTab += 1
                     } else if startedAtLeftEdge, horizontalDistance > 0, selectedTab > 0 {
                         selectedTab -= 1
