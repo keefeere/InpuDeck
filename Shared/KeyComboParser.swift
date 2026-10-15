@@ -146,7 +146,7 @@ enum KeyComboParser {
 
     private static func parseKeyToken(_ token: String) -> ParsedKey? {
         let lower = token.lowercased()
-        if let modifier = modifierTokens[lower] {
+        if modifierTokens[lower] != nil {
             return .special(keycode: 0)
         }
         if let keycode = keyTokens[lower] {
@@ -193,9 +193,9 @@ enum KeyComboPlanner {
         for parse in KeyComboParser.parseBody(body) {
             switch parse.outcome {
             case let .tap(tap):
-                appendTap(tap, current: &current, to: &taps)
+                appendTap(tap, current: &current, to: &taps, shortcut: shortcut, unsupported: &unsupported)
             case let .text(text):
-                typeText(text, current: &current, to: &taps, unsupported: &unsupported)
+                typeText(text, current: &current, to: &taps, shortcut: shortcut, unsupported: &unsupported)
             case .unknownToken, .multipleKeys:
                 continue
             }
@@ -206,7 +206,9 @@ enum KeyComboPlanner {
     private static func appendTap(
         _ tap: ParsedKeyTap,
         current: inout KeyboardLayout,
-        to taps: inout [(modifiers: UInt8, keycode: UInt8)]
+        to taps: inout [(modifiers: UInt8, keycode: UInt8)],
+        shortcut: HIDCommand,
+        unsupported: inout [Character]
     ) {
         switch tap.key {
         case let .special(keycode):
@@ -228,6 +230,7 @@ enum KeyComboPlanner {
         _ text: String,
         current: inout KeyboardLayout,
         to taps: inout [(modifiers: UInt8, keycode: UInt8)],
+        shortcut: HIDCommand,
         unsupported: inout [Character]
     ) {
         for character in text {
