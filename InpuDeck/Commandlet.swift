@@ -1,4 +1,6 @@
+import Combine
 import Foundation
+import SwiftUI
 
 /// The syntax a commandlet body is interpreted in.
 enum CommandletSyntax: String, Codable, CaseIterable, Identifiable {

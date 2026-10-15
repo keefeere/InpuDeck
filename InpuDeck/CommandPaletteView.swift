@@ -156,7 +156,7 @@ struct CommandPaletteView: View {
                     onUnlock: unlock,
                     onEdit: { editingCommandlet = commandlet },
                     onDuplicate: { store.duplicate(commandlet) },
-                    onCopy: copyAsText(commandlet),
+                    onCopy: { copyAsText(commandlet) },
                     onDelete: { deletingCommandlet = commandlet }
                 )
             }
@@ -478,7 +478,7 @@ enum KeyComboDisplay {
             return "F\(Int(keycode - HID.keyF1) + 1)"
         }
         if (HID.keyA...HID.keyZ).contains(keycode) {
-            let value = UInt32(UnicodeScalar("a").value) + UInt32(keycode - HID.keyA)
+            let value = 0x61 + UInt32(keycode - HID.keyA)
             return String(Character(UnicodeScalar(value)))
         }
         if (HID.key1...HID.key0).contains(keycode) {
