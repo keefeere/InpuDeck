@@ -134,16 +134,16 @@ struct KeyComboParserTests {
                                (0, HID.mapCharacterToHID("i", layout: .englishUS)!.keycode)]),
               "Plain text plans one tap per character")
 
-        // Newlines type Enter; tabs type Tab.
+        // Tabs within a text line type Tab; an Enter line types Enter.
         let tabbed = KeyComboPlanner.makePlan(
-            for: "a\tb\nc",
+            for: "a\tb\nEnter\nc",
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
         check(tabbed.contains(where: { $0.keycode == HID.keyTab }),
               "A tab character plans a Tab tap")
         check(tabbed.contains(where: { $0.keycode == HID.keyEnter }),
-              "A newline plans an Enter tap")
+              "An Enter line plans an Enter tap")
 
         // Error lines are skipped, valid ones still plan.
         let partial = KeyComboPlanner.makePlan(
