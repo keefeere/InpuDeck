@@ -479,7 +479,8 @@ enum KeyComboDisplay {
         }
         if (HID.keyA...HID.keyZ).contains(keycode) {
             let value = 0x61 + UInt32(keycode - HID.keyA)
-            return String(Character(UnicodeScalar(value)))
+            guard let scalar = UnicodeScalar(value) else { return nil }
+            return String(scalar)
         }
         if (HID.key1...HID.key0).contains(keycode) {
             let index = Int(keycode - HID.key1)
