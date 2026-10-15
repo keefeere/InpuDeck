@@ -123,9 +123,7 @@ struct CommandPaletteView: View {
             get: { authMessage != nil },
             set: { if !$0 { authMessage = nil } }
         )) {
-            Button(role: .cancel) {
-                Text(localized("Скасувати"))
-            }
+            Button("Скасувати", role: .cancel) {}
         } message: {
             Text(authMessage ?? "")
         }
