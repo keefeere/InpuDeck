@@ -61,8 +61,8 @@ struct KeyComboParserTests {
         // Right-side modifiers.
         check(
             KeyComboParser.parseLine("AltGr+E", lineNumber: 1).outcome
-                == .tap(ParsedKeyTap(modifiers: HID.modRightAlt, key: .character("e"))),
-            "AltGr maps to the right Alt modifier")
+                == .tap(ParsedKeyTap(modifiers: HID.modRightAlt, key: .character("E"))),
+            "AltGr maps to the right Alt modifier and keeps the letter case")
 
         // Arrows and named keys.
         check(
