@@ -6,6 +6,15 @@ struct KeyComboParserTests {
         precondition(condition(), message)
     }
 
+    /// Tuples are not Equatable, so compare planned taps element by element.
+    static func tapsEqual(
+        _ a: [(modifiers: UInt8, keycode: UInt8)],
+        _ b: [(UInt8, UInt8)]
+    ) -> Bool {
+        guard a.count == b.count else { return false }
+        return zip(a, b).allSatisfy { $0.0.modifiers == $1.0 && $0.0.keycode == $1.1 }
+    }
+
     static func main() {
         parseTests()
         plannerTests()
@@ -96,7 +105,7 @@ struct KeyComboParserTests {
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
-        check(taps == [(HID.modLeftCtrl | HID.modLeftShift, HID.keyEscape)],
+        check(tapsEqual(taps, [(HID.modLeftCtrl | HID.modLeftShift, HID.keyEscape)]),
               "A combo plans to one tap")
 
         // Characters are typed with layout switching for non-English letters.
@@ -118,8 +127,8 @@ struct KeyComboParserTests {
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
-        check(text == [(0, HID.mapCharacterToHID("h", layout: .englishUS)!.keycode),
-                       (0, HID.mapCharacterToHID("i", layout: .englishUS)!.keycode)],
+        check(tapsEqual(text, [(0, HID.mapCharacterToHID("h", layout: .englishUS)!.keycode),
+                               (0, HID.mapCharacterToHID("i", layout: .englishUS)!.keycode)]),
               "Plain text plans one tap per character")
 
         // Newlines type Enter; tabs type Tab.
@@ -139,7 +148,7 @@ struct KeyComboParserTests {
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
-        check(partial == [(0, HID.keyEnter)], "Invalid lines are skipped in planning")
+        check(tapsEqual(partial, [(0, HID.keyEnter)]), "Invalid lines are skipped in planning")
 
         // Modifier-only lines plan a keycode-0 tap.
         let modifierOnly = KeyComboPlanner.makePlan(
@@ -147,7 +156,7 @@ struct KeyComboParserTests {
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
-        check(modifierOnly == [(HID.modLeftCtrl | HID.modLeftShift, 0)],
+        check(tapsEqual(modifierOnly, [(HID.modLeftCtrl | HID.modLeftShift, 0)]),
               "A modifier-only line plans a keycode-0 tap")
 
         // Characters with modifiers combine the character command modifiers.
@@ -156,7 +165,7 @@ struct KeyComboParserTests {
             startingLayout: .englishUS,
             layoutShortcut: shortcut
         ).taps
-        check(shiftChar == [(HID.modLeftShift, HID.keyA)],
+        check(tapsEqual(shiftChar, [(HID.modLeftShift, HID.keyA)]),
               "Shift+character adds the modifier to the character tap")
     }
 }
