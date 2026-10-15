@@ -3,8 +3,14 @@ import LocalAuthentication
 import UIKit
 
 /// The "Команди" tab: a palette of reusable input commands (plain text or
-/// key combos) that can be sent to the active host with one tap. The body is
-/// hidden until the user unlocks the tab with Face ID / device passcode.
+/// key combos) that can be sent to the active host.
+///
+/// Privacy model:
+/// - Command bodies are hidden until the user unlocks with biometrics
+///   (Face ID / Touch ID only — no device-passcode fallback).
+/// - Tapping a row reveals only that command's body for 30 seconds.
+/// - The palette re-locks automatically after 60 seconds.
+/// - Deleting and editing commands requires an unlocked state.
 struct CommandPaletteView: View {
     @ObservedObject var ble: RemoteInputController
 
@@ -15,6 +21,7 @@ struct CommandPaletteView: View {
     @AppStorage("hostLayoutShortcut") private var shortcutRawValue = HostLayoutShortcut.controlSpace.rawValue
 
     @State private var isUnlocked = false
+    @State private var visibleIDs: Set<UUID> = []
     @State private var authMessage: String?
     @State private var editingCommandlet: Commandlet?
     @State private var showsNewCommandlet = false
@@ -22,6 +29,14 @@ struct CommandPaletteView: View {
     @State private var sendStatus: String?
     @State private var sendStatusToken = 0
     @State private var editMode: EditMode = .inactive
+
+    @State private var unlockTask: Task<Void, Never>?
+    @State private var hideTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// How long a revealed body stays visible before auto-hiding.
+    private static let revealDuration: UInt64 = 30 * 1_000_000_000
+    /// How long the palette stays unlocked before re-locking.
+    private static let unlockDuration: UInt64 = 60 * 1_000_000_000
 
     private var selectedLayout: KeyboardLayout {
         KeyboardLayout(rawValue: layoutRawValue) ?? .englishUS
@@ -33,43 +48,29 @@ struct CommandPaletteView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if store.commandlets.isEmpty {
-                    emptyState
-                } else {
-                    commandList
-                }
-            }
-            .navigationTitle("Команди")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showsNewCommandlet = true
-                    } label: {
-                        Image(systemName: "plus")
+            commandList
+                .navigationTitle(localized("Команди"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        EditButton()
                     }
-                    .accessibilityLabel("Додати команду")
                 }
-            }
-            .environment(\.editMode, $editMode)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let sendStatus {
-                    Label(sendStatus, systemImage: "checkmark.circle")
-                        .font(.caption)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.ultraThinMaterial)
-                        .task(id: sendStatusToken) {
-                            try? await Task.sleep(for: .seconds(2))
-                            self.sendStatus = nil
-                        }
+                .environment(\.editMode, $editMode)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let sendStatus {
+                        Label(sendStatus, systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.ultraThinMaterial)
+                            .task(id: sendStatusToken) {
+                                try? await Task.sleep(for: .seconds(2))
+                                self.sendStatus = nil
+                            }
+                    }
                 }
-            }
         }
         .sheet(isPresented: $showsNewCommandlet) {
             CommandletEditorView(
@@ -77,14 +78,17 @@ struct CommandPaletteView: View {
                 isNew: true,
                 onSave: { commandlet in
                     store.add(commandlet)
+                    showsNewCommandlet = false
                 }
             )
         }
         .sheet(item: $editingCommandlet) { commandlet in
             CommandletEditorView(
                 commandlet: commandlet,
+                isNew: false,
                 onSave: { updated in
                     store.update(updated)
+                    editingCommandlet = nil
                 }
             )
         }
@@ -96,54 +100,44 @@ struct CommandPaletteView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Видалити", role: .destructive) {
+            Button(role: .destructive) {
                 if let commandlet = deletingCommandlet {
-                    store.delete(commandlet)
+                    Task { await delete(commandlet) }
                 }
                 deletingCommandlet = nil
+            } label: {
+                Text(localized("Видалити"))
             }
-            Button("Скасувати", role: .cancel) {
+            Button(role: .cancel) {
                 deletingCommandlet = nil
+            } label: {
+                Text(localized("Скасувати"))
             }
         } message: {
-            Text(localizedFormat("«%@» буде видалено назавжди.", deletingCommandlet?.name ?? ""))
+            Text(localizedFormat(
+                "«%@» буде видалено назавжди.",
+                displayTitle(deletingCommandlet)
+            ))
         }
         .alert("Не вдалося розблокувати", isPresented: Binding(
             get: { authMessage != nil },
             set: { if !$0 { authMessage = nil } }
         )) {
-            Button("Скасувати", role: .cancel) {}
+            Button(role: .cancel) {
+                Text(localized("Скасувати"))
+            }
         } message: {
             Text(authMessage ?? "")
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                isUnlocked = false
+                setUnlocked(false)
             }
         }
+        .onDisappear { setUnlocked(false) }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "command.square")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("Поки що немає команд")
-                .font(.headline)
-            Text("Додайте текст або комбінацію клавіш і надсилайте їх на пристрій одним дотиком.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button {
-                showsNewCommandlet = true
-            } label: {
-                Label("Додати команду", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    // MARK: - List
 
     private var commandList: some View {
         List {
@@ -151,26 +145,93 @@ struct CommandPaletteView: View {
                 CommandPaletteRow(
                     commandlet: commandlet,
                     isLocked: !isUnlocked,
+                    isRevealed: visibleIDs.contains(commandlet.id),
                     isReady: ble.isReady,
+                    onReveal: { Task { await reveal(commandlet) } },
                     onSend: { send(commandlet) },
-                    onUnlock: unlock,
-                    onEdit: { editingCommandlet = commandlet },
-                    onDuplicate: { store.duplicate(commandlet) },
-                    onCopy: { copyAsText(commandlet) },
+                    onEdit: { Task { await edit(commandlet) } },
+                    onDuplicate: { Task { await duplicate(commandlet) } },
+                    onCopy: { Task { await copyAsText(commandlet) } },
                     onDelete: { deletingCommandlet = commandlet }
                 )
             }
             .onMove { source, destination in
                 store.move(from: source, to: destination)
             }
+
+            Button {
+                showsNewCommandlet = true
+            } label: {
+                Label(localized("Додати команду"), systemImage: "plus")
+                    .frame(maxWidth: .infinity)
+            }
+
+            if store.commandlets.isEmpty {
+                emptyState
+            }
         }
         .listStyle(.insetGrouped)
     }
 
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "command.square")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text(localized("Поки що немає команд"))
+                .font(.headline)
+            Text(localized("Додайте текст або комбінацію клавіш і надсилайте їх на пристрій одним дотиком."))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Actions
 
+    /// Reveal the tapped command's body, prompting for biometrics first if locked.
+    @MainActor
+    private func reveal(_ commandlet: Commandlet) async {
+        guard await ensureUnlocked() else { return }
+        withAnimation { visibleIDs.insert(commandlet.id) }
+        scheduleAutoHide(commandlet.id)
+    }
+
+    /// Edit requires an unlocked state.
+    @MainActor
+    private func edit(_ commandlet: Commandlet) async {
+        guard await ensureUnlocked() else { return }
+        editingCommandlet = commandlet
+    }
+
+    /// Duplicate requires an unlocked state (the copy contains the body).
+    @MainActor
+    private func duplicate(_ commandlet: Commandlet) async {
+        guard await ensureUnlocked() else { return }
+        store.duplicate(commandlet)
+    }
+
+    /// Copying the body to the clipboard requires an unlocked state.
+    @MainActor
+    private func copyAsText(_ commandlet: Commandlet) async {
+        guard await ensureUnlocked() else { return }
+        UIPasteboard.general.string = commandlet.body
+    }
+
+    /// Delete requires an unlocked state (the confirmation dialog is shown first).
+    @MainActor
+    private func delete(_ commandlet: Commandlet) async {
+        guard await ensureUnlocked() else { return }
+        hideTasks[commandlet.id]?.cancel()
+        hideTasks[commandlet.id] = nil
+        visibleIDs.remove(commandlet.id)
+        store.delete(commandlet)
+    }
+
     private func send(_ commandlet: Commandlet) {
-        guard isUnlocked, ble.isReady else { return }
+        guard ble.isReady else { return }
         var taps: [(modifiers: UInt8, keycode: UInt8)]
         switch commandlet.syntax {
         case .text:
@@ -200,35 +261,89 @@ struct CommandPaletteView: View {
         sendStatusToken += 1
     }
 
-    private func copyAsText(_ commandlet: Commandlet) {
-        guard isUnlocked else { return }
-        UIPasteboard.general.string = commandlet.body
-    }
+    // MARK: - Unlocking
 
-    private func unlock() {
+    /// Returns true when the palette is unlocked, running the biometric prompt
+    /// if needed. Biometrics only: no device-passcode fallback.
+    @MainActor
+    private func ensureUnlocked() async -> Bool {
+        guard !isUnlocked else { return true }
         let context = LAContext()
-        var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            authMessage = error?.localizedDescription ?? localized("Розблокування недоступне")
-            return
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &policyError) else {
+            authMessage = localized("Розблокування недоступне")
+            return false
         }
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: localized("Відкрити команди")) { success, _ in
-            Task { @MainActor in
-                isUnlocked = success
+        do {
+            try await context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: localized("Відкрити команди")
+            )
+        } catch {
+            authMessage = localized("Не вдалося розблокувати")
+            return false
+        }
+        setUnlocked(true)
+        return true
+    }
+
+    @MainActor
+    private func setUnlocked(_ value: Bool) {
+        isUnlocked = value
+        unlockTask?.cancel()
+        unlockTask = nil
+        if value {
+            // Refresh the auto-hide timers for already revealed bodies and
+            // schedule the re-lock.
+            for id in visibleIDs { scheduleAutoHide(id) }
+            unlockTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: Self.unlockDuration)
+                guard !Task.isCancelled else { return }
+                withAnimation {
+                    isUnlocked = false
+                    visibleIDs.removeAll()
+                }
+                hideTasks.values.forEach { $0.cancel() }
+                hideTasks = [:]
             }
+        } else {
+            hideTasks.values.forEach { $0.cancel() }
+            hideTasks = [:]
+            withAnimation { visibleIDs.removeAll() }
         }
     }
 
+    /// Hide a single revealed body after the reveal timeout.
+    @MainActor
+    private func scheduleAutoHide(_ id: UUID) {
+        hideTasks[id]?.cancel()
+        hideTasks[id] = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.revealDuration)
+            guard !Task.isCancelled else { return }
+            withAnimation { visibleIDs.remove(id) }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func displayTitle(_ commandlet: Commandlet?) -> String {
+        guard let commandlet else { return "" }
+        return commandlet.name.isEmpty ? localized("Без назви") : commandlet.name
+    }
 }
 
-/// One commandlet card in the palette list. While locked the body is masked
-/// and tapping asks for biometric authentication instead of sending.
+// MARK: - Row
+
+/// One commandlet card in the palette list. Tapping the body area reveals this
+/// command's text (after biometric unlock); the play button sends it without
+/// revealing anything on screen.
 private struct CommandPaletteRow: View {
     let commandlet: Commandlet
     let isLocked: Bool
+    let isRevealed: Bool
     let isReady: Bool
+    let onReveal: () -> Void
     let onSend: () -> Void
-    let onUnlock: () -> Void
     let onEdit: () -> Void
     let onDuplicate: () -> Void
     let onCopy: () -> Void
@@ -244,69 +359,80 @@ private struct CommandPaletteRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(commandlet.name.isEmpty ? "Без назви" : commandlet.name)
+                    Text(title)
                         .font(.headline)
                         .lineLimit(1)
                     Text(syntaxTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                if isLocked {
+                if isRevealed {
+                    Text(commandlet.body)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                } else if commandlet.body.isEmpty {
+                    Text(localized("Порожня команда"))
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                } else {
                     Text(String(repeating: "•", count: min(max(commandlet.body.count, 12), 40)))
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
-                } else if !commandlet.body.isEmpty {
-                    Text(commandlet.body)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                } else {
-                    Text("Порожня команда")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
                 }
             }
             Spacer(minLength: 8)
+
+            Button(action: onSend) {
+                Image(systemName: "play.fill")
+                    .font(.title3)
+                    .frame(width: 34, height: 34)
+                    .background(Color(.tertiarySystemFill))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+            .buttonStyle(.borderless)
+            .disabled(!isReady || commandlet.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel(localizedFormat("Надіслати команду %@", title))
         }
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture {
-            if isLocked {
-                onUnlock()
-            } else {
-                onSend()
-            }
-        }
-        .disabled(isLocked ? false : !isReady)
-        .opacity(isLocked ? 1 : (isReady ? 1 : 0.55))
-        .accessibilityLabel(accessibilityText)
-        .contextMenu {
-            Button {
-                onEdit()
-            } label: {
-                Label("Редагувати", systemImage: "pencil")
-            }
-            .disabled(isLocked)
-            Button {
-                onDuplicate()
-            } label: {
-                Label("Дублювати", systemImage: "plus.square.on.square")
-            }
-            .disabled(isLocked)
-            Button {
-                onCopy()
-            } label: {
-                Label("Копіювати як текст", systemImage: "doc.on.doc")
-            }
-            .disabled(isLocked)
-            Divider()
+        .onTapGesture(perform: onReveal)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 onDelete()
             } label: {
-                Label("Видалити", systemImage: "trash")
+                Label(localized("Видалити"), systemImage: "trash")
             }
         }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                onEdit()
+            } label: {
+                Label(localized("Редагувати"), systemImage: "pencil")
+            }
+        }
+        .opacity(isReady ? 1 : 0.75)
+        .accessibilityLabel(accessibilityText)
+        .contextMenu {
+            Button(action: onEdit) {
+                Label(localized("Редагувати"), systemImage: "pencil")
+            }
+            .disabled(isLocked)
+            Button(action: onDuplicate) {
+                Label(localized("Дублювати"), systemImage: "plus.square.on.square")
+            }
+            .disabled(isLocked)
+            Button(action: onCopy) {
+                Label(localized("Копіювати як текст"), systemImage: "doc.on.doc")
+            }
+            .disabled(isLocked)
+        }
+    }
+
+    private var title: String {
+        commandlet.name.isEmpty ? localized("Без назви") : commandlet.name
     }
 
     private var syntaxIcon: String {
@@ -324,9 +450,11 @@ private struct CommandPaletteRow: View {
         if !isReady {
             return localized("Немає з'єднання. Команду не можна надіслати.")
         }
-        return localizedFormat("Надіслати команду %@", commandlet.name)
+        return localizedFormat("Надіслати команду %@", title)
     }
 }
+
+// MARK: - Editor
 
 /// Sheet editor for a commandlet: name, syntax picker and the multi-line
 /// body. For "keys" syntax each line is parsed live and errors are marked.
@@ -346,17 +474,17 @@ private struct CommandletEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Назва", text: $commandlet.name)
-                    Picker("Синтаксис", selection: $commandlet.syntax) {
-                        Text("Текст").tag(CommandletSyntax.text)
-                        Text("Клавіші").tag(CommandletSyntax.keys)
+                    TextField(localized("Назва"), text: $commandlet.name)
+                    Picker(localized("Синтаксис"), selection: $commandlet.syntax) {
+                        Text(localized("Текст")).tag(CommandletSyntax.text)
+                        Text(localized("Клавіші")).tag(CommandletSyntax.keys)
                     }
                     .pickerStyle(.segmented)
                 }
 
                 Section {
                     TextField(
-                        "Тіло команди",
+                        localized("Тіло"),
                         text: $commandlet.body,
                         axis: .vertical
                     )
@@ -366,22 +494,22 @@ private struct CommandletEditorView: View {
                         keyLinePreview
                     }
                 } header: {
-                    Text("Тіло")
+                    Text(localized("Тіло команди"))
                 } footer: {
                     Text(commandlet.syntax == .keys
-                         ? "Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі."
-                         : "Надсилається як звичайний текст зі зміною розкладки.")
+                         ? localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
+                         : localized("Надсилається як звичайний текст зі зміною розкладки."))
                         .font(.caption)
                 }
             }
-            .navigationTitle(isNew ? "Нова команда" : "Редагувати")
+            .navigationTitle(isNew ? localized("Нова команда") : localized("Редагувати"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Скасувати") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Зберегти") {
+                    Button(isNew ? "Додати" : "Зберегти") {
                         onSave(commandlet)
                         dismiss()
                     }
@@ -404,7 +532,7 @@ private struct CommandletEditorView: View {
                     Image(systemName: parse.isError ? "xmark.circle.fill" : "checkmark.circle")
                         .font(.caption)
                         .foregroundStyle(parse.isError ? .red : .green)
-                    Text("Рядок \(parse.line)")
+                    Text(localizedFormat("Рядок %@", String(parse.line)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(displayText(for: parse))
@@ -418,11 +546,11 @@ private struct CommandletEditorView: View {
     private func displayText(for parse: KeyLineParse) -> String {
         switch parse.outcome {
         case .unknownToken(let token):
-            return "Невідомий токен: \(token)"
+            return localizedFormat("Невідомий токен: %@", token)
         case .multipleKeys:
-            return "Дві та більше клавіші в одному рядку"
+            return localized("Дві та більше клавіші в одному рядку")
         case .text(let text):
-            return text.isEmpty ? "Порожній рядок" : "Текст: \(text)"
+            return text.isEmpty ? localized("Порожній рядок") : localizedFormat("Текст: %@", text)
         case let .tap(tap):
             return comboText(for: tap)
         }

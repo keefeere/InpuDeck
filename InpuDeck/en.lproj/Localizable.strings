@@ -254,6 +254,7 @@
 // Command palette ("Commands" tab)
 "Команди" = "Commands";
 "Додати команду" = "Add command";
+"Додати" = "Add";
 "Нова команда" = "New command";
 "Редагувати" = "Edit";
 "Назва" = "Name";
