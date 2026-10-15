@@ -35,6 +35,14 @@ swiftc -swift-version 5 \
 
 swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \
+  "$repo_root/Shared/HID.swift" \
+  "$repo_root/Shared/KeyComboParser.swift" \
+  "$repo_root/Tests/KeyComboParserTests.swift" \
+  -o "$build_dir/key-combo-parser-tests"
+"$build_dir/key-combo-parser-tests"
+
+swiftc -swift-version 5 \
+  "$repo_root/Shared/Localization.swift" \
   "$repo_root/InpuDeck/ESPBridgeStore.swift" \
   "$repo_root/Tests/ESPBridgeStoreTests.swift" \
   -o "$build_dir/esp-bridge-store-tests"
