@@ -84,6 +84,7 @@ struct CommandPaletteView: View {
             CommandletEditorView(
                 commandlet: Commandlet(name: "", syntax: .text, body: ""),
                 isNew: true,
+                onActivity: { if isUnlocked { scheduleRelock() } },
                 onSave: { commandlet in
                     guard store.add(commandlet) else {
                         let message = store.storageError ?? localized("Не вдалося зберегти команди")

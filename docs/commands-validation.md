@@ -41,14 +41,19 @@ host behavior. They also do not establish that a queued report reached the host.
 
 1. On a Face ID device, tap a hidden body: system authentication, reveal only
    that row. Cancel and retry; a quick second tap must not replace the action.
-   Check device-passcode fallback when biometrics are unavailable.
+   Check device-passcode fallback when biometrics are unavailable. On the first
+   unlock, allow the system Face ID permission. If previously denied, enable it
+   in iOS Settings → InpuDeck; otherwise passcode-only is expected.
 2. Begin authentication, then background or leave the tab: late success must not
    reveal a body or open an editor/confirmation after returning.
 3. Open an existing editor, wait 60 seconds: it closes and cannot save. Repeat
-   with backgrounding and tab changes. Do not include command contents in logs.
+   with backgrounding and tab changes. In both new and existing editors, type
+   continuously for more than 60 seconds: activity must prevent timeout. Do not
+   include command contents in logs.
 4. From both locked and unlocked states, exercise menu Edit and Delete and both
    swipe actions. Delete must not remove the row before confirmation. Cancel
-   leaves it untouched; confirm removes it permanently after relaunch.
+   leaves it untouched; confirm removes it permanently after relaunch. Specifically
+   check locked context menu → Delete → Face ID → confirmation.
 5. Set another tab to UA, enter Commands: its assumption is EN and the other
    tab's preference remains UA. Configure the real host shortcut. Check EN/UA
    selection and the host-only switch separately on both Direct Bluetooth and
