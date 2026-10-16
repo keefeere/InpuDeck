@@ -8,7 +8,8 @@
   separate application password. `NSFaceIDUsageDescription` must be present in
   the built app; the IPA packaging script checks this before publishing.
 - Revealed bodies hide after 30 seconds. The unlocked session expires after
-  60 seconds, including when an existing-command editor is open.
+  60 seconds, including when an existing-command editor is open. Editing activity
+  refreshes that idle timer; inactive/background/tab-change locks do not wait.
 - An inactive scene hides private UI. Authentication may itself deactivate the
   scene, so its result is retained until activation. Backgrounding or leaving
   Commands cancels the request; a late result cannot reopen private content.

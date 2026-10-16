@@ -25,6 +25,10 @@ struct CommandPaletteView: View {
 
     @State private var unlockState = CommandUnlockState()
     @State private var authContext: LAContext?
+    // Async tasks capture a View value; mirror environment/plain inputs in
+    // State so authentication completion observes the latest lifecycle values.
+    @State private var isForegroundActive = false
+    @State private var tabIsActive = false
     private var isUnlocked: Bool { unlockState.isUnlocked }
     @State private var visibleIDs: Set<UUID> = []
     @State private var authMessage: String?
@@ -95,8 +99,9 @@ struct CommandPaletteView: View {
             CommandletEditorView(
                 commandlet: commandlet,
                 isNew: false,
+                onActivity: { if isUnlocked { scheduleRelock() } },
                 onSave: { updated in
-                    guard isUnlocked, scenePhase == .active, isActiveTab else {
+                    guard isUnlocked, isForegroundActive, tabIsActive else {
                         return localized("Не вдалося розблокувати")
                     }
                     guard store.update(updated) else {
@@ -115,12 +120,11 @@ struct CommandPaletteView: View {
                 get: { deletingCommandlet != nil },
                 set: { if !$0 { deletingCommandlet = nil } }
             ),
-            titleVisibility: .visible
-        ) {
+            titleVisibility: .visible,
+            presenting: deletingCommandlet
+        ) { commandlet in
             Button(role: .destructive) {
-                if let commandlet = deletingCommandlet {
-                    delete(commandlet)
-                }
+                delete(commandlet)
                 deletingCommandlet = nil
             } label: {
                 Text(localized("Видалити"))
@@ -130,10 +134,10 @@ struct CommandPaletteView: View {
             } label: {
                 Text(localized("Скасувати"))
             }
-        } message: {
+        } message: { commandlet in
             Text(localizedFormat(
                 "«%@» буде видалено назавжди.",
-                displayTitle(deletingCommandlet)
+                displayTitle(commandlet)
             ))
         }
         .alert(localized("Не вдалося розблокувати"), isPresented: Binding(
@@ -153,10 +157,15 @@ struct CommandPaletteView: View {
         } message: {
             Text(store.storageError ?? "")
         }
+        .onAppear {
+            isForegroundActive = scenePhase == .active
+            tabIsActive = isActiveTab
+        }
         .onChange(of: scenePhase) { _, phase in
+            isForegroundActive = phase == .active
             switch phase {
             case .active:
-                if isActiveTab, unlockState.becameActive() { completeUnlock() }
+                if tabIsActive, unlockState.becameActive() { completeUnlock() }
             case .inactive:
                 // Face ID itself may deactivate the scene. Hide private UI,
                 // but retain its authentication request and queued action.
@@ -170,8 +179,13 @@ struct CommandPaletteView: View {
             }
         }
         .onChange(of: isActiveTab) { _, active in
+            tabIsActive = active
             lock()
             if active { selectedLayout = .englishUS }
+        }
+        .onDisappear {
+            tabIsActive = false
+            lock()
         }
     }
 
@@ -219,7 +233,7 @@ struct CommandPaletteView: View {
                 set: { layout in
                     guard ble.isReady, layout != selectedLayout else { return }
                     let command = selectedShortcut.command
-                    ble.sendKeyTap(modifiers: command.modifiers, hidKeycode: command.keycode)
+                    guard ble.sendKeyTaps([(command.modifiers, command.keycode)]) else { return }
                     selectedLayout = layout
                 }
             )) {
@@ -305,7 +319,7 @@ struct CommandPaletteView: View {
 
     @MainActor
     private func delete(_ commandlet: Commandlet) {
-        guard isUnlocked, scenePhase == .active, isActiveTab else { return }
+        guard isUnlocked, isForegroundActive, tabIsActive else { return }
         hideTasks[commandlet.id]?.cancel()
         hideTasks[commandlet.id] = nil
         visibleIDs.remove(commandlet.id)
@@ -399,7 +413,7 @@ struct CommandPaletteView: View {
     /// system offers the device passcode instead.
     @MainActor
     private func beginUnlock() {
-        guard isActiveTab, scenePhase == .active,
+        guard tabIsActive, isForegroundActive,
               let requestID = unlockState.begin() else { return }
         let context = LAContext()
         authContext = context
@@ -426,7 +440,7 @@ struct CommandPaletteView: View {
                     authMessage = localized("Не вдалося розблокувати")
                     return
                 }
-                if unlockState.authenticated(requestID, isActive: scenePhase == .active && isActiveTab) {
+                if unlockState.authenticated(requestID, isActive: isForegroundActive && tabIsActive) {
                     completeUnlock()
                 }
             } catch {
@@ -643,6 +657,7 @@ private struct CommandPaletteRow: View {
 private struct CommandletEditorView: View {
     @State var commandlet: Commandlet
     var isNew = false
+    var onActivity: () -> Void = {}
     let onSave: (Commandlet) -> String?
     @State private var saveError: String?
 
@@ -710,7 +725,11 @@ private struct CommandletEditorView: View {
             } message: {
                 Text(saveError ?? "")
             }
-            .onAppear { bodyFocused = true }
+            .onChange(of: commandlet) { _, _ in onActivity() }
+            .onAppear {
+                bodyFocused = true
+                onActivity()
+            }
         }
     }
 
