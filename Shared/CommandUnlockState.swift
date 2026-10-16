@@ -8,6 +8,11 @@ struct CommandUnlockState {
     private(set) var requestID: UUID?
     private var awaitsActivation = false
 
+    /// Queue acceptance is permitted only in an authenticated foreground tab.
+    func canSendCommands(isForegroundActive: Bool, isActiveTab: Bool) -> Bool {
+        isUnlocked && isForegroundActive && isActiveTab
+    }
+
     mutating func begin() -> UUID? {
         guard requestID == nil else { return nil }
         let id = UUID()

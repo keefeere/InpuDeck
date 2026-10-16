@@ -5,6 +5,8 @@ struct CommandUnlockStateTests {
     static func main() {
         var state = CommandUnlockState()
         precondition(!state.isUnlocked)
+        precondition(!state.canSendCommands(isForegroundActive: true, isActiveTab: true),
+                     "Play must not send a command while locked")
 
         let request = state.begin()!
         precondition(state.begin() == nil, "Do not start overlapping Face ID prompts")
@@ -12,17 +14,26 @@ struct CommandUnlockStateTests {
         precondition(state.requestID == request, "System auth may deactivate the scene")
         precondition(!state.authenticated(request, isActive: false))
         precondition(!state.isUnlocked, "Never reveal private UI while inactive")
+        precondition(!state.canSendCommands(isForegroundActive: false, isActiveTab: true),
+                     "Successful authentication must wait for activation before sending")
         precondition(state.becameActive())
         precondition(state.isUnlocked)
+        precondition(state.canSendCommands(isForegroundActive: true, isActiveTab: true))
+        precondition(!state.canSendCommands(isForegroundActive: false, isActiveTab: true))
+        precondition(!state.canSendCommands(isForegroundActive: true, isActiveTab: false))
         precondition(!state.becameActive(), "Execute a queued action only once")
 
         state.lock()
         precondition(!state.isUnlocked, "Timeout must lock")
+        precondition(!state.canSendCommands(isForegroundActive: true, isActiveTab: true),
+                     "Timeout must require authentication before the next Play")
         let cancelled = state.begin()!
         state.lock() // background / tab change / cancel
         precondition(!state.authenticated(cancelled, isActive: true))
         precondition(!state.becameActive())
         precondition(!state.isUnlocked, "Late auth must not unlock after background")
+        precondition(!state.canSendCommands(isForegroundActive: true, isActiveTab: true),
+                     "Cancelled or stale authentication cannot authorize a send")
 
         let newer = state.begin()!
         precondition(!state.authenticated(cancelled, isActive: true))

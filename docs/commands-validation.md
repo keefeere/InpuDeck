@@ -2,8 +2,11 @@
 
 ## Contract
 
-- Play sends a saved command without revealing its body. Viewing, editing,
-  copying, duplicating and confirming deletion require Local Authentication.
+- Play requires an unlocked session before any saved command is queued. If
+  locked, authenticate first and send the originally selected command exactly
+  once after activation, without revealing its body. Cancellation, backgrounding
+  or leaving the tab must not send anything. Viewing, editing, copying,
+  duplicating and confirming deletion also require Local Authentication.
 - Face ID / Touch ID use the system device-passcode fallback. There is no
   separate application password. `NSFaceIDUsageDescription` must be present in
   the built app; the IPA packaging script checks this before publishing.
@@ -18,10 +21,12 @@
 - Commands starts with an independent EN assumption each time the tab is entered.
   Successful queue acceptance advances that session's assumed layout. This never
   updates the other tabs' `targetKeyboardLayout` preference.
-- The raw host-only switch sends the configured layout shortcut without changing
-  the displayed assumption. Use it to align the host with the displayed EN/UA.
-  HID cannot read the host's actual layout or confirm a switch. The switch
-  assumes two host layouts; cycling through more layouts needs manual alignment.
+- A compact UA/EN toolbar button matches the keyboard tab: short press switches
+  the host and local assumption; long press changes only the local assumption
+  for manual synchronization (also when disconnected). No large layout section
+  or shortcut picker is shown here; the existing host shortcut setting is used.
+  HID cannot read the host's actual layout or confirm a switch. This assumes two
+  host layouts; cycling through more layouts needs manual alignment.
 - Invalid syntax or unsupported characters block the entire command rather than
   silently executing a truncated command. A transport refusal is not success.
 - Disk write failure leaves the persisted list unchanged and the editor open.
@@ -44,8 +49,12 @@ host behavior. They also do not establish that a queued report reached the host.
    Check device-passcode fallback when biometrics are unavailable. On the first
    unlock, allow the system Face ID permission. If previously denied, enable it
    in iOS Settings → InpuDeck; otherwise passcode-only is expected.
-2. Begin authentication, then background or leave the tab: late success must not
-   reveal a body or open an editor/confirmation after returning.
+2. From a locked tab, press Play: no host input before Face ID succeeds; only
+   the selected command sends once, with no body reveal. Cancel Face ID: no input.
+   Rapidly tap two different Play buttons during authentication: only the first
+   selection may run. Begin authentication, then background or leave the tab:
+   late success must not send input, reveal a body or open an editor/confirmation.
+   After the 60-second lock, Play must authenticate again.
 3. Open an existing editor, wait 60 seconds: it closes and cannot save. Repeat
    with backgrounding and tab changes. In both new and existing editors, type
    continuously for more than 60 seconds: activity must prevent timeout. Do not
@@ -55,9 +64,11 @@ host behavior. They also do not establish that a queued report reached the host.
    leaves it untouched; confirm removes it permanently after relaunch. Specifically
    check locked context menu → Delete → Face ID → confirmation.
 5. Set another tab to UA, enter Commands: its assumption is EN and the other
-   tab's preference remains UA. Configure the real host shortcut. Check EN/UA
-   selection and the host-only switch separately on both Direct Bluetooth and
-   ESP. The host-only switch must leave the app's indicator unchanged.
+   tab's preference remains UA. Configure the real host shortcut in settings.
+   There must only be a compact UA/EN toolbar button, not a layout form. On both
+   Direct Bluetooth and ESP check: short press switches host and local assumption
+   exactly once; long press changes only the local assumption and sends nothing
+   to the host (the same behavior as Keyboard). Test long press disconnected too.
 6. With exactly EN and UA enabled on the host, send EN, UA and mixed text and
    verify the first character after each switch. If standalone switching works
    but the first character is wrong, measure transport drain / host switch timing

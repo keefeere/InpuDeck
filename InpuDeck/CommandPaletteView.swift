@@ -11,7 +11,7 @@ import UIKit
 ///   passcode as the system-provided fallback (no separate app password).
 /// - Tapping a row reveals only that command's body for 30 seconds.
 /// - The palette re-locks automatically after 60 seconds.
-/// - Deleting and editing commands requires an unlocked state.
+/// - Sending, deleting and editing commands require an unlocked state.
 struct CommandPaletteView: View {
     @ObservedObject var ble: RemoteInputController
     var isActiveTab = true
@@ -62,6 +62,9 @@ struct CommandPaletteView: View {
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         EditButton()
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        layoutButton
                     }
                 }
                 .environment(\.editMode, $editMode)
@@ -194,7 +197,6 @@ struct CommandPaletteView: View {
 
     private var commandList: some View {
         List {
-            layoutControls
             ForEach(store.commandlets) { commandlet in
                 CommandPaletteRow(
                     commandlet: commandlet,
@@ -227,41 +229,36 @@ struct CommandPaletteView: View {
         .listStyle(.insetGrouped)
     }
 
-    private var layoutControls: some View {
-        Section {
-            Picker(localized("Розкладка хоста"), selection: Binding(
-                get: { selectedLayout },
-                set: { layout in
-                    guard ble.isReady, layout != selectedLayout else { return }
-                    let command = selectedShortcut.command
-                    guard ble.sendKeyTaps([(command.modifiers, command.keycode)]) else { return }
-                    selectedLayout = layout
-                }
-            )) {
-                ForEach(KeyboardLayout.allCases) { layout in
-                    Text(layout.shortName).tag(layout)
-                }
-            }
-            .pickerStyle(.segmented)
-            .disabled(!ble.isReady)
-            Picker(localized("Комбінація"), selection: $shortcutRawValue) {
-                ForEach(HostLayoutShortcut.allCases) { shortcut in
-                    Text(shortcut.displayName).tag(shortcut.rawValue)
-                }
-            }
-            Button {
-                let command = selectedShortcut.command
-                ble.sendKeyTap(modifiers: command.modifiers, hidKeycode: command.keycode)
-                // Repair a mismatch without changing the displayed assumption.
-            } label: {
-                Label(localized("Перемкнути лише на хості"), systemImage: "arrow.triangle.2.circlepath")
-            }
-            .disabled(!ble.isReady)
-        } header: {
-            Text(localized("Розкладка хоста"))
-        } footer: {
-            Text(localized("На цій вкладці початкова розкладка — EN. Якщо хост має іншу, перемкніть лише на хості для синхронізації. HID не читає поточну мову хоста."))
+    private var layoutButton: some View {
+        Button {
+            changeLayout(synchronizeHost: true)
+        } label: {
+            Text(selectedLayout.shortName)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(Color.primary)
+                .frame(minWidth: 44, minHeight: 32)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
         }
+        .buttonStyle(ShortAndLongPressButtonStyle(
+            longPressLabel: localized("Змінити лише екранну розкладку"),
+            onLongPress: { changeLayout(synchronizeHost: false) }
+        ))
+        .accessibilityLabel("Змінити мову")
+        .accessibilityValue(selectedLayout.shortName)
+        .accessibilityHint("Довге натискання змінює лише екранну розкладку")
+    }
+
+    private func changeLayout(synchronizeHost: Bool) {
+        let next: KeyboardLayout = selectedLayout == .englishUS ? .ukrainianEnhanced : .englishUS
+        if synchronizeHost {
+            guard ble.isReady else { return }
+            let command = selectedShortcut.command
+            guard ble.sendKeyTaps([(command.modifiers, command.keycode)]) else { return }
+        }
+        // Same contract as the keyboard: short = host + local, long = local
+        // only, allowing manual alignment without sending a shortcut.
+        selectedLayout = next
     }
 
     private var emptyState: some View {
@@ -327,8 +324,11 @@ struct CommandPaletteView: View {
         store.delete(commandlet)
     }
 
+    @MainActor
     private func send(_ commandlet: Commandlet) {
-        guard ble.isReady else { return }
+        guard ble.isReady, tabIsActive, isForegroundActive else { return }
+        guard requireUnlock(.send(commandlet)) else { return }
+        guard unlockState.canSendCommands(isForegroundActive: isForegroundActive, isActiveTab: tabIsActive) else { return }
         sendFailed = true
         let finalLayout: KeyboardLayout
         var unsupported: [Character]
@@ -384,6 +384,7 @@ struct CommandPaletteView: View {
 
     /// Sensitive command actions that require an unlocked session.
     private enum PendingAction {
+        case send(Commandlet)
         case reveal(UUID)
         case edit(Commandlet)
         case duplicate(Commandlet)
@@ -394,6 +395,7 @@ struct CommandPaletteView: View {
     /// Starts an unlock for `action`, which runs once the session unlocks.
     @MainActor
     private func requireUnlock(_ action: PendingAction) -> Bool {
+        guard tabIsActive, isForegroundActive else { return false }
         guard !isUnlocked else { return true }
         guard unlockState.requestID == nil else { return false }
         pendingAction = action
@@ -461,7 +463,10 @@ struct CommandPaletteView: View {
     /// Executes a queued sensitive action after the session is unlocked.
     @MainActor
     private func perform(_ action: PendingAction) {
+        guard isUnlocked, tabIsActive, isForegroundActive else { return }
         switch action {
+        case let .send(commandlet):
+            send(commandlet)
         case let .reveal(id):
             withAnimation { visibleIDs.insert(id) }
             scheduleAutoHide(id)
