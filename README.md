@@ -1,7 +1,11 @@
 # InpuDeck
 
-Turn your iPhone into an additional keyboard, trackpad, and control deck for
-multiple computers over direct Bluetooth or an optional ESP32-S3 USB bridge.
+Turn your iPhone into an additional keyboard, trackpad, command launcher, and
+control deck for multiple computers over direct Bluetooth or an optional
+ESP32-S3 USB bridge.
+
+**New in 3.4:** saved Commands with explicit text/key syntax, an interactive
+cursor-aware key legend, biometric unlocking, and configurable tabs.
 
 <p align="center">
   <img src="docs/images/input-portrait.png" width="42%" alt="InpuDeck text input and trackpad screen">
@@ -9,8 +13,25 @@ multiple computers over direct Bluetooth or an optional ESP32-S3 USB bridge.
   <img src="docs/images/keyboard-portrait.png" width="42%" alt="InpuDeck full keyboard and trackpad in portrait orientation">
 </p>
 <p align="center">
-  <img src="docs/images/keyboard-landscape.png" width="88%" alt="InpuDeck full keyboard in landscape orientation">
+  <img src="docs/images/keyboard-landscape.png" width="88%" alt="InpuDeck 3.4 full keyboard in landscape">
 </p>
+<p align="center">
+  <img src="docs/images/commands-portrait.png" width="42%" alt="Saved Commands with masked bodies and floating controls">
+  &nbsp;&nbsp;
+  <img src="docs/images/commands-editor.png" width="42%" alt="Commands editor mixing literal text and explicit key markers">
+</p>
+<p align="center">
+  <img src="docs/images/commands-legend.png" width="42%" alt="Interactive cursor, navigation and F1–F12 key legend">
+  &nbsp;&nbsp;
+  <img src="docs/images/tabs-settings-portrait.png" width="42%" alt="Settings with tab visibility checkboxes and reorder handles">
+</p>
+<p align="center">
+  <img src="docs/images/tools-landscape.png" width="88%" alt="System controls in landscape">
+</p>
+
+Screenshots show the production 3.4 app on iPhone Simulator with public demo
+commands. The transport is offline; no Bluetooth connection or private host data
+is fabricated. [Screenshot capture and provenance](docs/screenshots.md).
 
 ## Why This Exists
 
@@ -24,6 +45,9 @@ bridge presents itself as a physical USB keyboard and mouse.
 
 ## Features
 
+- **Saved Commands** - Reusable text and key sequences, masked bodies, Face ID/Touch ID or device-passcode unlocking before execution, and drag reordering
+- **Interactive key legend** - Tap modifiers, arrows, Home/End, Page Up/Down, F1–F12, or shortcut examples to insert at the cursor or replace a selection
+- **Configurable tabs** - Enable, hide, and reorder tabs in Settings; at least one tab always stays available
 - **English and Ukrainian input** - Automatic alphabet detection with physical US and Ukrainian Enhanced HID mappings
 - **Two keyboard modes** - Use the native iOS keyboard beside the trackpad or the dedicated full-screen keyboard tab
 - **Layout synchronization** - Configurable Ctrl+Space, Ctrl+Shift, Alt+Shift, Shift+Space, or Win+Space host shortcut
@@ -42,6 +66,37 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Warm-reboot recovery** - Recovers a stalled USB HID endpoint when a host reboots without removing USB power
 - **Optional privacy mask** - Keep the typing composer visible or mask it when entering passwords
 - **Hardware key hold** - Every on-screen key sends real HID key-down/key-up events, including multi-finger chords; modifiers can also be tapped to latch
+
+## Commands
+
+Save a named command as **Text** (everything literal) or **Text + keys**:
+
+```text
+Hello, InpuDeck!<Enter><Ctrl+Home><Shift+End>
+```
+
+In mixed mode, `Enter` is text and `<Enter>` presses the key. Use `\<Enter>`
+to type a literal marker. Tap the legend for modifiers, navigation, arrow and
+function keys, examples, and escapes. Further modifiers inside an existing
+`<...>` reuse its brackets; selecting a completed key leaves the cursor ready
+to continue typing.
+
+Play requires an unlocked session. Bodies are masked until revealed, with
+automatic hiding and re-locking. Commands can be edited, duplicated, copied,
+deleted with confirmation, or reordered. This is an input launcher, not a claim
+of encrypted password-vault storage.
+
+Commands maintains its own initial EN assumption. Short-press EN/UA to send the
+configured host shortcut and update that assumption; long-press to adjust only
+the local assumption. HID cannot read the host's actual keyboard layout.
+
+Use **Settings → Tabs** to choose the visible pages and their order. Hiding the
+current tab chooses a visible one; edge swipes follow that order and skip hidden
+pages. Normal mode includes captions, while expert mode keeps accessible icons.
+
+See the [syntax and escape guide](docs/command-syntax.md),
+[tab settings](docs/tab-customization.md), and
+[device validation checklist](docs/commands-validation.md).
 
 ## Direct Bluetooth
 
@@ -93,12 +148,14 @@ loses its HID session.
 
 Run `./scripts/test-direct-hid.sh` on a Swift-equipped machine to check HID report
 encoding, queue backpressure, host selection, and descriptor sizes. The IPA
-workflow runs these checks for pull requests and pushes to the v2 branch before
-building the app. Version 2.0.0 (16) passed these tests and the Xcode 26.6 iOS
-build on 2026-09-04 ([Actions run and IPA artifact](https://github.com/keefeere/ESPRemoteControl/actions/runs/33843087676)).
-Physical pairing, input, reconnect, and host-switching validation is complete on
-macOS and Windows. Linux helper and additional distro-specific lifecycle testing
-remain optional follow-up work.
+workflow runs the HID, parser, insertion, tab-state and persistence checks on
+pull requests, main and tagged releases before building the app. The Commands UI
+workflow also exercises production views on iPhone Simulator, including real
+touches, selection replacement, tab visibility/order, and portrait/landscape.
+Simulator/CI success does not establish physical Bluetooth or wake behavior.
+Physical pairing, input, reconnect, and host-switching validation on macOS and
+Windows is described above; Linux helper and additional distro-specific
+lifecycle testing remain optional follow-up work.
 
 CI uses [path filters](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore)
 to avoid unrelated runs. **Test button presses** runs on PRs changing

@@ -54,11 +54,8 @@ final class CommandsUITests: XCTestCase {
                 XCTAssertEqual(reorder.staticTexts.count, 0, "Reorder must be a compact icon")
                 XCTAssertGreaterThan(button.frame.midY, app.frame.midY, "Layout control belongs at the bottom")
                 XCTAssertLessThan(abs(button.frame.midY - reorder.frame.midY), 8)
-                let before = reorder.label
-                reorder.tap()
-                XCTAssertNotEqual(reorder.label, before, "Reorder button must toggle edit mode")
-                reorder.tap()
-                XCTAssertEqual(reorder.label, before)
+                // Native reorder interactions are exercised separately by
+                // the multi-row test, without mixing its animations into taps.
                 let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 center.tap()
                 waitFor(button, key: "value", value: "UA")
@@ -263,6 +260,23 @@ final class CommandsUITests: XCTestCase {
         wait(for: [closed], timeout: 5)
     }
 
+    func testCommandNameAndBodyCanExchangeKeyboardFocus() {
+        launch(expert: false)
+        app.buttons["commandsAdd"].tap()
+        let body = app.textViews["commandBody"]
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        let name = app.textFields["commandName"]
+        name.tap()
+        name.typeText("Named")
+        XCTAssertEqual(name.value as? String, "Named")
+        body.tap()
+        body.typeText("Body")
+        name.tap()
+        name.typeText(" command")
+        XCTAssertEqual(name.value as? String, "Named command")
+        XCTAssertEqual(body.value as? String, "Body")
+    }
+
     func testLegendModifierTemplateRestoresCaretBeforeClosingBracket() {
         let body = newMixedEditor()
         body.typeText("abc")
@@ -274,13 +288,31 @@ final class CommandsUITests: XCTestCase {
         insertLegendEntry("legend-modifier-shift")
         waitFor(body, key: "value", value: "abc<Ctrl+Shift+>")
         openLegend()
-        insertLegendEntry("legend-key-enter")
-        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>")
+        insertLegendEntry("legend-key-right")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Right>")
         // Completed key insertion leaves the cursor after the original closing
         // bracket, so ordinary text can continue without tapping the editor.
         body.typeText("!")
-        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>!")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Right>!")
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
+    }
+
+    func testLegendFunctionAndNavigationGridsInsertOnlySelectedKey() {
+        let body = newMixedEditor()
+        openLegend()
+        let functions = app.descendants(matching: .any).matching(identifier: "legend-functions").firstMatch
+        for _ in 0..<6 {
+            if functions.exists && functions.isHittable { break }
+            app.swipeUp()
+        }
+        functions.tap()
+        XCTAssertTrue(app.buttons["legend-key-f1"].waitForExistence(timeout: 5))
+        attachScreenshot("command-legend-functions")
+        insertLegendEntry("legend-key-f12")
+        waitFor(body, key: "value", value: "<F12>")
+        openLegend()
+        insertLegendEntry("legend-key-home")
+        waitFor(body, key: "value", value: "<F12><Home>")
     }
 
     func testLegendReplacesNativeSelectionInsteadOfAppending() {

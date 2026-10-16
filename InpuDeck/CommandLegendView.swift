@@ -4,6 +4,7 @@ struct CommandLegendView: View {
     let syntax: CommandletSyntax
     let onInsert: (String, Int?) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var showsFunctionKeys = false
 
     private var legacy: Bool { syntax == .keys }
     private func marker(_ key: String) -> String { legacy ? key : "<\(key)>" }
@@ -45,6 +46,36 @@ struct CommandLegendView: View {
                     key("Backspace", id: "backspace", description: localized("Backspace — видалити назад"))
                 }
 
+                Section(localized("Курсорні клавіші")) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4)) {
+                        compactKey("Left", id: "left", glyph: "←")
+                        compactKey("Down", id: "down", glyph: "↓")
+                        compactKey("Up", id: "up", glyph: "↑")
+                        compactKey("Right", id: "right", glyph: "→")
+                    }
+                }
+
+                Section(localized("Навігація")) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2)) {
+                        compactKey("Home", id: "home")
+                        compactKey("End", id: "end")
+                        compactKey("PgUp", id: "pageup")
+                        compactKey("PgDn", id: "pagedown")
+                    }
+                }
+
+                Section(localized("Функціональні клавіші")) {
+                    DisclosureGroup(isExpanded: $showsFunctionKeys) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4)) {
+                            ForEach(1...12, id: \.self) { number in
+                                compactKey("F\(number)", id: "f\(number)")
+                            }
+                        }
+                    } label: {
+                        Text("F1–F12").accessibilityIdentifier("legend-functions")
+                    }
+                }
+
                 Section(localized("Приклади комбінацій")) {
                     key("Ctrl+C", id: "copy", description: localized("Ctrl+C — приклад копіювання"))
                     key("Ctrl+V", id: "paste", description: localized("Ctrl+V — приклад вставки"))
@@ -84,6 +115,23 @@ struct CommandLegendView: View {
     private func key(_ key: String, id: String, description: String) -> some View {
         Button { insert(marker(key)) } label: { row(marker(key), description: description) }
             .accessibilityIdentifier("legend-key-" + id)
+    }
+
+    private func compactKey(_ key: String, id: String, glyph: String? = nil) -> some View {
+        Button { insert(marker(key)) } label: {
+            VStack(spacing: 3) {
+                if let glyph { Text(glyph).font(.title2) }
+                Text(marker(key)).font(.callout.monospaced())
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 4)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+        }
+        // Multiple buttons share one List row. Automatic row-button behavior
+        // can otherwise activate more than the tapped grid item.
+        .buttonStyle(.borderless)
+        .accessibilityLabel(marker(key))
+        .accessibilityIdentifier("legend-key-" + id)
     }
 
     private func literal(_ value: String, id: String, description: String) -> some View {

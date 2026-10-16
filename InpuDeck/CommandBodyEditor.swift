@@ -39,14 +39,22 @@ struct CommandBodyEditor: UIViewRepresentable {
             if view.selectedRange != desired { view.selectedRange = desired }
         }
         coordinator.isUpdating = false
-        if wantsFocus != view.isFirstResponder {
-            DispatchQueue.main.async { [weak view, weak coordinator] in
-                guard let view, let coordinator else { return }
-                if coordinator.parent.wantsFocus {
-                    view.becomeFirstResponder()
-                    view.scrollRangeToVisible(view.selectedRange)
-                } else {
-                    view.resignFirstResponder()
+        // Act on focus-intent changes, not every transient responder mismatch.
+        // Otherwise an update during a Name-field tap can queue a stale body
+        // focus request and steal the keyboard from that field.
+        let requested = wantsFocus
+        if coordinator.lastFocusRequest != requested {
+            coordinator.lastFocusRequest = requested
+            if requested != view.isFirstResponder {
+                DispatchQueue.main.async { [weak view, weak coordinator] in
+                    guard let view, let coordinator,
+                          coordinator.parent.wantsFocus == requested else { return }
+                    if requested {
+                        view.becomeFirstResponder()
+                        view.scrollRangeToVisible(view.selectedRange)
+                    } else {
+                        view.resignFirstResponder()
+                    }
                 }
             }
         }
@@ -57,6 +65,7 @@ struct CommandBodyEditor: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: CommandBodyEditor
         var isUpdating = false
+        var lastFocusRequest: Bool?
         init(parent: CommandBodyEditor) { self.parent = parent }
 
         func textViewDidChange(_ view: UITextView) {

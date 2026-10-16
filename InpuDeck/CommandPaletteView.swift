@@ -709,6 +709,7 @@ private struct CommandletEditorView: View {
     @AppStorage("expertMode") private var expertMode = false
 
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
     @State private var bodyFocused = false
     @State private var bodySelection = NSRange(location: 0, length: 0)
     @State private var legendSelection = NSRange(location: 0, length: 0)
@@ -730,6 +731,8 @@ private struct CommandletEditorView: View {
             Form {
                 Section {
                     TextField(localized("Назва"), text: $commandlet.name)
+                        .focused($nameFocused)
+                        .accessibilityIdentifier("commandName")
                     Picker(localized("Синтаксис"), selection: $commandlet.syntax) {
                         Text(localized("Текст")).tag(CommandletSyntax.text)
                         Text(localized("Текст + клавіші")).tag(CommandletSyntax.mixed)
@@ -808,6 +811,12 @@ private struct CommandletEditorView: View {
                     onActivity()
                 }
                 .presentationDetents([.medium, .large])
+            }
+            .onChange(of: nameFocused) { _, focused in
+                if focused { bodyFocused = false }
+            }
+            .onChange(of: bodyFocused) { _, focused in
+                if focused { nameFocused = false }
             }
             .onChange(of: commandlet) { _, _ in onActivity() }
             .onAppear {
