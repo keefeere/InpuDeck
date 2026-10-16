@@ -1,0 +1,10 @@
+{
+  "version": "3.4.0",
+  "build": "106",
+  "sourceCommit": "4af591aa7fd865b9cec1818a484a502e08fd63f1",
+  "deviceType": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+  "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-4",
+  "application": "production InpuDeck.xcodeproj/InpuDeck",
+  "transport": "offline simulator; no Bluetooth connection is fabricated",
+  "data": "synthetic public demo commands; no personal host or secret data"
+}

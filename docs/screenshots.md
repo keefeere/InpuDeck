@@ -1,5 +1,10 @@
 # Documentation screenshots
 
+The [3.4 capture provenance](images/screenshots-3.4.0.json) records the exact
+version/build, merge-source commit, runtime and fixture disclosure. Images were
+visually reviewed before committing; their production UI source was unchanged
+by the subsequent image/documentation-only commit.
+
 The 3.4 screenshots in docs/images are captured from the production
 InpuDeck.xcodeproj/InpuDeck simulator build, not the fake-transport UI harness.
 A separate XCTest runner launches the already installed production application.

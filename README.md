@@ -26,7 +26,7 @@ cursor-aware key legend, biometric unlocking, and configurable tabs.
   <img src="docs/images/tabs-settings-portrait.png" width="42%" alt="Settings with tab visibility checkboxes and reorder handles">
 </p>
 <p align="center">
-  <img src="docs/images/tools-landscape.png" width="88%" alt="System and media controls in landscape">
+  <img src="docs/images/tools-landscape.png" width="88%" alt="System controls in landscape">
 </p>
 
 Screenshots show the production 3.4 app on iPhone Simulator with public demo
