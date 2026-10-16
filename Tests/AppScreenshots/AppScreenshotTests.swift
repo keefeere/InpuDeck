@@ -22,11 +22,29 @@ final class AppScreenshotTests: XCTestCase {
     }
 
     private func capture(_ name: String) {
-        let image = app.screenshot().image
-        // Render orientation into pixels, not only PNG/EXIF metadata, so the
-        // documentation renders consistently in browsers and Markdown viewers.
-        let normalized = UIGraphicsImageRenderer(size: image.size).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: image.size))
+        // Element screenshots can crop a landscape app using portrait bounds.
+        // Capture the display, then make its pixel orientation explicit.
+        let source = XCUIScreen.main.screenshot().image
+        guard let pixels = source.cgImage else { XCTFail("Screenshot has no pixels"); return }
+        let landscape = app.frame.width > app.frame.height
+        let rawLandscape = pixels.width > pixels.height
+        let orientation: UIImage.Orientation
+        if rawLandscape == landscape {
+            orientation = .up // pixels already match the interface; don't rotate twice
+        } else if source.imageOrientation != .up {
+            orientation = source.imageOrientation
+        } else {
+            orientation = XCUIDevice.shared.orientation == .landscapeRight ? .right : .left
+        }
+        let image = UIImage(cgImage: pixels, scale: 1, orientation: orientation)
+        let short = CGFloat(min(pixels.width, pixels.height))
+        let long = CGFloat(max(pixels.width, pixels.height))
+        let size = landscape ? CGSize(width: long, height: short) : CGSize(width: short, height: long)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1 // size is already in pixels
+        format.opaque = true
+        let normalized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
         }
         let attachment = XCTAttachment(image: normalized)
         attachment.name = "docs-" + name
@@ -99,6 +117,9 @@ final class AppScreenshotTests: XCTestCase {
         functions.tap()
         let f12 = app.buttons["legend-key-f12"]
         scrollTo(f12)
+        capture("commands-legend-functions")
+        app.collectionViews.firstMatch.swipeDown()
+        scrollTo(app.buttons["legend-key-home"])
         capture("commands-legend")
     }
 }
