@@ -59,6 +59,12 @@ swiftc -swift-version 5 \
 "$build_dir/commandlet-store-tests"
 
 swiftc -swift-version 5 \
+  "$repo_root/Shared/CommandTextInsertion.swift" \
+  "$repo_root/Tests/CommandTextInsertionTests.swift" \
+  -o "$build_dir/command-text-insertion-tests"
+"$build_dir/command-text-insertion-tests"
+
+swiftc -swift-version 5 \
   "$repo_root/Shared/AppTabConfiguration.swift" \
   "$repo_root/Tests/AppTabConfigurationTests.swift" \
   -o "$build_dir/tab-configuration-tests"

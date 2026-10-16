@@ -44,6 +44,22 @@ Within a marker the same escapes allow bracket keys, e.g. `<Ctrl+\>>`.
 The host keyboard-layout behavior and unsupported-character checks are shared
 with the existing input planners; HID does not report the actual host layout.
 
+## Interactive legend
+
+In normal mode, the editor footer has **Tap to see legend** (localized). It opens
+an opt-in sheet with Ctrl, Shift, Alt/Option, Win/Cmd/Super and AltGr, basic keys,
+three shortcut examples, and mixed-mode escapes. Expert mode keeps this footer
+hidden like the previous explanatory text.
+
+Tap a key/example to insert it at the saved cursor or replace the selected text,
+not append it at the end. Modifier rows insert a template such as `<Ctrl+>` and
+restore the caret before `>` so typing `V` completes `<Ctrl+V>`. The editor uses
+native UTF-16 selection with composed-character-safe replacement.
+
+Insertion never silently changes syntax mode. In Text mode markers are literal;
+the legend explains how to select Text + keys. Legacy mode inserts bare key
+names/templates on their own lines, adding line boundaries only as needed.
+
 ## Existing keys commands
 
 The persisted syntax value `keys` retains its exact line-based behavior: `Enter`

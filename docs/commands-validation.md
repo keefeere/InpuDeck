@@ -38,7 +38,7 @@
 - Disk write failure leaves the persisted list unchanged and the editor open.
   Failed loading blocks writes so corrupt or unreadable data is not overwritten.
 
-- Expert mode uses an icon-only Add button and hides editor syntax-help footers
+- Expert mode uses an icon-only Add button and hides the editor legend link
   and empty-state instructions. Successful parse previews are not rendered in
   either mode; concise validation errors remain visible. Existing keys syntax is
   available only for existing legacy commands. New mixed commands use explicit
@@ -57,6 +57,9 @@ controls in normal and expert modes, real short/long touches and input counts,
 bottom placement, reorder mode toggling, absent Commands page heading,
 normal/expert tab captions and tab configuration,
 icon-only expert Add, hidden expert footer and absence of successful parse rows.
+Legend UI tests exercise modifier-template caret restoration and native selected
+word replacement; pure insertion tests cover middle-of-text UTF-16 positions,
+emoji/combining characters, stale ranges and legacy line boundaries.
 The result bundle includes screenshots of the actual rendered Commands view.
 
 These checks do not prove physical Face ID, presentation animations or Bluetooth

@@ -22,6 +22,9 @@ targets:
       - CommandPalettePage.swift
       - CommandPaletteView.swift
       - Commandlet.swift
+      - CommandBodyEditor.swift
+      - CommandLegendView.swift
+      - CommandTextInsertion.swift
       - ShortAndLongPressButtonStyle.swift
       - CommandUnlockState.swift
       - HID.swift
