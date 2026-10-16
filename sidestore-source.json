@@ -7,25 +7,50 @@
       "name": "InpuDeck",
       "bundleIdentifier": "com.keefeere.InpuDeck",
       "developerName": "keefeere",
-      "subtitle": "Keyboard, trackpad, and control deck",
-      "localizedDescription": "Use your iPhone as an additional keyboard, trackpad, and control deck for multiple computers over direct Bluetooth or an optional ESP32-S3 BLE-to-USB HID bridge. Includes English and Ukrainian input, Shortcuts for text and URLs, a full-screen keyboard, clipboard typing, hardware controls, code scanning, and multiple-host selection.",
+      "subtitle": "Keyboard, trackpad and commands",
+      "localizedDescription": "Use your iPhone as an additional keyboard, trackpad, and control deck for multiple computers over direct Bluetooth or an optional ESP32-S3 BLE-to-USB HID bridge. Create Commands that combine literal text, keys and shortcuts, with a clickable key legend and authenticated execution. Includes customizable tabs, English and Ukrainian input, Shortcuts for text and URLs, a full-screen keyboard, clipboard typing, hardware controls, code scanning, and multiple-host selection. Commands are not an encrypted password vault.",
       "iconURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/InpuDeck/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
       "tintColor": "#445BE7",
       "screenshots": [
         {
-          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/input-portrait.png",
-          "width": 669,
-          "height": 1422
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/commands-portrait.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
         },
         {
-          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/keyboard-portrait.png",
-          "width": 669,
-          "height": 1422
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/commands-editor.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
         },
         {
-          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/keyboard-landscape.png",
-          "width": 1422,
-          "height": 669
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/commands-legend.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
+        },
+        {
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/input-portrait.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
+        },
+        {
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/keyboard-portrait.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
+        },
+        {
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/keyboard-landscape.png?v=3.4.0",
+          "width": 1600,
+          "height": 736
+        },
+        {
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/tools-landscape.png?v=3.4.0",
+          "width": 1600,
+          "height": 736
+        },
+        {
+          "imageURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/docs/images/tabs-settings-portrait.png?v=3.4.0",
+          "width": 736,
+          "height": 1600
         }
       ],
       "permissions": [
