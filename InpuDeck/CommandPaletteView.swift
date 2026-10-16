@@ -306,15 +306,13 @@ struct CommandPaletteView: View {
             authMessage = localized("Розблокування недоступне")
             return
         }
+        // The system prompt shows its own localized cancel and passcode
+        // fallback buttons; no custom button titles are available.
         Task { @MainActor in
             do {
                 try await context.evaluatePolicy(
                     .deviceOwnerAuthentication,
-                    localizedReason: localized("Відкрити команди"),
-                    options: [
-                        kLACancelButtonTitle: localized("Скасувати"),
-                        kLAFallbackButtonTitle: localized("Код-пароль")
-                    ]
+                    localizedReason: localized("Відкрити команди")
                 )
                 completeUnlock()
             } catch {
