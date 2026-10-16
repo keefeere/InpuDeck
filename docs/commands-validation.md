@@ -22,8 +22,9 @@
   Successful queue acceptance advances that session's assumed layout. This never
   updates the other tabs' `targetKeyboardLayout` preference.
 - Compact reorder and EN/UA buttons float over the bottom corners of the list,
-  above the tab bar. There is no extra control panel or Commands heading/tab
-  caption; accessibility labels remain. Reorder toggles the native list edit mode.
+  above the tab bar. There is no extra control panel or Commands page heading.
+  Normal mode shows its tab caption like the other tabs; expert mode uses icons.
+  Accessibility labels remain. Reorder toggles the native list edit mode.
   Scroll content has bottom clearance so the last row stays reachable.
   The EN/UA button matches the keyboard tab: short press switches
   the host and local assumption; long press changes only the local assumption
@@ -53,7 +54,8 @@ built Info.plist, not just the source plist, for the Face ID usage description.
 `bash scripts/test-commands-ui.sh` renders the production Commands view with a
 fake input transport on iPhone Simulator. It checks visible/hittable layout
 controls in normal and expert modes, real short/long touches and input counts,
-bottom placement, reorder mode toggling, absent Commands titles/caption,
+bottom placement, reorder mode toggling, absent Commands page heading,
+normal/expert tab captions and tab configuration,
 icon-only expert Add, hidden expert footer and absence of successful parse rows.
 The result bundle includes screenshots of the actual rendered Commands view.
 
@@ -84,7 +86,8 @@ host behavior. They also do not establish that a queued report reached the host.
 5. Set another tab to UA, enter Commands: its assumption is EN and the other
    tab's preference remains UA. Configure the real host shortcut in settings.
    There must only be floating reorder/EN/UA buttons at the bottom, not a layout
-   form or header row. Confirm no Commands heading/tab caption and that the final
+   form or header row. Confirm no Commands page heading, normal/expert tab
+   captions follow the chosen mode, and that the final
    list row can scroll clear of the buttons.
    Confirm it is visible and tappable in normal/expert and portrait/landscape.
    On both

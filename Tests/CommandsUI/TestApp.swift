@@ -1,8 +1,8 @@
 import SwiftUI
 import Combine
 
-// Only the input transport is fake. Render the actual production Commands view,
-// store, parser and press style; no Bluetooth device is used by these UI tests.
+// Only the input transport and individual non-Commands pages are fake. Render
+// production tab navigation/settings and the actual Commands view/container.
 final class RemoteInputController: ObservableObject {
     @Published var isReady = true
     @Published var sentCount = 0
@@ -20,14 +20,22 @@ struct TestInputMode {
 @main
 struct CommandsUIApp: App {
     @StateObject private var input = RemoteInputController()
-    @State private var selectedTab = 3
+    @State private var selectedTab: AppTab
+    @State private var showsSettings = false
+    @AppStorage("tabConfiguration") private var rawConfiguration = ""
 
     init() {
-        UserDefaults.standard.set(
-            ProcessInfo.processInfo.arguments.contains("--expert"), forKey: "expertMode")
+        let arguments = ProcessInfo.processInfo.arguments
+        UserDefaults.standard.set(arguments.contains("--expert"), forKey: "expertMode")
+        if !arguments.contains("--preserve-tabs") {
+            UserDefaults.standard.removeObject(forKey: "tabConfiguration")
+        }
+        let configuration = AppTabConfiguration(
+            rawValue: UserDefaults.standard.string(forKey: "tabConfiguration") ?? "")
+        _selectedTab = State(initialValue: arguments.contains("--preserve-tabs") ? configuration.visibleTabs[0] : .commands)
         try? FileManager.default.removeItem(at: CommandletStore.defaultFileURL())
         let store = CommandletStore()
-        if ProcessInfo.processInfo.arguments.contains("--many-commands") {
+        if arguments.contains("--many-commands") {
             for index in 0..<24 {
                 let id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!
                 store.add(Commandlet(id: id, name: String(format: "Fixture %02d", index),
@@ -38,21 +46,49 @@ struct CommandsUIApp: App {
         }
     }
 
+    private var activeTab: AppTab {
+        AppTabConfiguration(rawValue: rawConfiguration).resolvedSelection(selectedTab)
+    }
+
     var body: some Scene {
         WindowGroup {
-            TabView(selection: $selectedTab) {
-                Text("Other tab").tabItem { Text("Other") }.tag(0)
-                CommandPalettePage(ble: input, isActiveTab: selectedTab == 3) {
-                    HStack {
-                        Text("Connection header")
-                        Spacer()
-                        Text(String(input.sentCount)).accessibilityIdentifier("sentCount")
+            ConfiguredTabView(selection: $selectedTab) { tab in
+                if tab == .commands {
+                    CommandPalettePage(ble: input, isActiveTab: activeTab == .commands) {
+                        HStack {
+                            Text(selectedTab.rawValue).accessibilityIdentifier("selectedPage")
+                            Spacer()
+                            settingsButton
+                            Text(String(input.sentCount)).accessibilityIdentifier("sentCount")
+                        }
+                        .padding()
+                        .background(.ultraThinMaterial)
                     }
-                    .padding()
-                    .background(.ultraThinMaterial)
+                } else {
+                    VStack {
+                        Text(tab.rawValue).accessibilityIdentifier("selectedPage")
+                        settingsButton
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
                 }
-                .tabItem { Image(systemName: "command.square").accessibilityLabel("Команди") }.tag(3)
+            }
+            .sheet(isPresented: $showsSettings) {
+                NavigationStack {
+                    TabSettingsView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showsSettings = false }
+                                    .accessibilityIdentifier("dismissTabSettings")
+                            }
+                        }
+                }
             }
         }
+    }
+
+    private var settingsButton: some View {
+        Button("Settings") { showsSettings = true }
+            .accessibilityIdentifier("openTabSettings")
     }
 }

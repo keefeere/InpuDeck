@@ -15,6 +15,10 @@ targets:
     platform: iOS
     sources:
       - TestApp.swift
+      - ConfiguredTabView.swift
+      - TabSettingsView.swift
+      - AppTabConfiguration.swift
+      - Assets.xcassets
       - CommandPalettePage.swift
       - CommandPaletteView.swift
       - Commandlet.swift

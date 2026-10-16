@@ -16,6 +16,7 @@ struct ContentView: View {
     @AppStorage("developerMode") private var developerMode = false
     @AppStorage("keepScreenAwake") private var keepScreenAwake = false
     @AppStorage("expertMode") private var expertMode = false
+    @AppStorage("tabConfiguration") private var tabConfigurationRawValue = ""
     @AppStorage("showAlternateKeyLegends") private var showAlternateKeyLegends = true
     @AppStorage("hideAlternateKeyLegendsInPortrait") private var hideAlternateKeyLegendsInPortrait = false
     @AppStorage("alternateKeyLegendScalePercent") private var alternateKeyLegendScalePercent = 72.0
@@ -23,7 +24,9 @@ struct ContentView: View {
     @State private var inputText = ""
     @State private var wantsFocus = false
     @State private var isSecureInput = false
-    @State private var selectedTab = 0
+    @State private var selectedTab = AppTabConfiguration(
+        rawValue: UserDefaults.standard.string(forKey: "tabConfiguration") ?? ""
+    ).visibleTabs[0]
     @State private var showsSettings = false
     @State private var inputWarning: String?
     @State private var pendingShortcutText: String?
@@ -37,42 +40,16 @@ struct ContentView: View {
     private let jigglerIntervals: [Double] = [0.5, 1, 2, 5, 7, 10, 15, 20]
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            inputPage
-                .tabItem { tabItemLabel("Ввід", systemImage: "keyboard", assetName: "InputTabIcon") }
-                .tag(0)
-
-            RemoteKeyboardView(
-                ble: ble,
-                layout: layoutBinding,
-                onLayoutChange: selectLayout,
-                onShowSettings: showSettings
-            )
-            .tabItem { tabItemLabel("Клавіатура", systemImage: "keyboard") }
-            .tag(1)
-
-            toolsPage
-                .tabItem { tabItemLabel("Інструменти", systemImage: "switch.2") }
-                .tag(2)
-
-            CommandPalettePage(ble: ble, isActiveTab: selectedTab == 3) {
-                connectionHeader
-            }
-                .tabItem {
-                    Image(systemName: "command.square")
-                        .accessibilityLabel("Команди")
-                }
-                .tag(3)
+        ConfiguredTabView(selection: $selectedTab) { tab in
+            tabPage(tab)
         }
-        .id(expertMode)
-        .simultaneousGesture(tabSwipeGesture)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if selectedTab == 2 {
+            if activeTab == .tools {
                 connectionHeader
             }
         }
-        .onChange(of: selectedTab) { _, newValue in
-            if newValue != 0 {
+        .onChange(of: activeTab) { _, newValue in
+            if newValue != .input {
                 wantsFocus = false
             }
         }
@@ -91,6 +68,9 @@ struct ContentView: View {
                 ble.enteredBackground()
             }
             updateIdleTimer()
+        }
+        .onChange(of: tabConfigurationRawValue) { _, _ in
+            if !tabConfiguration.isEnabled(.tools) { jigglerEnabled = false }
         }
         .onChange(of: jigglerEnabled) { _, _ in
             updateIdleTimer()
@@ -194,68 +174,36 @@ struct ContentView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .global)
-            .onEnded { value in
-                let horizontalDistance = value.translation.width
-                let verticalDistance = value.translation.height
-                let edgeWidth = CGFloat(28)
-                let screenWidth = UIScreen.main.bounds.width
-                let startedAtLeftEdge = value.startLocation.x <= edgeWidth
-                let startedAtRightEdge = value.startLocation.x >= screenWidth - edgeWidth
+    private var tabConfiguration: AppTabConfiguration {
+        AppTabConfiguration(rawValue: tabConfigurationRawValue)
+    }
 
-                guard startedAtLeftEdge || startedAtRightEdge,
-                      abs(horizontalDistance) >= 120,
-                      abs(horizontalDistance) > abs(verticalDistance) * 1.25 else {
-                    return
-                }
+    private var activeTab: AppTab { tabConfiguration.resolvedSelection(selectedTab) }
 
-                withAnimation(.easeOut(duration: 0.2)) {
-                    if startedAtRightEdge, horizontalDistance < 0, selectedTab < 3 {
-                        selectedTab += 1
-                    } else if startedAtLeftEdge, horizontalDistance > 0, selectedTab > 0 {
-                        selectedTab -= 1
-                    }
-                }
+    @ViewBuilder
+    private func tabPage(_ tab: AppTab) -> some View {
+        switch tab {
+        case .input:
+            inputPage
+        case .keyboard:
+            RemoteKeyboardView(
+                ble: ble,
+                layout: layoutBinding,
+                onLayoutChange: selectLayout,
+                onShowSettings: showSettings
+            )
+        case .tools:
+            toolsPage
+        case .commands:
+            CommandPalettePage(ble: ble, isActiveTab: activeTab == .commands) {
+                connectionHeader
             }
+        }
     }
 
     private func showSettings() {
         wantsFocus = false
         showsSettings = true
-    }
-
-    @ViewBuilder
-    private func tabItemLabel(
-        _ title: LocalizedStringKey,
-        systemImage: String,
-        assetName: String? = nil
-    ) -> some View {
-        if expertMode {
-            if let assetName {
-                tabAssetIcon(assetName)
-                    .accessibilityLabel(title)
-            } else {
-                Image(systemName: systemImage)
-                    .accessibilityLabel(title)
-            }
-        } else if let assetName {
-            Label {
-                Text(title)
-            } icon: {
-                tabAssetIcon(assetName)
-            }
-        } else {
-            Label(title, systemImage: systemImage)
-        }
-    }
-
-    private func tabAssetIcon(_ name: String) -> some View {
-        Image(name)
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 24, height: 21)
     }
 
     @ViewBuilder
@@ -768,6 +716,15 @@ struct ContentView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        TabSettingsView()
+                    } label: {
+                        Label("Вкладки", systemImage: "rectangle.3.group")
+                    }
+                    .accessibilityIdentifier("settingsTabs")
+                }
+
                 Section("Перемикання розкладки на пристрої") {
                     Picker("Комбінація", selection: shortcutBinding) {
                         ForEach(HostLayoutShortcut.allCases) { shortcut in
@@ -993,7 +950,9 @@ struct ContentView: View {
 
     private func queueIncomingText(_ text: String) {
         guard !text.isEmpty else { return }
-        selectedTab = 0
+        // Respect the user's hidden tabs: incoming text must not select a
+        // page that is absent from TabView or silently re-enable it.
+        if tabConfiguration.isEnabled(.input) { selectedTab = .input }
         wantsFocus = false
         isSecureInput = true
         sendStatus = nil

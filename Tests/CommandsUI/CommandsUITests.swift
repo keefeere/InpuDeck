@@ -34,7 +34,8 @@ final class CommandsUITests: XCTestCase {
             launch(expert: expert)
             let button = app.buttons["commandsLayout"]
             XCTAssertTrue(button.isHittable, "Floating layout control must be visible")
-            XCTAssertFalse(app.staticTexts["Команди"].exists, "No Commands heading or tab caption")
+            XCTAssertEqual(app.staticTexts["Команди"].exists, !expert,
+                           "Commands caption belongs in normal mode only")
             XCTAssertEqual(button.value as? String, "EN")
             let orientations: [UIDeviceOrientation] = [.portrait, .landscapeLeft]
             for (index, orientation) in orientations.enumerated() {
@@ -69,6 +70,85 @@ final class CommandsUITests: XCTestCase {
             }
             app.terminate()
         }
+    }
+
+    private func settingsRow(_ tab: String) -> XCUIElement {
+        let id = "tabSetting-" + tab
+        let direct = app.cells[id]
+        return direct.exists ? direct : app.cells.containing(.any, identifier: id).firstMatch
+    }
+
+    private func openTabSettings() {
+        app.buttons["openTabSettings"].tap()
+        XCTAssertTrue(app.buttons["tabEnabled-input"].waitForExistence(timeout: 5))
+    }
+
+    private func closeTabSettings() {
+        app.buttons["dismissTabSettings"].tap()
+        XCTAssertTrue(app.buttons["openTabSettings"].waitForExistence(timeout: 5))
+    }
+
+    private func edgeSwipeForward() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.4))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    func testTabVisibilityOrderPersistenceAndSwipeNavigation() {
+        launch(expert: false)
+        XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
+        openTabSettings()
+        let keyboard = app.buttons["tabEnabled-keyboard"]
+        let before = keyboard.value as? String
+        keyboard.tap()
+        XCTAssertNotEqual(keyboard.value as? String, before)
+
+        let commands = settingsRow("commands")
+        let input = settingsRow("input")
+        let handle = commands.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+        XCTAssertTrue(handle.exists)
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 1, thenDragTo: input.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.95, dy: 0.1)))
+        XCTAssertLessThan(commands.frame.minY, input.frame.minY, "Tab rows must really reorder")
+        attachScreenshot("tab-settings-reordered")
+        closeTabSettings()
+        let expected = ["Команди", "Ввід", "Інструменти"]
+        XCTAssertEqual(app.tabBars.buttons.allElementsBoundByIndex.map(\.label), expected)
+        XCTAssertEqual(app.staticTexts["selectedPage"].label, "commands",
+                       "Reordering must preserve the selected page identity")
+
+        app.terminate()
+        app.launchArguments = ["--preserve-tabs"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Команди"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.tabBars.buttons.allElementsBoundByIndex.map(\.label), expected)
+        XCTAssertEqual(app.staticTexts["selectedPage"].label, "commands")
+        edgeSwipeForward()
+        waitFor(app.staticTexts["selectedPage"], key: "label", value: "input")
+        edgeSwipeForward()
+        waitFor(app.staticTexts["selectedPage"], key: "label", value: "tools")
+    }
+
+    func testHidingCurrentTabFallsBackAndLastTabCannotBeDisabled() {
+        launch(expert: false)
+        openTabSettings()
+        for tab in ["commands", "keyboard", "tools"] {
+            app.buttons["tabEnabled-" + tab].tap()
+        }
+        XCTAssertFalse(app.buttons["tabEnabled-input"].isEnabled,
+                       "The final active tab checkbox must not be switchable")
+        attachScreenshot("tab-settings-last-enabled")
+        closeTabSettings()
+        XCTAssertEqual(app.tabBars.buttons.count, 1)
+        XCTAssertEqual(app.staticTexts["selectedPage"].label, "input",
+                       "Hiding current Commands must choose a visible page")
+        openTabSettings()
+        app.buttons["tabEnabled-commands"].tap()
+        closeTabSettings()
+        XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
+        app.tabBars.buttons["Команди"].tap()
+        waitFor(app.staticTexts["selectedPage"], key: "label", value: "commands")
     }
 
     private func fixtureRow(_ index: Int) -> XCUIElement {

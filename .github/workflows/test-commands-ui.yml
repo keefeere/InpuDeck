@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "InpuDeck/ConfiguredTabView.swift"
+      - "InpuDeck/TabSettingsView.swift"
+      - "InpuDeck/Assets.xcassets/InputTabIcon.imageset/**"
+      - "InpuDeck/Assets.xcassets/Contents.json"
+      - "Shared/AppTabConfiguration.swift"
       - "InpuDeck/CommandPalettePage.swift"
       - "InpuDeck/CommandPaletteView.swift"
       - "InpuDeck/Commandlet.swift"
@@ -25,7 +30,7 @@ permissions:
 jobs:
   commands-ui-test:
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - name: Install UI test project generator
