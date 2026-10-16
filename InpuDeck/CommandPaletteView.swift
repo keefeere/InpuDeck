@@ -220,6 +220,7 @@ struct CommandPaletteView: View {
                     onCopy: { copyAsText(commandlet) },
                     onDelete: { confirmDelete(commandlet) }
                 )
+                .accessibilityIdentifier("commandRow-\(commandlet.id.uuidString)")
             }
             .onMove { source, destination in
                 store.move(from: source, to: destination)

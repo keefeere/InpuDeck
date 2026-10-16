@@ -9,9 +9,9 @@ final class CommandsUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(expert: Bool) {
+    private func launch(expert: Bool, manyCommands: Bool = false) {
         XCUIDevice.shared.orientation = .portrait
-        app.launchArguments = expert ? ["--expert"] : []
+        app.launchArguments = (expert ? ["--expert"] : []) + (manyCommands ? ["--many-commands"] : [])
         app.launch()
         XCTAssertTrue(app.buttons["commandsLayout"].waitForExistence(timeout: 5))
     }
@@ -67,6 +67,51 @@ final class CommandsUITests: XCTestCase {
                 XCTAssertEqual(app.staticTexts["sentCount"].label, String(index + 1),
                                "Long press must not send a host shortcut")
             }
+            app.terminate()
+        }
+    }
+
+    private func fixtureRow(_ index: Int) -> XCUIElement {
+        let id = "commandRow-" + String(format: "00000000-0000-0000-0000-%012d", index + 1)
+        let direct = app.cells[id]
+        return direct.exists ? direct : app.cells.containing(.any, identifier: id).firstMatch
+    }
+
+    func testManyRowsReorderAndScrollClearOfBottomControls() {
+        for orientation: UIDeviceOrientation in [.portrait, .landscapeLeft] {
+            launch(expert: false, manyCommands: true)
+            XCUIDevice.shared.orientation = orientation
+            let edit = app.buttons["commandsEdit"]
+            let layout = app.buttons["commandsLayout"]
+            XCTAssertTrue(edit.isHittable)
+            edit.tap()
+            let first = fixtureRow(0)
+            let second = fixtureRow(1)
+            XCTAssertTrue(first.waitForExistence(timeout: 5))
+            XCTAssertTrue(second.isHittable)
+            attachScreenshot("commands-before-reorder-\(orientation.rawValue)")
+            let handle = first.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+            let start = (handle.exists ? handle : first).coordinate(
+                withNormalizedOffset: CGVector(dx: handle.exists ? 0.5 : 0.97, dy: 0.5))
+            let end = second.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.95))
+            start.press(forDuration: 1, thenDragTo: end)
+            XCTAssertGreaterThan(first.frame.minY, second.frame.minY,
+                                 "Dragging must really change row order, not just the edit label")
+            edit.tap()
+
+            let last = fixtureRow(23)
+            let add = app.buttons["commandsAdd"]
+            for _ in 0..<18 {
+                if last.isHittable && add.isHittable && last.frame.maxY < layout.frame.minY { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(last.isHittable, "Last command must remain reachable")
+            XCTAssertTrue(add.isHittable, "Add row must remain reachable")
+            XCTAssertLessThan(last.frame.maxY, layout.frame.minY,
+                              "Last command must scroll clear of the floating controls")
+            XCTAssertTrue(layout.isHittable)
+            XCTAssertTrue(edit.isHittable)
+            attachScreenshot("commands-last-row-\(orientation.rawValue)")
             app.terminate()
         }
     }

@@ -27,7 +27,15 @@ struct CommandsUIApp: App {
             ProcessInfo.processInfo.arguments.contains("--expert"), forKey: "expertMode")
         try? FileManager.default.removeItem(at: CommandletStore.defaultFileURL())
         let store = CommandletStore()
-        store.add(Commandlet(name: "Fixture", syntax: .keys, body: "Enter"))
+        if ProcessInfo.processInfo.arguments.contains("--many-commands") {
+            for index in 0..<24 {
+                let id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!
+                store.add(Commandlet(id: id, name: String(format: "Fixture %02d", index),
+                                     syntax: .text, body: "Sample"))
+            }
+        } else {
+            store.add(Commandlet(name: "Fixture", syntax: .keys, body: "Enter"))
+        }
     }
 
     var body: some Scene {
