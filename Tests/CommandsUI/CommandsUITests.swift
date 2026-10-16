@@ -54,11 +54,8 @@ final class CommandsUITests: XCTestCase {
                 XCTAssertEqual(reorder.staticTexts.count, 0, "Reorder must be a compact icon")
                 XCTAssertGreaterThan(button.frame.midY, app.frame.midY, "Layout control belongs at the bottom")
                 XCTAssertLessThan(abs(button.frame.midY - reorder.frame.midY), 8)
-                let before = reorder.label
-                reorder.tap()
-                XCTAssertNotEqual(reorder.label, before, "Reorder button must toggle edit mode")
-                reorder.tap()
-                XCTAssertEqual(reorder.label, before)
+                // Native reorder interactions are exercised separately by
+                // the multi-row test, without mixing its animations into taps.
                 let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 center.tap()
                 waitFor(button, key: "value", value: "UA")
@@ -261,6 +258,23 @@ final class CommandsUITests: XCTestCase {
         let closed = expectation(for: NSPredicate(format: "exists == false"),
                                  evaluatedWith: app.buttons["commandLegendDone"])
         wait(for: [closed], timeout: 5)
+    }
+
+    func testCommandNameAndBodyCanExchangeKeyboardFocus() {
+        launch(expert: false)
+        app.buttons["commandsAdd"].tap()
+        let body = app.textViews["commandBody"]
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        let name = app.textFields["commandName"]
+        name.tap()
+        name.typeText("Named")
+        XCTAssertEqual(name.value as? String, "Named")
+        body.tap()
+        body.typeText("Body")
+        name.tap()
+        name.typeText(" command")
+        XCTAssertEqual(name.value as? String, "Named command")
+        XCTAssertEqual(body.value as? String, "Body")
     }
 
     func testLegendModifierTemplateRestoresCaretBeforeClosingBracket() {
