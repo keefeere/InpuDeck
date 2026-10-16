@@ -730,6 +730,7 @@ private struct CommandletEditorView: View {
             Form {
                 Section {
                     TextField(localized("Назва"), text: $commandlet.name)
+                        .accessibilityIdentifier("commandName")
                     Picker(localized("Синтаксис"), selection: $commandlet.syntax) {
                         Text(localized("Текст")).tag(CommandletSyntax.text)
                         Text(localized("Текст + клавіші")).tag(CommandletSyntax.mixed)

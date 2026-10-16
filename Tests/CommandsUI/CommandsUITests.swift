@@ -274,13 +274,31 @@ final class CommandsUITests: XCTestCase {
         insertLegendEntry("legend-modifier-shift")
         waitFor(body, key: "value", value: "abc<Ctrl+Shift+>")
         openLegend()
-        insertLegendEntry("legend-key-enter")
-        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>")
+        insertLegendEntry("legend-key-right")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Right>")
         // Completed key insertion leaves the cursor after the original closing
         // bracket, so ordinary text can continue without tapping the editor.
         body.typeText("!")
-        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>!")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Right>!")
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
+    }
+
+    func testLegendFunctionAndNavigationGridsInsertOnlySelectedKey() {
+        let body = newMixedEditor()
+        openLegend()
+        let functions = app.descendants(matching: .any).matching(identifier: "legend-functions").firstMatch
+        for _ in 0..<6 {
+            if functions.exists && functions.isHittable { break }
+            app.swipeUp()
+        }
+        functions.tap()
+        XCTAssertTrue(app.buttons["legend-key-f1"].waitForExistence(timeout: 5))
+        attachScreenshot("command-legend-functions")
+        insertLegendEntry("legend-key-f12")
+        waitFor(body, key: "value", value: "<F12>")
+        openLegend()
+        insertLegendEntry("legend-key-home")
+        waitFor(body, key: "value", value: "<F12><Home>")
     }
 
     func testLegendReplacesNativeSelectionInsteadOfAppending() {

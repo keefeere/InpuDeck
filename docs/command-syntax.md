@@ -14,7 +14,10 @@ starting with `#`, whitespace and newlines. Only explicit angle markers are keys
 
 - `<Enter>` — press Enter.
 - `<Ctrl+V>` — press Ctrl+V (capitalization does not add Shift).
-- `<Ctrl+Shift+Esc>`, `<F5>`, `<Tab>` — other existing key/combo names.
+- `<Ctrl+Shift+Esc>`, `<F1>` … `<F12>`, `<Tab>` — other existing key/combo names.
+- `<Up>`, `<Down>`, `<Left>`, `<Right>` — cursor keys (also shown as arrows in the legend).
+- `<Home>`, `<End>`, `<PgUp>` / `<PageUp>`, `<PgDn>` / `<PageDown>` — navigation.
+- `<Ctrl+Home>` and `<Ctrl+Shift+Right>` — modifiers can be combined with navigation keys.
 - `<Del>` / `<Delete>` — forward deletion (HID `0x4C`).
 - `<Backspace>` / `<⌫>` — backward deletion (HID `0x2A`).
 - `<Ctrl+Alt+Del>` — Ctrl+Alt+Delete, with the same forward Delete key.
@@ -48,7 +51,8 @@ with the existing input planners; HID does not report the actual host layout.
 
 In normal mode, the editor footer has **Tap to see legend** (localized). It opens
 an opt-in sheet with Ctrl, Shift, Alt/Option, Win/Cmd/Super and AltGr, basic keys,
-three shortcut examples, and mixed-mode escapes. Expert mode keeps this footer
+clickable cursor arrows, Home/End/PgUp/PgDn, an expandable F1–F12 grid, three
+shortcut examples, and mixed-mode escapes. Expert mode keeps this footer
 hidden like the previous explanatory text.
 
 Tap a key/example to insert it at the saved cursor or replace the selected text,

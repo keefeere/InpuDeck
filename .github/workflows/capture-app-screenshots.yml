@@ -1,0 +1,37 @@
+name: Capture app screenshots
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Tests/AppScreenshots/**"
+      - "scripts/capture-app-screenshots.sh"
+      - ".github/workflows/capture-app-screenshots.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install UI test project generator
+        run: brew install xcodegen
+      - name: Capture the production app on a fresh simulator
+        run: bash scripts/capture-app-screenshots.sh
+      - name: Upload screenshots and provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-documentation-screenshots
+          path: |
+            dist/app-screenshots
+            dist/app-screenshot-provenance.json
+            dist/app-screenshot-attachments
+            dist/app-screenshots.xcresult
+            dist/app-screenshot-build.log
+            dist/app-screenshot-tests.log
+          if-no-files-found: ignore
+          retention-days: 14

@@ -57,6 +57,24 @@ struct MixedCommandParserTests {
                          && deletion.taps[0].modifiers == modifiers,
                          "\(body) must send the exact deletion usage and modifiers")
         }
+        for (name, keycode) in [
+            ("Home", HID.keyHome), ("End", HID.keyEnd),
+            ("PgUp", HID.keyPageUp), ("PageUp", HID.keyPageUp),
+            ("PgDn", HID.keyPageDown), ("PageDown", HID.keyPageDown),
+            ("Up", HID.keyUpArrow), ("Down", HID.keyDownArrow),
+            ("Left", HID.keyLeftArrow), ("Right", HID.keyRightArrow),
+        ] {
+            let navigation = plan("<\(name)>")
+            precondition(navigation.taps.count == 1 && navigation.taps[0].keycode == keycode)
+        }
+        for number in 1...12 {
+            let function = plan("<F\(number)>")
+            precondition(function.taps.count == 1 && function.taps[0].keycode == HID.keyF1 + UInt8(number - 1))
+        }
+        let cursorCombo = plan("<Ctrl+Shift+Right>")
+        precondition(cursorCombo.taps.count == 1
+                     && cursorCombo.taps[0].modifiers == HID.modLeftCtrl | HID.modLeftShift
+                     && cursorCombo.taps[0].keycode == HID.keyRightArrow)
         literal("Del", "Del")
         let mixed = plan("Enter<Enter>next<Ctrl+V>")
         let plainEnter = TextTypingPlanner.makePlan(for: "Enter", startingLayout: .englishUS, layoutShortcut: .controlSpace)

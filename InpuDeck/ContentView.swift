@@ -167,6 +167,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Налаштування")
+            .accessibilityIdentifier("appSettings")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -828,6 +829,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") { showsSettings = false }
+                        .accessibilityIdentifier("settingsDone")
                 }
             }
         }
