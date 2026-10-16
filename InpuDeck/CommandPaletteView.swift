@@ -5,9 +5,9 @@ import UIKit
 /// The "Команди" tab: a palette of reusable input commands (plain text or
 /// key combos) that can be sent to the active host.
 ///
-/// Privacy model:
-/// - Command bodies are hidden until the user unlocks with biometrics
-///   (Face ID / Touch ID only — no device-passcode fallback).
+/// Privacy model (bank style):
+/// - Command bodies are hidden until the user unlocks with the access
+///   password; Face ID/Touch ID can then be enabled for later re-unlocks.
 /// - Tapping a row reveals only that command's body for 30 seconds.
 /// - The palette re-locks automatically after 60 seconds.
 /// - Deleting and editing commands requires an unlocked state.
@@ -29,6 +29,18 @@ struct CommandPaletteView: View {
     @State private var sendStatus: String?
     @State private var sendStatusToken = 0
     @State private var editMode: EditMode = .inactive
+    /// Sensitive action waiting for the next successful unlock.
+    @State private var pendingAction: PendingAction?
+    @State private var showsPasswordSheet = false
+    @State private var passwordInput = ""
+    @State private var passwordError: String?
+    @State private var showsSetupSheet = false
+    @State private var setupPassword = ""
+    @State private var setupConfirm = ""
+    @State private var setupError: String?
+    @State private var promptEnableBiometrics = false
+    /// Whether re-unlocks use Face ID after the password (bank style).
+    @AppStorage("commandsBiometricsEnabled") private var biometricsEnabled = false
 
     @State private var unlockTask: Task<Void, Never>?
     @State private var hideTasks: [UUID: Task<Void, Never>] = [:]
@@ -102,7 +114,7 @@ struct CommandPaletteView: View {
         ) {
             Button(role: .destructive) {
                 if let commandlet = deletingCommandlet {
-                    Task { await delete(commandlet) }
+                    delete(commandlet)
                 }
                 deletingCommandlet = nil
             } label: {
@@ -119,13 +131,82 @@ struct CommandPaletteView: View {
                 displayTitle(deletingCommandlet)
             ))
         }
-        .alert("Не вдалося розблокувати", isPresented: Binding(
+        .alert(localized("Не вдалося розблокувати"), isPresented: Binding(
             get: { authMessage != nil },
             set: { if !$0 { authMessage = nil } }
         )) {
-            Button("Скасувати", role: .cancel) {}
+            Button(localized("Спробувати ще")) { beginUnlock() }
+            Button(localized("Ввести пароль")) { beginPasswordUnlock() }
+            Button(localized("Скасувати"), role: .cancel) { pendingAction = nil }
         } message: {
             Text(authMessage ?? "")
+        }
+        .sheet(isPresented: $showsPasswordSheet) {
+            NavigationStack {
+                VStack(spacing: 16) {
+                    Text(localized("Введіть пароль"))
+                        .font(.headline)
+                    SecureField(localized("Пароль"), text: $passwordInput)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                    if let error = passwordError {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                    Button(localized("Скасувати")) {
+                        showsPasswordSheet = false
+                        pendingAction = nil
+                    }
+                    Button(localized("Розблокувати")) { submitPassword() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(passwordInput.isEmpty)
+                }
+                .padding()
+                .navigationTitle(localized("Розблокування"))
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .sheet(isPresented: $showsSetupSheet) {
+            NavigationStack {
+                VStack(spacing: 16) {
+                    Text(localized("Встановити пароль"))
+                        .font(.headline)
+                    Text(localized("Пароль захищає доступ до команд. Збережіть його — без нього доступ не відновитіть."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    SecureField(localized("Пароль (щонайменше 4 символи)"), text: $setupPassword)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                    SecureField(localized("Повторіть пароль"), text: $setupConfirm)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                    if let error = setupError {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                    Button(localized("Скасувати")) {
+                        showsSetupSheet = false
+                        pendingAction = nil
+                    }
+                    Button(localized("Зберегти")) { saveSetupPassword() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(setupPassword.isEmpty || setupConfirm.isEmpty)
+                }
+                .padding()
+                .navigationTitle(localized("Розблокування"))
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .confirmationDialog(
+            localized("Увімкнути розблокування через Face ID?"),
+            isPresented: $promptEnableBiometrics, titleVisibility: .visible
+        ) {
+            Button(localized("Увімкнути")) { biometricsEnabled = true }
+            Button(localized("Ні"), role: .cancel) {}
+        } message: {
+            Text(localized("Повторні розблокування після 60 с відбуватимуться без вводу пароля."))
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
@@ -145,11 +226,11 @@ struct CommandPaletteView: View {
                     isLocked: !isUnlocked,
                     isRevealed: visibleIDs.contains(commandlet.id),
                     isReady: ble.isReady,
-                    onReveal: { Task { await reveal(commandlet) } },
+                    onReveal: { reveal(commandlet) },
                     onSend: { send(commandlet) },
-                    onEdit: { Task { await edit(commandlet) } },
-                    onDuplicate: { Task { await duplicate(commandlet) } },
-                    onCopy: { Task { await copyAsText(commandlet) } },
+                    onEdit: { edit(commandlet) },
+                    onDuplicate: { duplicate(commandlet) },
+                    onCopy: { copyAsText(commandlet) },
                     onDelete: { deletingCommandlet = commandlet }
                 )
             }
@@ -162,6 +243,15 @@ struct CommandPaletteView: View {
             } label: {
                 Label(localized("Додати команду"), systemImage: "plus")
                     .frame(maxWidth: .infinity)
+            }
+
+            Section {
+                Toggle(localized("Розблокування через Face ID"), isOn: $biometricsEnabled)
+                    .disabled(!canUseBiometrics())
+            } header: {
+                Text(localized("Розблокування"))
+            } footer: {
+                Text(localized("Спочатку — пароль, далі повторні розблокування — через Face ID."))
             }
 
             if store.commandlets.isEmpty {
@@ -189,39 +279,39 @@ struct CommandPaletteView: View {
 
     // MARK: - Actions
 
-    /// Reveal the tapped command's body, prompting for biometrics first if locked.
+    /// Reveal the tapped command's body, prompting for unlock first if locked.
     @MainActor
-    private func reveal(_ commandlet: Commandlet) async {
-        guard await ensureUnlocked() else { return }
+    private func reveal(_ commandlet: Commandlet) {
+        guard requireUnlock(.reveal(commandlet.id)) else { return }
         withAnimation { visibleIDs.insert(commandlet.id) }
         scheduleAutoHide(commandlet.id)
     }
 
     /// Edit requires an unlocked state.
     @MainActor
-    private func edit(_ commandlet: Commandlet) async {
-        guard await ensureUnlocked() else { return }
+    private func edit(_ commandlet: Commandlet) {
+        guard requireUnlock(.edit(commandlet)) else { return }
         editingCommandlet = commandlet
     }
 
     /// Duplicate requires an unlocked state (the copy contains the body).
     @MainActor
-    private func duplicate(_ commandlet: Commandlet) async {
-        guard await ensureUnlocked() else { return }
+    private func duplicate(_ commandlet: Commandlet) {
+        guard requireUnlock(.duplicate(commandlet)) else { return }
         store.duplicate(commandlet)
     }
 
     /// Copying the body to the clipboard requires an unlocked state.
     @MainActor
-    private func copyAsText(_ commandlet: Commandlet) async {
-        guard await ensureUnlocked() else { return }
+    private func copyAsText(_ commandlet: Commandlet) {
+        guard requireUnlock(.copy(commandlet)) else { return }
         UIPasteboard.general.string = commandlet.body
     }
 
     /// Delete requires an unlocked state (the confirmation dialog is shown first).
     @MainActor
-    private func delete(_ commandlet: Commandlet) async {
-        guard await ensureUnlocked() else { return }
+    private func delete(_ commandlet: Commandlet) {
+        guard requireUnlock(.delete(commandlet)) else { return }
         hideTasks[commandlet.id]?.cancel()
         hideTasks[commandlet.id] = nil
         visibleIDs.remove(commandlet.id)
@@ -259,30 +349,140 @@ struct CommandPaletteView: View {
         sendStatusToken += 1
     }
 
-    // MARK: - Unlocking
+    // MARK: - Unlocking (bank style)
+    //
+    // The access password is the primary credential: it is set on first use
+    // and is required whenever biometrics are off or unavailable. Once the
+    // user opts in, re-unlocks after the 60-second timeout use Face ID
+    // directly, like a bank app after login.
 
-    /// Returns true when the palette is unlocked, running the biometric prompt
-    /// if needed. Biometrics only: no device-passcode fallback.
+    /// Sensitive command actions that require an unlocked session.
+    private enum PendingAction {
+        case reveal(UUID)
+        case edit(Commandlet)
+        case duplicate(Commandlet)
+        case copy(Commandlet)
+        case delete(Commandlet)
+    }
+
+    /// Starts an unlock for `action`, which runs once the session unlocks.
     @MainActor
-    private func ensureUnlocked() async -> Bool {
+    private func requireUnlock(_ action: PendingAction) -> Bool {
         guard !isUnlocked else { return true }
-        let context = LAContext()
-        var policyError: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &policyError) else {
-            authMessage = localized("Розблокування недоступне")
-            return false
+        pendingAction = action
+        beginUnlock()
+        return false
+    }
+
+    /// Marks the session unlocked and runs the queued sensitive action.
+    @MainActor
+    private func completeUnlock() {
+        setUnlocked(true)
+        guard let action = pendingAction else { return }
+        pendingAction = nil
+        perform(action)
+    }
+
+    /// Chooses between biometrics and the password sheet.
+    @MainActor
+    private func beginUnlock() {
+        if biometricsEnabled, canUseBiometrics() {
+            Task { @MainActor in await unlockWithBiometrics() }
+        } else {
+            beginPasswordUnlock()
         }
+    }
+
+    @MainActor
+    private func unlockWithBiometrics() async {
+        let context = LAContext()
         do {
             try await context.evaluatePolicy(
                 .deviceOwnerAuthenticationWithBiometrics,
                 localizedReason: localized("Відкрити команди")
             )
+            completeUnlock()
         } catch {
-            authMessage = localized("Не вдалося розблокувати")
-            return false
+            authMessage = (error as? LAError)?.code == .authBiometryNotAvailable
+                ? localized("Розблокування недоступне")
+                : localized("Не вдалося розблокувати")
         }
-        setUnlocked(true)
-        return true
+    }
+
+    /// Opens the password entry sheet, or the first-run setup sheet.
+    @MainActor
+    private func beginPasswordUnlock() {
+        if CommandletCredentials.hasPassword {
+            passwordInput = ""
+            passwordError = nil
+            showsPasswordSheet = true
+        } else {
+            setupPassword = ""
+            setupConfirm = ""
+            setupError = nil
+            showsSetupSheet = true
+        }
+    }
+
+    @MainActor
+    private func submitPassword() {
+        guard CommandletCredentials.verify(passwordInput) else {
+            passwordError = localized("Невірний пароль")
+            return
+        }
+        showsPasswordSheet = false
+        completeUnlock()
+    }
+
+    /// First run: stores the password, then offers to switch re-unlocks to
+    /// Face ID, like a bank app does after login.
+    @MainActor
+    private func saveSetupPassword() {
+        guard setupPassword.count >= 4 else {
+            setupError = localized("Пароль має містити щонайменше 4 символи")
+            return
+        }
+        guard setupPassword == setupConfirm else {
+            setupError = localized("Паролі не збігаються")
+            return
+        }
+        guard CommandletCredentials.setPassword(setupPassword) else {
+            setupError = localized("Не вдалося зберегти пароль")
+            return
+        }
+        showsSetupSheet = false
+        completeUnlock()
+        if canUseBiometrics() {
+            promptEnableBiometrics = true
+        }
+    }
+
+    /// Whether Face ID/Touch ID can be used on this device right now.
+    @MainActor
+    private func canUseBiometrics() -> Bool {
+        var error: NSError?
+        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
+
+    /// Executes a queued sensitive action after the session is unlocked.
+    @MainActor
+    private func perform(_ action: PendingAction) {
+        switch action {
+        case let .reveal(id):
+            withAnimation { visibleIDs.insert(id) }
+            scheduleAutoHide(id)
+        case let .edit(commandlet):
+            editingCommandlet = commandlet
+        case let .duplicate(commandlet):
+            store.duplicate(commandlet)
+        case let .copy(commandlet):
+            UIPasteboard.general.string = commandlet.body
+        case let .delete(commandlet):
+            hideTasks[commandlet.id]?.cancel()
+            hideTasks[commandlet.id] = nil
+            visibleIDs.remove(commandlet.id)
+            store.delete(commandlet)
+        }
     }
 
     @MainActor
