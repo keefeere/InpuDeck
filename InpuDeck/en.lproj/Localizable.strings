@@ -305,3 +305,7 @@
 "Текст + клавіші" = "Text + keys";
 "Клавіші (старий формат)" = "Keys (legacy)";
 "Текст — буквально; <Enter> і <Ctrl+V> — клавіші. \\< і \\> — дужки, \\\\ — бекслеш. Окремі < та > — текст." = "Text is literal; <Enter> and <Ctrl+V> are keys. \\< and \\> are brackets; \\\\ is a backslash. Unpaired < and > are text.";
+"Вкладки" = "Tabs";
+"Увімкнено" = "On";
+"Вимкнено" = "Off";
+"Галочки вмикають вкладки. Перетягніть рядки за ручки праворуч, щоб змінити порядок. Принаймні одна вкладка має залишатися ввімкненою." = "Check tabs to enable them. Drag the handles on the right to change their order. At least one tab must remain enabled.";
