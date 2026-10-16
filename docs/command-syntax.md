@@ -53,7 +53,12 @@ hidden like the previous explanatory text.
 
 Tap a key/example to insert it at the saved cursor or replace the selected text,
 not append it at the end. Modifier rows insert a template such as `<Ctrl+>` and
-restore the caret before `>` so typing `V` completes `<Ctrl+V>`. The editor uses
+restore the caret before `>` so typing `V` completes `<Ctrl+V>`.
+If the cursor/selection is already inside an unescaped `<...>` marker, further
+modifiers/keys reuse its brackets: `<Ctrl+|>` + Shift becomes `<Ctrl+Shift+|>`.
+Picking a completed key at the end moves the caret after the original `>`.
+Escaped, unpaired and nested brackets are not treated as a reusable marker;
+Text mode never infers this context. The editor uses
 native UTF-16 selection with composed-character-safe replacement.
 
 Insertion never silently changes syntax mode. In Text mode markers are literal;

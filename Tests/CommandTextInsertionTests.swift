@@ -35,6 +35,41 @@ struct CommandTextInsertionTests {
         let template = CommandTextInsertion.insert("<Ctrl+>", into: "ab", selection: NSRange(location: 1, length: 0), caretOffset: 6)
         let completed = CommandTextInsertion.insert("V", into: template.text, selection: template.selection)
         precondition(completed.text == "a<Ctrl+V>b", "Modifier caret belongs before closing bracket")
+        let ctrl = CommandTextInsertion.insert("<Ctrl+>", into: "ab", selection: NSRange(location: 1, length: 0),
+                                               caretOffset: 6, mergeIntoMarker: true)
+        let shifted = CommandTextInsertion.insert("<Shift+>", into: ctrl.text, selection: ctrl.selection,
+                                                  caretOffset: 7, mergeIntoMarker: true)
+        precondition(shifted.text == "a<Ctrl+Shift+>b")
+        precondition(shifted.selection.location == "a<Ctrl+Shift+".utf16.count)
+        let key = CommandTextInsertion.insert("<Enter>", into: shifted.text, selection: shifted.selection,
+                                              mergeIntoMarker: true)
+        precondition(key.text == "a<Ctrl+Shift+Enter>b", "Don't nest brackets inside an existing marker")
+        let continuation = CommandTextInsertion.insert("!", into: key.text, selection: key.selection)
+        precondition(continuation.text == "a<Ctrl+Shift+Enter>!b", "Completed key should leave the marker")
+        let beforeKey = CommandTextInsertion.insert("<Alt+>", into: "<Ctrl+V>", selection: NSRange(location: 6, length: 0),
+                                                    caretOffset: 5, mergeIntoMarker: true)
+        precondition(beforeKey.text == "<Ctrl+Alt+V>")
+        let replaceInner = CommandTextInsertion.insert("<Tab>", into: "<Enter>", selection: NSRange(location: 1, length: 5),
+                                                       mergeIntoMarker: true)
+        precondition(replaceInner.text == "<Tab>" && replaceInner.selection.location == 5)
+        let replaceWhole = CommandTextInsertion.insert("<Tab>", into: "<Enter>", selection: NSRange(location: 0, length: 7),
+                                                       mergeIntoMarker: true)
+        precondition(replaceWhole.text == "<Tab>")
+        let escaped = CommandTextInsertion.insert("<Shift+>", into: #"\<Ctrl+>"#,
+            selection: NSRange(location: 7, length: 0), caretOffset: 7, mergeIntoMarker: true)
+        precondition(escaped.text == #"\<Ctrl+<Shift+>>"#, "Escaped opening brackets are literal, not context")
+        let unpaired = CommandTextInsertion.insert("<Shift+>", into: "<Ctrl+",
+            selection: NSRange(location: 6, length: 0), caretOffset: 7, mergeIntoMarker: true)
+        precondition(unpaired.text == "<Ctrl+<Shift+>", "Unpaired brackets remain literal")
+        let unicodeMarker = "😀<Ctrl+>"
+        let unicodeMerge = CommandTextInsertion.insert("<Alt+>", into: unicodeMarker,
+            selection: NSRange(location: unicodeMarker.utf16.count - 1, length: 0),
+            caretOffset: 5, mergeIntoMarker: true)
+        precondition(unicodeMerge.text == "😀<Ctrl+Alt+>")
+        let literalMode = CommandTextInsertion.insert("<Shift+>", into: "<Ctrl+>",
+            selection: NSRange(location: 6, length: 0), caretOffset: 7)
+        precondition(literalMode.text == "<Ctrl+<Shift+>>", "Text mode must not infer a marker context")
+
         let legacy = CommandTextInsertion.insert("Ctrl+V", into: "beforeafter", selection: NSRange(location: 6, length: 0), standaloneLine: true)
         precondition(legacy.text == "before\nCtrl+V\nafter")
         precondition(legacy.selection.location == 13)

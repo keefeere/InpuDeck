@@ -800,7 +800,8 @@ private struct CommandletEditorView: View {
                         into: commandlet.body,
                         selection: legendSelection,
                         caretOffset: offset,
-                        standaloneLine: commandlet.syntax == .keys
+                        standaloneLine: commandlet.syntax == .keys,
+                        mergeIntoMarker: commandlet.syntax == .mixed
                     )
                     commandlet.body = result.text
                     bodySelection = result.selection

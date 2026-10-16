@@ -33,7 +33,7 @@ permissions:
 jobs:
   commands-ui-test:
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - name: Install UI test project generator

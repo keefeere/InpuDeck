@@ -87,7 +87,10 @@ final class CommandsUITests: XCTestCase {
     }
 
     private func closeTabSettings() {
-        app.buttons["dismissTabSettings"].tap()
+        let dismiss = app.buttons["dismissTabSettings"]
+        dismiss.tap()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: dismiss)
+        wait(for: [closed], timeout: 5)
         XCTAssertTrue(app.buttons["openTabSettings"].waitForExistence(timeout: 5))
     }
 
@@ -150,7 +153,10 @@ final class CommandsUITests: XCTestCase {
         enabledControl("commands").tap()
         closeTabSettings()
         XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
-        app.tabBars.buttons["Команди"].tap()
+        let commands = app.tabBars.buttons["Команди"]
+        commands.tap()
+        let selected = expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: commands)
+        wait(for: [selected], timeout: 5)
         waitFor(app.staticTexts["selectedPage"], key: "label", value: "commands")
     }
 
@@ -264,9 +270,16 @@ final class CommandsUITests: XCTestCase {
         attachScreenshot("command-legend")
         insertLegendEntry("legend-modifier-ctrl")
         waitFor(body, key: "value", value: "abc<Ctrl+>")
-        // Do not tap the editor: its saved insertion point must restore itself.
-        body.typeText("V")
-        waitFor(body, key: "value", value: "abc<Ctrl+V>")
+        openLegend()
+        insertLegendEntry("legend-modifier-shift")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+>")
+        openLegend()
+        insertLegendEntry("legend-key-enter")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>")
+        // Completed key insertion leaves the cursor after the original closing
+        // bracket, so ordinary text can continue without tapping the editor.
+        body.typeText("!")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>!")
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
     }
 
