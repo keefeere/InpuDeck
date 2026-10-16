@@ -58,7 +58,10 @@ struct ContentView: View {
             CommandPalettePage(ble: ble, isActiveTab: selectedTab == 3) {
                 connectionHeader
             }
-                .tabItem { tabItemLabel("Команди", systemImage: "command.square") }
+                .tabItem {
+                    Image(systemName: "command.square")
+                        .accessibilityLabel("Команди")
+                }
                 .tag(3)
         }
         .id(expertMode)

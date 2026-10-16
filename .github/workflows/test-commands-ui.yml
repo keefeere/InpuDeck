@@ -11,6 +11,7 @@ on:
       - "InpuDeck/ShortAndLongPressButtonStyle.swift"
       - "Shared/CommandUnlockState.swift"
       - "Shared/KeyComboParser.swift"
+      - "Shared/MixedCommandParser.swift"
       - "Shared/HID.swift"
       - "Shared/TextTypingPlanner.swift"
       - "Shared/Localization.swift"

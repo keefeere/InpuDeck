@@ -56,39 +56,42 @@ struct CommandPaletteView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Keep touch controls in normal layout, not in navigation-bar
-                // toolbar hosting under the tab's connection header.
+        commandList
+            .contentMargins(.bottom, 64, for: .scrollContent)
+            .overlay(alignment: .bottom) {
                 HStack {
-                    EditButton()
-                        .accessibilityIdentifier("commandsEdit")
+                    Button {
+                        withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                    } label: {
+                        Image(systemName: editMode.isEditing ? "checkmark" : "arrow.up.arrow.down")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 40)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(localized(editMode.isEditing ? "Готово" : "Змінити порядок"))
+                    .accessibilityIdentifier("commandsEdit")
                     Spacer()
                     layoutButton
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(Color(.systemGroupedBackground))
-                commandList
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
             }
-                .navigationTitle(localized("Команди"))
-                .navigationBarTitleDisplayMode(.inline)
-                .environment(\.editMode, $editMode)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if let sendStatus {
-                        Label(sendStatus, systemImage: sendFailed ? "exclamationmark.triangle" : "checkmark.circle")
-                            .font(.caption)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.ultraThinMaterial)
-                            .task(id: sendStatusToken) {
-                                try? await Task.sleep(for: .seconds(2))
-                                self.sendStatus = nil
-                            }
-                    }
+            .environment(\.editMode, $editMode)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let sendStatus {
+                    Label(sendStatus, systemImage: sendFailed ? "exclamationmark.triangle" : "checkmark.circle")
+                        .font(.caption)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.ultraThinMaterial)
+                        .task(id: sendStatusToken) {
+                            try? await Task.sleep(for: .seconds(2))
+                            self.sendStatus = nil
+                        }
                 }
-        }
+            }
         .sheet(isPresented: $showsNewCommandlet) {
             CommandletEditorView(
                 commandlet: Commandlet(name: "", syntax: .text, body: ""),
@@ -109,6 +112,7 @@ struct CommandPaletteView: View {
             CommandletEditorView(
                 commandlet: commandlet,
                 isNew: false,
+                offersLegacySyntax: commandlet.syntax == .keys,
                 onActivity: { if isUnlocked { scheduleRelock() } },
                 onSave: { updated in
                     guard isUnlocked, isForegroundActive, tabIsActive else {
@@ -216,6 +220,7 @@ struct CommandPaletteView: View {
                     onCopy: { copyAsText(commandlet) },
                     onDelete: { confirmDelete(commandlet) }
                 )
+                .accessibilityIdentifier("commandRow-\(commandlet.id.uuidString)")
             }
             .onMove { source, destination in
                 store.move(from: source, to: destination)
@@ -250,8 +255,8 @@ struct CommandPaletteView: View {
             Text(selectedLayout.shortName)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(Color.primary)
-                .frame(width: 44, height: 32)
-                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                .frame(width: 44, height: 40)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                 .contentShape(Rectangle())
         }
         .buttonStyle(ShortAndLongPressButtonStyle(
@@ -357,6 +362,19 @@ struct CommandPaletteView: View {
                 startingLayout: selectedLayout,
                 layoutShortcut: selectedShortcut
             )
+            finalLayout = plan.finalLayout
+            unsupported = plan.unsupportedCharacters
+            taps = plan.taps
+        case .mixed:
+            guard let plan = MixedCommandParser.makePlan(
+                for: commandlet.body,
+                startingLayout: selectedLayout,
+                layoutShortcut: selectedShortcut
+            ) else {
+                sendStatus = localized("Команду не надіслано: виправте синтаксис.")
+                sendStatusToken += 1
+                return
+            }
             finalLayout = plan.finalLayout
             unsupported = plan.unsupportedCharacters
             taps = plan.taps
@@ -655,11 +673,15 @@ private struct CommandPaletteRow: View {
     }
 
     private var syntaxIcon: String {
-        commandlet.syntax == .keys ? "keyboard" : "text.cursor"
+        commandlet.syntax == .text ? "text.cursor" : "keyboard"
     }
 
     private var syntaxTitle: LocalizedStringKey {
-        commandlet.syntax == .keys ? "Клавіші" : "Текст"
+        switch commandlet.syntax {
+        case .text: "Текст"
+        case .keys: "Клавіші (старий формат)"
+        case .mixed: "Текст + клавіші"
+        }
     }
 
     private var accessibilityText: String {
@@ -680,6 +702,7 @@ private struct CommandPaletteRow: View {
 private struct CommandletEditorView: View {
     @State var commandlet: Commandlet
     var isNew = false
+    var offersLegacySyntax = false
     var onActivity: () -> Void = {}
     let onSave: (Commandlet) -> String?
     @State private var saveError: String?
@@ -688,8 +711,25 @@ private struct CommandletEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyFocused: Bool
 
-    private var hasParseErrors: Bool {
-        commandlet.syntax == .keys && KeyComboParser.hasErrors(commandlet.body)
+    private var parses: [KeyLineParse] {
+        switch commandlet.syntax {
+        case .text: []
+        case .keys: KeyComboParser.parseBody(commandlet.body)
+        case .mixed: MixedCommandParser.parseBody(commandlet.body)
+        }
+    }
+
+    private var hasParseErrors: Bool { parses.contains(where: \.isError) }
+
+    private var syntaxHelp: String {
+        switch commandlet.syntax {
+        case .text:
+            localized("Надсилається як звичайний текст зі зміною розкладки.")
+        case .keys:
+            localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
+        case .mixed:
+            localized("Текст — буквально; <Enter> і <Ctrl+V> — клавіші. \\< і \\> — дужки, \\\\ — бекслеш. Окремі < та > — текст.")
+        }
     }
 
     var body: some View {
@@ -699,7 +739,10 @@ private struct CommandletEditorView: View {
                     TextField(localized("Назва"), text: $commandlet.name)
                     Picker(localized("Синтаксис"), selection: $commandlet.syntax) {
                         Text(localized("Текст")).tag(CommandletSyntax.text)
-                        Text(localized("Клавіші")).tag(CommandletSyntax.keys)
+                        Text(localized("Текст + клавіші")).tag(CommandletSyntax.mixed)
+                        if offersLegacySyntax {
+                            Text(localized("Клавіші (старий формат)")).tag(CommandletSyntax.keys)
+                        }
                     }
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("commandSyntax")
@@ -723,9 +766,7 @@ private struct CommandletEditorView: View {
                     Text(localized("Тіло команди"))
                 } footer: {
                     if !expertMode {
-                        Text(commandlet.syntax == .keys
-                             ? localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
-                             : localized("Надсилається як звичайний текст зі зміною розкладки."))
+                        Text(syntaxHelp)
                             .font(.caption)
                             .accessibilityIdentifier("commandSyntaxHelp")
                     }
@@ -766,7 +807,7 @@ private struct CommandletEditorView: View {
 
     /// Validation errors only: don't echo successful text/key parses as rows.
     private var parseErrors: some View {
-        ForEach(KeyComboParser.parseBody(commandlet.body).filter(\.isError), id: \.line) { parse in
+        ForEach(Array(parses.filter(\.isError).enumerated()), id: \.offset) { _, parse in
             let message: String = {
                 switch parse.outcome {
                 case let .unknownToken(token):

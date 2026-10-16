@@ -22,6 +22,7 @@ targets:
       - CommandUnlockState.swift
       - HID.swift
       - KeyComboParser.swift
+      - MixedCommandParser.swift
       - TextTypingPlanner.swift
       - Localization.swift
     settings:

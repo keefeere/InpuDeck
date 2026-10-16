@@ -6,8 +6,10 @@ import SwiftUI
 enum CommandletSyntax: String, Codable, CaseIterable, Identifiable {
     /// Typed as plain text with automatic layout switching.
     case text
-    /// Parsed line by line into key taps (modifers, named keys, characters).
+    /// Legacy line-based syntax. Keep raw value and semantics for saved commands.
     case keys
+    /// Literal text with explicit <Enter>/<Ctrl+V> markers and bracket escapes.
+    case mixed
 
     var id: String { rawValue }
 }

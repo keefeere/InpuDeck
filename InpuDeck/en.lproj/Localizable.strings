@@ -301,3 +301,7 @@
 "Помилка збереження" = "Save failed";
 "Команду не надіслано: виправте синтаксис." = "Command not sent: fix the syntax.";
 "Команду не надіслано: транспорт не прийняв дані." = "Command not sent: transport did not accept the data.";
+"Змінити порядок" = "Reorder";
+"Текст + клавіші" = "Text + keys";
+"Клавіші (старий формат)" = "Keys (legacy)";
+"Текст — буквально; <Enter> і <Ctrl+V> — клавіші. \\< і \\> — дужки, \\\\ — бекслеш. Окремі < та > — текст." = "Text is literal; <Enter> and <Ctrl+V> are keys. \\< and \\> are brackets; \\\\ is a backslash. Unpaired < and > are text.";
