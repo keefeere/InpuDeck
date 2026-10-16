@@ -21,10 +21,12 @@
 - Commands starts with an independent EN assumption each time the tab is entered.
   Successful queue acceptance advances that session's assumed layout. This never
   updates the other tabs' `targetKeyboardLayout` preference.
-- A compact UA/EN toolbar button matches the keyboard tab: short press switches
+- A compact EN/UA button in a normal-flow control row (not navigation toolbar
+  hosting) matches the keyboard tab: short press switches
   the host and local assumption; long press changes only the local assumption
   for manual synchronization (also when disconnected). No large layout section
   or shortcut picker is shown here; the existing host shortcut setting is used.
+  The connection header is also in normal layout flow, not a root safe-area inset.
   HID cannot read the host's actual layout or confirm a switch. This assumes two
   host layouts; cycling through more layouts needs manual alignment.
 - Invalid syntax or unsupported characters block the entire command rather than
@@ -32,12 +34,23 @@
 - Disk write failure leaves the persisted list unchanged and the editor open.
   Failed loading blocks writes so corrupt or unreadable data is not overwritten.
 
+- Expert mode uses an icon-only Add button and hides editor syntax-help footers
+  and empty-state instructions. Successful parse previews are not rendered in
+  either mode; concise validation errors remain visible. Existing keys syntax is
+  unchanged pending agreement on an explicit mixed text/key notation.
+
 ## Automated checks
 
 `./scripts/test-direct-hid.sh` runs the HID/parser tests, pure unlock lifecycle
 state tests, and command persistence tests on macOS. `test-localizations.sh`
 validates English and Ukrainian resources. The release build checks the actual
 built Info.plist, not just the source plist, for the Face ID usage description.
+
+`bash scripts/test-commands-ui.sh` renders the production Commands view with a
+fake input transport on iPhone Simulator. It checks visible/hittable layout
+controls in normal and expert modes, real short/long touches and input counts,
+icon-only expert Add, hidden expert footer and absence of successful parse rows.
+The result bundle includes screenshots of the actual rendered Commands view.
 
 These checks do not prove physical Face ID, presentation animations or Bluetooth
 host behavior. They also do not establish that a queued report reached the host.
@@ -65,7 +78,9 @@ host behavior. They also do not establish that a queued report reached the host.
    check locked context menu → Delete → Face ID → confirmation.
 5. Set another tab to UA, enter Commands: its assumption is EN and the other
    tab's preference remains UA. Configure the real host shortcut in settings.
-   There must only be a compact UA/EN toolbar button, not a layout form. On both
+   There must only be a compact EN/UA control above the list, not a layout form.
+   Confirm it is visible and tappable in normal/expert and portrait/landscape.
+   On both
    Direct Bluetooth and ESP check: short press switches host and local assumption
    exactly once; long press changes only the local assumption and sends nothing
    to the host (the same behavior as Keyboard). Test long press disconnected too.

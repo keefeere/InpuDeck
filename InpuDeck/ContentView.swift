@@ -55,14 +55,17 @@ struct ContentView: View {
                 .tabItem { tabItemLabel("Інструменти", systemImage: "switch.2") }
                 .tag(2)
 
-            CommandPaletteView(ble: ble, isActiveTab: selectedTab == 3)
+            VStack(spacing: 0) {
+                connectionHeader
+                CommandPaletteView(ble: ble, isActiveTab: selectedTab == 3)
+            }
                 .tabItem { tabItemLabel("Команди", systemImage: "command.square") }
                 .tag(3)
         }
         .id(expertMode)
         .simultaneousGesture(tabSwipeGesture)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if selectedTab == 2 || selectedTab == 3 {
+            if selectedTab == 2 {
                 connectionHeader
             }
         }

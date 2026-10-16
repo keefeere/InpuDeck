@@ -16,6 +16,7 @@ struct CommandPaletteView: View {
     @ObservedObject var ble: RemoteInputController
     var isActiveTab = true
 
+    @AppStorage("expertMode") private var expertMode = false
     @StateObject private var store = CommandletStore()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -56,17 +57,22 @@ struct CommandPaletteView: View {
 
     var body: some View {
         NavigationStack {
-            commandList
+            VStack(spacing: 0) {
+                // Keep touch controls in normal layout, not in navigation-bar
+                // toolbar hosting under the tab's connection header.
+                HStack {
+                    EditButton()
+                        .accessibilityIdentifier("commandsEdit")
+                    Spacer()
+                    layoutButton
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color(.systemGroupedBackground))
+                commandList
+            }
                 .navigationTitle(localized("Команди"))
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        EditButton()
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        layoutButton
-                    }
-                }
                 .environment(\.editMode, $editMode)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let sendStatus {
@@ -218,9 +224,17 @@ struct CommandPaletteView: View {
             Button {
                 showsNewCommandlet = true
             } label: {
-                Label(localized("Додати команду"), systemImage: "plus")
-                    .frame(maxWidth: .infinity)
+                Group {
+                    if expertMode {
+                        Image(systemName: "plus")
+                    } else {
+                        Label(localized("Додати команду"), systemImage: "plus")
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
+            .accessibilityLabel(localized("Додати команду"))
+            .accessibilityIdentifier("commandsAdd")
 
             if store.commandlets.isEmpty {
                 emptyState
@@ -236,7 +250,7 @@ struct CommandPaletteView: View {
             Text(selectedLayout.shortName)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(Color.primary)
-                .frame(minWidth: 44, minHeight: 32)
+                .frame(width: 44, height: 32)
                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
         }
@@ -246,6 +260,7 @@ struct CommandPaletteView: View {
         ))
         .accessibilityLabel("Змінити мову")
         .accessibilityValue(selectedLayout.shortName)
+        .accessibilityIdentifier("commandsLayout")
         .accessibilityHint("Довге натискання змінює лише екранну розкладку")
     }
 
@@ -268,10 +283,12 @@ struct CommandPaletteView: View {
                 .foregroundStyle(.secondary)
             Text(localized("Поки що немає команд"))
                 .font(.headline)
-            Text(localized("Додайте текст або комбінацію клавіш і надсилайте їх на пристрій одним дотиком."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            if !expertMode {
+                Text(localized("Додайте текст або комбінацію клавіш і надсилайте їх на пристрій одним дотиком."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -666,6 +683,7 @@ private struct CommandletEditorView: View {
     var onActivity: () -> Void = {}
     let onSave: (Commandlet) -> String?
     @State private var saveError: String?
+    @AppStorage("expertMode") private var expertMode = false
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyFocused: Bool
@@ -684,6 +702,7 @@ private struct CommandletEditorView: View {
                         Text(localized("Клавіші")).tag(CommandletSyntax.keys)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("commandSyntax")
                 }
 
                 Section {
@@ -694,16 +713,22 @@ private struct CommandletEditorView: View {
                     )
                     .lineLimit(6...14)
                     .focused($bodyFocused)
-                    if commandlet.syntax == .keys {
-                        keyLinePreview
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("commandBody")
+                    if hasParseErrors {
+                        parseErrors
                     }
                 } header: {
                     Text(localized("Тіло команди"))
                 } footer: {
-                    Text(commandlet.syntax == .keys
-                         ? localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
-                         : localized("Надсилається як звичайний текст зі зміною розкладки."))
-                        .font(.caption)
+                    if !expertMode {
+                        Text(commandlet.syntax == .keys
+                             ? localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
+                             : localized("Надсилається як звичайний текст зі зміною розкладки."))
+                            .font(.caption)
+                            .accessibilityIdentifier("commandSyntaxHelp")
+                    }
                 }
             }
             .navigationTitle(isNew ? localized("Нова команда") : localized("Редагувати"))
@@ -739,98 +764,24 @@ private struct CommandletEditorView: View {
         }
     }
 
-    @ViewBuilder
-    private var keyLinePreview: some View {
-        let parses = KeyComboParser.parseBody(commandlet.body)
-        if !parses.isEmpty {
-            ForEach(Array(parses.enumerated()), id: \.offset) { _, parse in
-                HStack(spacing: 6) {
-                    Image(systemName: parse.isError ? "xmark.circle.fill" : "checkmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(parse.isError ? .red : .green)
-                    Text(localizedFormat("Рядок %@", String(parse.line)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(displayText(for: parse))
-                        .font(.caption)
-                        .lineLimit(1)
+    /// Validation errors only: don't echo successful text/key parses as rows.
+    private var parseErrors: some View {
+        ForEach(KeyComboParser.parseBody(commandlet.body).filter(\.isError), id: \.line) { parse in
+            let message: String = {
+                switch parse.outcome {
+                case let .unknownToken(token):
+                    return localizedFormat("Невідомий токен: %@", token)
+                case .multipleKeys:
+                    return localized("Дві та більше клавіші в одному рядку")
+                default:
+                    return ""
                 }
-            }
+            }()
+            Text(localizedFormat("Рядок %@", String(parse.line)) + ": " + message)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .accessibilityIdentifier("commandParseError")
         }
-    }
-
-    private func displayText(for parse: KeyLineParse) -> String {
-        switch parse.outcome {
-        case .unknownToken(let token):
-            return localizedFormat("Невідомий токен: %@", token)
-        case .multipleKeys:
-            return localized("Дві та більше клавіші в одному рядку")
-        case .text(let text):
-            return text.isEmpty ? localized("Порожній рядок") : localizedFormat("Текст: %@", text)
-        case let .tap(tap):
-            return comboText(for: tap)
-        }
-    }
-
-    private func comboText(for tap: ParsedKeyTap) -> String {
-        var parts: [String] = []
-        if tap.modifiers & HID.modLeftCtrl != 0 { parts.append("Ctrl") }
-        if tap.modifiers & HID.modRightCtrl != 0 { parts.append("RCtrl") }
-        if tap.modifiers & HID.modLeftShift != 0 { parts.append("Shift") }
-        if tap.modifiers & HID.modRightShift != 0 { parts.append("RShift") }
-        if tap.modifiers & HID.modLeftAlt != 0 { parts.append("Alt") }
-        if tap.modifiers & HID.modRightAlt != 0 { parts.append("AltGr") }
-        if tap.modifiers & HID.modLeftGUI != 0 { parts.append("Win") }
-        if tap.modifiers & HID.modRightGUI != 0 { parts.append("RWin") }
-        switch tap.key {
-        case let .special(keycode):
-            if keycode == 0 { return parts.isEmpty ? "—" : parts.joined(separator: "+") }
-            parts.append(KeyComboDisplay.name(forKeycode: keycode) ?? "0x\(String(format: "%02X", keycode))")
-        case let .character(character):
-            parts.append(String(character))
-        }
-        return parts.joined(separator: "+")
-    }
-}
-
-/// Human-readable names for the HID keycodes used in the editor preview.
-enum KeyComboDisplay {
-    private static let names: [UInt8: String] = [
-        HID.keyTab: "Tab",
-        HID.keyEnter: "Enter",
-        HID.keyEscape: "Esc",
-        HID.keySpace: "Space",
-        HID.keyBackspace: "Backspace",
-        HID.keyDelete: "Delete",
-        HID.keyHome: "Home",
-        HID.keyEnd: "End",
-        HID.keyPageUp: "PageUp",
-        HID.keyPageDown: "PageDown",
-        HID.keyInsert: "Insert",
-        HID.keyPrintScreen: "PrintScreen",
-        HID.keyScrollLock: "ScrollLock",
-        HID.keyPause: "Pause",
-        HID.keyLeftArrow: "←",
-        HID.keyRightArrow: "→",
-        HID.keyUpArrow: "↑",
-        HID.keyDownArrow: "↓",
-    ]
-
-    static func name(forKeycode keycode: UInt8) -> String? {
-        if let name = names[keycode] { return name }
-        if (HID.keyF1...HID.keyF12).contains(keycode) {
-            return "F\(Int(keycode - HID.keyF1) + 1)"
-        }
-        if (HID.keyA...HID.keyZ).contains(keycode) {
-            let value = 0x61 + UInt32(keycode - HID.keyA)
-            guard let scalar = UnicodeScalar(value) else { return nil }
-            return String(scalar)
-        }
-        if (HID.key1...HID.key0).contains(keycode) {
-            let index = Int(keycode - HID.key1)
-            return index < 9 ? "\(index + 1)" : "0"
-        }
-        return nil
     }
 }
 
