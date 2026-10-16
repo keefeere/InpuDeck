@@ -14,20 +14,29 @@ import UIKit
 /// - Deleting and editing commands requires an unlocked state.
 struct CommandPaletteView: View {
     @ObservedObject var ble: RemoteInputController
+    var isActiveTab = true
 
     @StateObject private var store = CommandletStore()
     @Environment(\.scenePhase) private var scenePhase
 
-    @AppStorage("targetKeyboardLayout") private var layoutRawValue = KeyboardLayout.englishUS.rawValue
+    // Independent session assumption; never overwrite other tabs.
+    @State private var selectedLayout: KeyboardLayout = .englishUS
     @AppStorage("hostLayoutShortcut") private var shortcutRawValue = HostLayoutShortcut.controlSpace.rawValue
 
-    @State private var isUnlocked = false
+    @State private var unlockState = CommandUnlockState()
+    @State private var authContext: LAContext?
+    // Async tasks capture a View value; mirror environment/plain inputs in
+    // State so authentication completion observes the latest lifecycle values.
+    @State private var isForegroundActive = false
+    @State private var tabIsActive = false
+    private var isUnlocked: Bool { unlockState.isUnlocked }
     @State private var visibleIDs: Set<UUID> = []
     @State private var authMessage: String?
     @State private var editingCommandlet: Commandlet?
     @State private var showsNewCommandlet = false
     @State private var deletingCommandlet: Commandlet?
     @State private var sendStatus: String?
+    @State private var sendFailed = false
     @State private var sendStatusToken = 0
     @State private var editMode: EditMode = .inactive
     /// Sensitive action waiting for the next successful unlock.
@@ -40,10 +49,6 @@ struct CommandPaletteView: View {
     private static let revealDuration: UInt64 = 30 * 1_000_000_000
     /// How long the palette stays unlocked before re-locking.
     private static let unlockDuration: UInt64 = 60 * 1_000_000_000
-
-    private var selectedLayout: KeyboardLayout {
-        KeyboardLayout(rawValue: layoutRawValue) ?? .englishUS
-    }
 
     private var selectedShortcut: HostLayoutShortcut {
         HostLayoutShortcut(rawValue: shortcutRawValue) ?? .controlSpace
@@ -62,7 +67,7 @@ struct CommandPaletteView: View {
                 .environment(\.editMode, $editMode)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let sendStatus {
-                        Label(sendStatus, systemImage: "checkmark.circle")
+                        Label(sendStatus, systemImage: sendFailed ? "exclamationmark.triangle" : "checkmark.circle")
                             .font(.caption)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 6)
@@ -79,9 +84,15 @@ struct CommandPaletteView: View {
             CommandletEditorView(
                 commandlet: Commandlet(name: "", syntax: .text, body: ""),
                 isNew: true,
+                onActivity: { if isUnlocked { scheduleRelock() } },
                 onSave: { commandlet in
-                    store.add(commandlet)
+                    guard store.add(commandlet) else {
+                        let message = store.storageError ?? localized("Не вдалося зберегти команди")
+                        store.storageError = nil
+                        return message
+                    }
                     showsNewCommandlet = false
+                    return nil
                 }
             )
         }
@@ -89,9 +100,18 @@ struct CommandPaletteView: View {
             CommandletEditorView(
                 commandlet: commandlet,
                 isNew: false,
+                onActivity: { if isUnlocked { scheduleRelock() } },
                 onSave: { updated in
-                    store.update(updated)
+                    guard isUnlocked, isForegroundActive, tabIsActive else {
+                        return localized("Не вдалося розблокувати")
+                    }
+                    guard store.update(updated) else {
+                        let message = store.storageError ?? localized("Не вдалося зберегти команди")
+                        store.storageError = nil
+                        return message
+                    }
                     editingCommandlet = nil
+                    return nil
                 }
             )
         }
@@ -101,12 +121,11 @@ struct CommandPaletteView: View {
                 get: { deletingCommandlet != nil },
                 set: { if !$0 { deletingCommandlet = nil } }
             ),
-            titleVisibility: .visible
-        ) {
+            titleVisibility: .visible,
+            presenting: deletingCommandlet
+        ) { commandlet in
             Button(role: .destructive) {
-                if let commandlet = deletingCommandlet {
-                    delete(commandlet)
-                }
+                delete(commandlet)
                 deletingCommandlet = nil
             } label: {
                 Text(localized("Видалити"))
@@ -116,10 +135,10 @@ struct CommandPaletteView: View {
             } label: {
                 Text(localized("Скасувати"))
             }
-        } message: {
+        } message: { commandlet in
             Text(localizedFormat(
                 "«%@» буде видалено назавжди.",
-                displayTitle(deletingCommandlet)
+                displayTitle(commandlet)
             ))
         }
         .alert(localized("Не вдалося розблокувати"), isPresented: Binding(
@@ -131,18 +150,51 @@ struct CommandPaletteView: View {
         } message: {
             Text(authMessage ?? "")
         }
+        .alert(localized("Помилка збереження"), isPresented: Binding(
+            get: { store.storageError != nil },
+            set: { if !$0 { store.storageError = nil } }
+        )) {
+            Button(localized("OK")) { store.storageError = nil }
+        } message: {
+            Text(store.storageError ?? "")
+        }
+        .onAppear {
+            isForegroundActive = scenePhase == .active
+            tabIsActive = isActiveTab
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                setUnlocked(false)
+            isForegroundActive = phase == .active
+            switch phase {
+            case .active:
+                if tabIsActive, unlockState.becameActive() { completeUnlock() }
+            case .inactive:
+                // Face ID itself may deactivate the scene. Hide private UI,
+                // but retain its authentication request and queued action.
+                hidePrivateUI()
+                unlockState.becameInactive()
+                if unlockState.requestID == nil { pendingAction = nil }
+            case .background:
+                lock()
+            @unknown default:
+                lock()
             }
         }
-        .onDisappear { setUnlocked(false) }
+        .onChange(of: isActiveTab) { _, active in
+            tabIsActive = active
+            lock()
+            if active { selectedLayout = .englishUS }
+        }
+        .onDisappear {
+            tabIsActive = false
+            lock()
+        }
     }
 
     // MARK: - List
 
     private var commandList: some View {
         List {
+            layoutControls
             ForEach(store.commandlets) { commandlet in
                 CommandPaletteRow(
                     commandlet: commandlet,
@@ -154,7 +206,7 @@ struct CommandPaletteView: View {
                     onEdit: { edit(commandlet) },
                     onDuplicate: { duplicate(commandlet) },
                     onCopy: { copyAsText(commandlet) },
-                    onDelete: { deletingCommandlet = commandlet }
+                    onDelete: { confirmDelete(commandlet) }
                 )
             }
             .onMove { source, destination in
@@ -173,6 +225,43 @@ struct CommandPaletteView: View {
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    private var layoutControls: some View {
+        Section {
+            Picker(localized("Розкладка хоста"), selection: Binding(
+                get: { selectedLayout },
+                set: { layout in
+                    guard ble.isReady, layout != selectedLayout else { return }
+                    let command = selectedShortcut.command
+                    guard ble.sendKeyTaps([(command.modifiers, command.keycode)]) else { return }
+                    selectedLayout = layout
+                }
+            )) {
+                ForEach(KeyboardLayout.allCases) { layout in
+                    Text(layout.shortName).tag(layout)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!ble.isReady)
+            Picker(localized("Комбінація"), selection: $shortcutRawValue) {
+                ForEach(HostLayoutShortcut.allCases) { shortcut in
+                    Text(shortcut.displayName).tag(shortcut.rawValue)
+                }
+            }
+            Button {
+                let command = selectedShortcut.command
+                ble.sendKeyTap(modifiers: command.modifiers, hidKeycode: command.keycode)
+                // Repair a mismatch without changing the displayed assumption.
+            } label: {
+                Label(localized("Перемкнути лише на хості"), systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!ble.isReady)
+        } header: {
+            Text(localized("Розкладка хоста"))
+        } footer: {
+            Text(localized("На цій вкладці початкова розкладка — EN. Якщо хост має іншу, перемкніть лише на хості для синхронізації. HID не читає поточну мову хоста."))
+        }
     }
 
     private var emptyState: some View {
@@ -222,10 +311,16 @@ struct CommandPaletteView: View {
         UIPasteboard.general.string = commandlet.body
     }
 
-    /// Delete requires an unlocked state (the confirmation dialog is shown first).
+    /// Authenticate before presenting confirmation, never on its dismiss path.
+    @MainActor
+    private func confirmDelete(_ commandlet: Commandlet) {
+        guard requireUnlock(.confirmDelete(commandlet)) else { return }
+        deletingCommandlet = commandlet
+    }
+
     @MainActor
     private func delete(_ commandlet: Commandlet) {
-        guard requireUnlock(.delete(commandlet)) else { return }
+        guard isUnlocked, isForegroundActive, tabIsActive else { return }
         hideTasks[commandlet.id]?.cancel()
         hideTasks[commandlet.id] = nil
         visibleIDs.remove(commandlet.id)
@@ -234,6 +329,9 @@ struct CommandPaletteView: View {
 
     private func send(_ commandlet: Commandlet) {
         guard ble.isReady else { return }
+        sendFailed = true
+        let finalLayout: KeyboardLayout
+        var unsupported: [Character]
         var taps: [(modifiers: UInt8, keycode: UInt8)]
         switch commandlet.syntax {
         case .text:
@@ -242,23 +340,38 @@ struct CommandPaletteView: View {
                 startingLayout: selectedLayout,
                 layoutShortcut: selectedShortcut
             )
-            if plan.finalLayout != selectedLayout {
-                layoutRawValue = plan.finalLayout.rawValue
-            }
+            finalLayout = plan.finalLayout
+            unsupported = plan.unsupportedCharacters
             taps = plan.taps
         case .keys:
+            guard !KeyComboParser.hasErrors(commandlet.body) else {
+                sendStatus = localized("Команду не надіслано: виправте синтаксис.")
+                sendStatusToken += 1
+                return
+            }
             let plan = KeyComboPlanner.makePlan(
                 for: commandlet.body,
                 startingLayout: selectedLayout,
                 layoutShortcut: selectedShortcut
             )
-            if plan.finalLayout != selectedLayout {
-                layoutRawValue = plan.finalLayout.rawValue
-            }
+            finalLayout = plan.finalLayout
+            unsupported = plan.unsupportedCharacters
             taps = plan.taps
         }
+        // Never execute a truncated command (potentially a dangerous one).
+        guard unsupported.isEmpty else {
+            sendStatus = localized("Команду не надіслано: непідтримувані символи.")
+            sendStatusToken += 1
+            return
+        }
         guard !taps.isEmpty else { return }
-        ble.sendKeyTaps(taps)
+        guard ble.sendKeyTaps(taps) else {
+            sendStatus = localized("Команду не надіслано: транспорт не прийняв дані.")
+            sendStatusToken += 1
+            return
+        }
+        sendFailed = false
+        selectedLayout = finalLayout
         sendStatus = localizedFormat("Надіслано через %@", ble.mode.title)
         sendStatusToken += 1
     }
@@ -275,13 +388,14 @@ struct CommandPaletteView: View {
         case edit(Commandlet)
         case duplicate(Commandlet)
         case copy(Commandlet)
-        case delete(Commandlet)
+        case confirmDelete(Commandlet)
     }
 
     /// Starts an unlock for `action`, which runs once the session unlocks.
     @MainActor
     private func requireUnlock(_ action: PendingAction) -> Bool {
         guard !isUnlocked else { return true }
+        guard unlockState.requestID == nil else { return false }
         pendingAction = action
         beginUnlock()
         return false
@@ -290,7 +404,7 @@ struct CommandPaletteView: View {
     /// Marks the session unlocked and runs the queued sensitive action.
     @MainActor
     private func completeUnlock() {
-        setUnlocked(true)
+        scheduleRelock()
         guard let action = pendingAction else { return }
         pendingAction = nil
         perform(action)
@@ -300,31 +414,45 @@ struct CommandPaletteView: View {
     /// system offers the device passcode instead.
     @MainActor
     private func beginUnlock() {
+        guard tabIsActive, isForegroundActive,
+              let requestID = unlockState.begin() else { return }
         let context = LAContext()
-        var policyError: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
-            authMessage = localized("Розблокування недоступне")
-            return
-        }
-        // The system prompt shows its own localized cancel and passcode
-        // fallback buttons; no custom button titles are available.
+        authContext = context
         Task { @MainActor in
+            // Allow the menu or alert action to finish first.
+            await Task.yield()
+            guard unlockState.requestID == requestID else { return }
+            var policyError: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+                unlockState.lock()
+                authContext = nil
+                authMessage = policyError?.localizedDescription ?? localized("Розблокування недоступне")
+                return
+            }
             do {
-                try await context.evaluatePolicy(
+                let success = try await context.evaluatePolicy(
                     .deviceOwnerAuthentication,
                     localizedReason: localized("Відкрити команди")
                 )
-                completeUnlock()
-            } catch {
-                let code = (error as? LAError)?.code
-                switch code {
-                case .userCancel, .systemCancel:
-                    // The user dismissed the prompt; drop the queued action.
-                    pendingAction = nil
-                case .biometryNotAvailable, .biometryLockout:
-                    authMessage = localized("Біометрія недоступна, введіть код-пароль")
-                default:
+                guard unlockState.requestID == requestID else { return }
+                authContext = nil
+                guard success else {
+                    unlockState.lock()
                     authMessage = localized("Не вдалося розблокувати")
+                    return
+                }
+                if unlockState.authenticated(requestID, isActive: isForegroundActive && tabIsActive) {
+                    completeUnlock()
+                }
+            } catch {
+                guard unlockState.requestID == requestID else { return }
+                unlockState.lock()
+                authContext = nil
+                switch (error as? LAError)?.code {
+                case .userCancel, .systemCancel, .appCancel:
+                    pendingAction = nil
+                default:
+                    authMessage = error.localizedDescription
                 }
             }
         }
@@ -343,38 +471,41 @@ struct CommandPaletteView: View {
             _ = store.duplicate(commandlet)
         case let .copy(commandlet):
             UIPasteboard.general.string = commandlet.body
-        case let .delete(commandlet):
-            hideTasks[commandlet.id]?.cancel()
-            hideTasks[commandlet.id] = nil
-            visibleIDs.remove(commandlet.id)
-            store.delete(commandlet)
+        case let .confirmDelete(commandlet):
+            deletingCommandlet = commandlet
         }
     }
 
     @MainActor
-    private func setUnlocked(_ value: Bool) {
-        isUnlocked = value
+    private func scheduleRelock() {
+        unlockTask?.cancel()
+        unlockTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.unlockDuration)
+            guard !Task.isCancelled else { return }
+            lock()
+        }
+    }
+
+    @MainActor
+    private func hidePrivateUI() {
         unlockTask?.cancel()
         unlockTask = nil
-        if value {
-            // Refresh the auto-hide timers for already revealed bodies and
-            // schedule the re-lock.
-            for id in visibleIDs { scheduleAutoHide(id) }
-            unlockTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: Self.unlockDuration)
-                guard !Task.isCancelled else { return }
-                withAnimation {
-                    isUnlocked = false
-                    visibleIDs.removeAll()
-                }
-                hideTasks.values.forEach { $0.cancel() }
-                hideTasks = [:]
-            }
-        } else {
-            hideTasks.values.forEach { $0.cancel() }
-            hideTasks = [:]
-            withAnimation { visibleIDs.removeAll() }
-        }
+        hideTasks.values.forEach { $0.cancel() }
+        hideTasks = [:]
+        visibleIDs.removeAll()
+        editingCommandlet = nil
+        showsNewCommandlet = false
+        deletingCommandlet = nil
+    }
+
+    @MainActor
+    private func lock() {
+        unlockState.lock()
+        authContext?.invalidate()
+        authContext = nil
+        pendingAction = nil
+        authMessage = nil
+        hidePrivateUI()
     }
 
     /// Hide a single revealed body after the reveal timeout.
@@ -464,11 +595,13 @@ private struct CommandPaletteRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onReveal)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
+            // Destructive role would animate removal before confirmation.
+            Button {
                 onDelete()
             } label: {
                 Label(localized("Видалити"), systemImage: "trash")
             }
+            .tint(.red)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -483,15 +616,15 @@ private struct CommandPaletteRow: View {
             Button(action: onEdit) {
                 Label(localized("Редагувати"), systemImage: "pencil")
             }
-            .disabled(isLocked)
             Button(action: onDuplicate) {
                 Label(localized("Дублювати"), systemImage: "plus.square.on.square")
             }
-            .disabled(isLocked)
             Button(action: onCopy) {
                 Label(localized("Копіювати як текст"), systemImage: "doc.on.doc")
             }
-            .disabled(isLocked)
+            Button(role: .destructive, action: onDelete) {
+                Label(localized("Видалити"), systemImage: "trash")
+            }
         }
     }
 
@@ -525,7 +658,9 @@ private struct CommandPaletteRow: View {
 private struct CommandletEditorView: View {
     @State var commandlet: Commandlet
     var isNew = false
-    let onSave: (Commandlet) -> Void
+    var onActivity: () -> Void = {}
+    let onSave: (Commandlet) -> String?
+    @State private var saveError: String?
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyFocused: Bool
@@ -573,9 +708,9 @@ private struct CommandletEditorView: View {
                     Button("Скасувати") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isNew ? "Додати" : "Зберегти") {
-                        onSave(commandlet)
-                        dismiss()
+                    Button(localized(isNew ? "Додати" : "Зберегти")) {
+                        saveError = onSave(commandlet)
+                        if saveError == nil { dismiss() }
                     }
                     .disabled(
                         commandlet.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -583,7 +718,19 @@ private struct CommandletEditorView: View {
                     )
                 }
             }
-            .onAppear { bodyFocused = true }
+            .alert(localized("Помилка збереження"), isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button(localized("OK")) { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
+            }
+            .onChange(of: commandlet) { _, _ in onActivity() }
+            .onAppear {
+                bodyFocused = true
+                onActivity()
+            }
         }
     }
 

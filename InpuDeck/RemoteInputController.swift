@@ -159,9 +159,10 @@ final class RemoteInputController: ObservableObject {
         guard isReady else { return }
         active.sendKeyTap(modifiers: modifiers, hidKeycode: hidKeycode)
     }
-    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) {
-        guard isReady else { return }
-        active.sendKeyTaps(taps)
+    @discardableResult
+    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) -> Bool {
+        guard isReady else { return false }
+        return active.sendKeyTaps(taps)
     }
     func sendConsumerDown(usage: UInt16) {
         guard isReady else { return }

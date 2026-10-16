@@ -292,3 +292,12 @@
 "Спробувати ще" = "Try again";
 "Код-пароль" = "Passcode";
 "Біометрія недоступна, введіть код-пароль" = "Biometrics unavailable; enter your passcode";
+
+"Розкладка хоста" = "Host keyboard layout";
+"Перемкнути лише на хості" = "Switch on host only";
+"На цій вкладці початкова розкладка — EN. Якщо хост має іншу, перемкніть лише на хості для синхронізації. HID не читає поточну мову хоста." = "This tab initially assumes EN. If the host differs, switch on the host only to synchronize. HID cannot read the host's current language.";
+"Команду не надіслано: непідтримувані символи." = "Command not sent: unsupported characters.";
+"Не вдалося зберегти команди" = "Could not save commands";
+"Помилка збереження" = "Save failed";
+"Команду не надіслано: виправте синтаксис." = "Command not sent: fix the syntax.";
+"Команду не надіслано: транспорт не прийняв дані." = "Command not sent: transport did not accept the data.";

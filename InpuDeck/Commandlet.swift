@@ -32,8 +32,10 @@ struct Commandlet: Identifiable, Codable, Equatable, Sendable {
 @MainActor
 final class CommandletStore: ObservableObject {
     @Published private(set) var commandlets: [Commandlet] = []
+    @Published var storageError: String?
 
     private let fileURL: URL
+    private var loadError: String?
 
     init(fileURL: URL? = nil) {
         self.fileURL = fileURL ?? Self.defaultFileURL()
@@ -47,20 +49,24 @@ final class CommandletStore: ObservableObject {
         return directory.appendingPathComponent("commandlets.json")
     }
 
-    func add(_ commandlet: Commandlet) {
-        commandlets.append(commandlet)
-        save()
+    @discardableResult
+    func add(_ commandlet: Commandlet) -> Bool {
+        var next = commandlets
+        next.append(commandlet)
+        return save(next)
     }
 
-    func update(_ commandlet: Commandlet) {
-        guard let index = commandlets.firstIndex(where: { $0.id == commandlet.id }) else { return }
-        commandlets[index] = commandlet
-        save()
+    @discardableResult
+    func update(_ commandlet: Commandlet) -> Bool {
+        guard let index = commandlets.firstIndex(where: { $0.id == commandlet.id }) else { return false }
+        var next = commandlets
+        next[index] = commandlet
+        return save(next)
     }
 
-    func delete(_ commandlet: Commandlet) {
-        commandlets.removeAll { $0.id == commandlet.id }
-        save()
+    @discardableResult
+    func delete(_ commandlet: Commandlet) -> Bool {
+        save(commandlets.filter { $0.id != commandlet.id })
     }
 
     func duplicate(_ commandlet: Commandlet) -> Commandlet? {
@@ -68,23 +74,45 @@ final class CommandletStore: ObservableObject {
         var copy = commandlets[index]
         copy.id = UUID()
         copy.name = localizedFormat("%@ (копія)", commandlet.name)
-        commandlets.insert(copy, at: index + 1)
-        save()
-        return copy
+        var next = commandlets
+        next.insert(copy, at: index + 1)
+        return save(next) ? copy : nil
     }
 
     func move(from source: IndexSet, to destination: Int) {
-        commandlets.move(fromOffsets: source, toOffset: destination)
-        save()
+        var next = commandlets
+        next.move(fromOffsets: source, toOffset: destination)
+        save(next)
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        commandlets = (try? JSONDecoder().decode([Commandlet].self, from: data)) ?? []
+        do {
+            let data = try Data(contentsOf: fileURL)
+            commandlets = try JSONDecoder().decode([Commandlet].self, from: data)
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError { return }
+            // Do not overwrite unreadable/corrupt data with an empty list.
+            loadError = error.localizedDescription
+            storageError = error.localizedDescription
+        }
     }
 
-    private func save() {
-        guard let data = try? JSONEncoder().encode(commandlets) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+    @discardableResult
+    private func save(_ next: [Commandlet]) -> Bool {
+        guard loadError == nil else {
+            storageError = loadError
+            return false
+        }
+        do {
+            let data = try JSONEncoder().encode(next)
+            try data.write(to: fileURL, options: .atomic)
+            commandlets = next
+            storageError = nil
+            return true
+        } catch {
+            // Keep the last persisted list when disk writes fail.
+            storageError = error.localizedDescription
+            return false
+        }
     }
 }

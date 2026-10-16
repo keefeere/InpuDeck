@@ -215,10 +215,15 @@ enum KeyComboPlanner {
             guard keycode != 0 || tap.modifiers != 0 else { return }
             taps.append((tap.modifiers, keycode))
         case let .character(character):
-            if let layout = KeyboardLayout.inferred(from: character), layout != current {
+            // In shortcuts, letter capitalization names a key, not Shift.
+            // Preserve uppercase when typing text or a bare character.
+            let isLetterShortcut = tap.modifiers != 0 && character.isLetter
+            let mappedCharacter = isLetterShortcut
+                ? (String(character).lowercased().first ?? character) : character
+            if let layout = KeyboardLayout.inferred(from: mappedCharacter), layout != current {
                 appendLayoutSwitch(shortcut: shortcut, to: layout, current: &current, to: &taps)
             }
-            guard let command = HID.mapCharacterToHID(character, layout: current) else {
+            guard let command = HID.mapCharacterToHID(mappedCharacter, layout: current) else {
                 unsupported.append(character)
                 return
             }
