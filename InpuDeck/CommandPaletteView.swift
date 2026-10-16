@@ -306,13 +306,15 @@ struct CommandPaletteView: View {
             authMessage = localized("Розблокування недоступне")
             return
         }
-        context.cancelButtonTitle = localized("Скасувати")
-        context.fallbackButtonTitle = localized("Код-пароль")
         Task { @MainActor in
             do {
                 try await context.evaluatePolicy(
                     .deviceOwnerAuthentication,
-                    localizedReason: localized("Відкрити команди")
+                    localizedReason: localized("Відкрити команди"),
+                    options: [
+                        kLACancelButtonTitle: localized("Скасувати"),
+                        kLAFallbackButtonTitle: localized("Код-пароль")
+                    ]
                 )
                 completeUnlock()
             } catch {
