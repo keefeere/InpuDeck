@@ -9,7 +9,7 @@ cp "$repo_root/Tests/CommandsUI/"* "$test_root/"
 for source in CommandPalettePage CommandPaletteView Commandlet ShortAndLongPressButtonStyle; do
   cp "$repo_root/InpuDeck/$source.swift" "$test_root/"
 done
-for source in CommandUnlockState HID KeyComboParser TextTypingPlanner Localization; do
+for source in CommandUnlockState HID KeyComboParser MixedCommandParser TextTypingPlanner Localization; do
   cp "$repo_root/Shared/$source.swift" "$test_root/"
 done
 xcodegen generate --spec "$test_root/project.yml"

@@ -20,6 +20,18 @@ struct CommandletStoreTests {
         precondition(store.delete(updated))
         precondition(CommandletStore(fileURL: file).commandlets == store.commandlets)
 
+        let mixed = Commandlet(name: "Mixed", syntax: .mixed, body: #"Enter<Enter>\<Enter>"#)
+        precondition(store.add(mixed))
+        precondition(CommandletStore(fileURL: file).commandlets.last == mixed,
+                     "Mixed syntax and escapes must round-trip unchanged")
+        let legacyFile = root.appendingPathComponent("legacy.json")
+        let legacyJSON = #"[{"id":"00000000-0000-0000-0000-000000000001","name":"Legacy","syntax":"keys","body":"Enter\nCtrl+V"}]"#
+        try Data(legacyJSON.utf8).write(to: legacyFile)
+        let legacyStore = CommandletStore(fileURL: legacyFile)
+        precondition(legacyStore.commandlets.first?.syntax == .keys)
+        precondition(legacyStore.commandlets.first?.body == "Enter\nCtrl+V",
+                     "Loading legacy keys must not reinterpret or rewrite its body")
+
         // A path with a missing parent cannot be written. No in-memory success.
         let unavailable = CommandletStore(fileURL: root.appendingPathComponent("missing/commands.json"))
         precondition(!unavailable.add(original))

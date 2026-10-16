@@ -43,6 +43,16 @@ swiftc -swift-version 5 \
 
 swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \
+  "$repo_root/Shared/HID.swift" \
+  "$repo_root/Shared/TextTypingPlanner.swift" \
+  "$repo_root/Shared/KeyComboParser.swift" \
+  "$repo_root/Shared/MixedCommandParser.swift" \
+  "$repo_root/Tests/MixedCommandParserTests.swift" \
+  -o "$build_dir/mixed-command-tests"
+"$build_dir/mixed-command-tests"
+
+swiftc -swift-version 5 \
+  "$repo_root/Shared/Localization.swift" \
   "$repo_root/InpuDeck/Commandlet.swift" \
   "$repo_root/Tests/CommandletStoreTests.swift" \
   -o "$build_dir/commandlet-store-tests"

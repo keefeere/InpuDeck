@@ -21,8 +21,11 @@
 - Commands starts with an independent EN assumption each time the tab is entered.
   Successful queue acceptance advances that session's assumed layout. This never
   updates the other tabs' `targetKeyboardLayout` preference.
-- A compact EN/UA button in a normal-flow control row (not navigation toolbar
-  hosting) matches the keyboard tab: short press switches
+- Compact reorder and EN/UA buttons float over the bottom corners of the list,
+  above the tab bar. There is no extra control panel or Commands heading/tab
+  caption; accessibility labels remain. Reorder toggles the native list edit mode.
+  Scroll content has bottom clearance so the last row stays reachable.
+  The EN/UA button matches the keyboard tab: short press switches
   the host and local assumption; long press changes only the local assumption
   for manual synchronization (also when disconnected). No large layout section
   or shortcut picker is shown here; the existing host shortcut setting is used.
@@ -37,7 +40,8 @@
 - Expert mode uses an icon-only Add button and hides editor syntax-help footers
   and empty-state instructions. Successful parse previews are not rendered in
   either mode; concise validation errors remain visible. Existing keys syntax is
-  unchanged pending agreement on an explicit mixed text/key notation.
+  available only for existing legacy commands. New mixed commands use explicit
+  angle-bracket key markers; plain text and escapes are documented below.
 
 ## Automated checks
 
@@ -49,6 +53,7 @@ built Info.plist, not just the source plist, for the Face ID usage description.
 `bash scripts/test-commands-ui.sh` renders the production Commands view with a
 fake input transport on iPhone Simulator. It checks visible/hittable layout
 controls in normal and expert modes, real short/long touches and input counts,
+bottom placement, reorder mode toggling, absent Commands titles/caption,
 icon-only expert Add, hidden expert footer and absence of successful parse rows.
 The result bundle includes screenshots of the actual rendered Commands view.
 
@@ -78,7 +83,9 @@ host behavior. They also do not establish that a queued report reached the host.
    check locked context menu → Delete → Face ID → confirmation.
 5. Set another tab to UA, enter Commands: its assumption is EN and the other
    tab's preference remains UA. Configure the real host shortcut in settings.
-   There must only be a compact EN/UA control above the list, not a layout form.
+   There must only be floating reorder/EN/UA buttons at the bottom, not a layout
+   form or header row. Confirm no Commands heading/tab caption and that the final
+   list row can scroll clear of the buttons.
    Confirm it is visible and tappable in normal/expert and portrait/landscape.
    On both
    Direct Bluetooth and ESP check: short press switches host and local assumption

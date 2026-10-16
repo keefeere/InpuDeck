@@ -33,7 +33,8 @@ final class CommandsUITests: XCTestCase {
         for expert in [false, true] {
             launch(expert: expert)
             let button = app.buttons["commandsLayout"]
-            XCTAssertTrue(button.isHittable, "Layout must be visible below the connection header")
+            XCTAssertTrue(button.isHittable, "Floating layout control must be visible")
+            XCTAssertFalse(app.staticTexts["Команди"].exists, "No Commands heading or tab caption")
             XCTAssertEqual(button.value as? String, "EN")
             let orientations: [UIDeviceOrientation] = [.portrait, .landscapeLeft]
             for (index, orientation) in orientations.enumerated() {
@@ -47,6 +48,16 @@ final class CommandsUITests: XCTestCase {
                 } else {
                     XCTAssertGreaterThan(app.frame.width, app.frame.height)
                 }
+                let reorder = app.buttons["commandsEdit"]
+                XCTAssertTrue(reorder.isHittable)
+                XCTAssertEqual(reorder.staticTexts.count, 0, "Reorder must be a compact icon")
+                XCTAssertGreaterThan(button.frame.midY, app.frame.midY, "Layout control belongs at the bottom")
+                XCTAssertLessThan(abs(button.frame.midY - reorder.frame.midY), 8)
+                let before = reorder.label
+                reorder.tap()
+                XCTAssertNotEqual(reorder.label, before, "Reorder button must toggle edit mode")
+                reorder.tap()
+                XCTAssertEqual(reorder.label, before)
                 let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 center.tap()
                 waitFor(button, key: "value", value: "UA")
@@ -86,9 +97,12 @@ final class CommandsUITests: XCTestCase {
         app.segmentedControls["commandSyntax"].buttons.element(boundBy: 1).tap()
         let body = app.descendants(matching: .any).matching(identifier: "commandBody").firstMatch
         body.tap()
-        body.typeText("Enter")
+        body.typeText("Enter<Enter>")
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
         XCTAssertFalse(app.staticTexts["Рядок 1"].exists)
         attachScreenshot("commands-editor-normal")
+        body.typeText("<Bogus>")
+        XCTAssertTrue(app.staticTexts["commandParseError"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Додати"].isEnabled, "Invalid key markers must block saving")
     }
 }

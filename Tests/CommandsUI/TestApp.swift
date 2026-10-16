@@ -43,7 +43,7 @@ struct CommandsUIApp: App {
                     .padding()
                     .background(.ultraThinMaterial)
                 }
-                .tabItem { Text("Commands") }.tag(3)
+                .tabItem { Image(systemName: "command.square").accessibilityLabel("Команди") }.tag(3)
             }
         }
     }

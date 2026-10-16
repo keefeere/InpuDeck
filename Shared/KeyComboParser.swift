@@ -185,12 +185,25 @@ enum KeyComboPlanner {
         startingLayout: KeyboardLayout,
         layoutShortcut: HostLayoutShortcut
     ) -> Plan {
+        makePlan(
+            parses: KeyComboParser.parseBody(body),
+            startingLayout: startingLayout,
+            layoutShortcut: layoutShortcut
+        )
+    }
+
+    /// Shared HID planning for legacy lines and explicit mixed text/key spans.
+    static func makePlan(
+        parses: [KeyLineParse],
+        startingLayout: KeyboardLayout,
+        layoutShortcut: HostLayoutShortcut
+    ) -> Plan {
         var taps: [(modifiers: UInt8, keycode: UInt8)] = []
         var unsupported: [Character] = []
         var current = startingLayout
         let shortcut = layoutShortcut.command
 
-        for parse in KeyComboParser.parseBody(body) {
+        for parse in parses {
             switch parse.outcome {
             case let .tap(tap):
                 appendTap(tap, current: &current, to: &taps, shortcut: shortcut, unsupported: &unsupported)
