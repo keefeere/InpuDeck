@@ -233,7 +233,7 @@ struct CommandPaletteView: View {
         Button {
             changeLayout(synchronizeHost: true)
         } label: {
-            Text("UA/EN")
+            Text(selectedLayout.shortName)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(Color.primary)
                 .frame(minWidth: 44, minHeight: 32)
