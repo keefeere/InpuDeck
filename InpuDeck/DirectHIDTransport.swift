@@ -926,13 +926,19 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
     func sendKeyTap(modifiers: UInt8, hidKeycode: UInt8) {
         enqueue(state.tap(hidKeycode, modifiers: modifiers))
     }
-    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) {
-        guard isReady else { return }
+    @discardableResult
+    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) -> Bool {
+        guard isReady else { return false }
         guard taps.count <= queue.capacity / 3 else {
             lastError = localized("Текст завеликий. Надішли меншими частинами.")
-            return
+            return false
         }
-        enqueue(taps.flatMap { state.tap($0.keycode, modifiers: $0.modifiers) })
+        guard queue.append(taps.flatMap { state.tap($0.keycode, modifiers: $0.modifiers) }) else {
+            lastError = localized("Забагато тексту в черзі. Надішли меншими частинами.")
+            return false
+        }
+        scheduleSend()
+        return true
     }
 
     @discardableResult

@@ -8,7 +8,8 @@ protocol InputTransport: AnyObject {
     func sendKeyDown(modifiersMask: UInt8, keycode: UInt8)
     func sendKeyUp(keycode: UInt8)
     func sendKeyTap(modifiers: UInt8, hidKeycode: UInt8)
-    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)])
+    @discardableResult
+    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) -> Bool
     func sendConsumerDown(usage: UInt16)
     func sendConsumerUp()
     func sendSystemMicrophoneMuteDown()

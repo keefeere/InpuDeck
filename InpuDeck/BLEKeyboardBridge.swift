@@ -186,8 +186,9 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         selectedBridgeID = bridgeStore.selectedBridgeID
     }
 
-    private func writeV2(_ frames: [V2Frame]) {
-        guard isReady, let peripheral, let writeChar, !frames.isEmpty else { return }
+    @discardableResult
+    private func writeV2(_ frames: [V2Frame]) -> Bool {
+        guard isReady, let peripheral, let writeChar, !frames.isEmpty else { return false }
 
         let writeType: CBCharacteristicWriteType = writeChar.properties.contains(.writeWithoutResponse)
             ? .withoutResponse
@@ -224,8 +225,10 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
             }
         }
 
+        guard frameIndex == frames.count else { return false }
         pendingWrites.append(contentsOf: packets)
         drainWriteQueue(type: writeType)
+        return true
     }
 
     private func drainWriteQueue(type: CBCharacteristicWriteType? = nil) {
@@ -277,7 +280,8 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
         writeV2([V2Frame(command: V2.keyTap, payload: [modifiers, hidKeycode])])
     }
 
-    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) {
+    @discardableResult
+    func sendKeyTaps(_ taps: [(modifiers: UInt8, keycode: UInt8)]) -> Bool {
         var frames: [V2Frame] = []
         for tap in taps {
             if tap.keycode == 0 {
@@ -288,7 +292,7 @@ final class BLEKeyboardBridge: NSObject, ObservableObject, InputTransport {
                 frames.append(V2Frame(command: V2.keyTap, payload: [tap.modifiers, tap.keycode]))
             }
         }
-        writeV2(frames)
+        return writeV2(frames)
     }
 
     private func sendModifierChord(_ modifiers: UInt8) {

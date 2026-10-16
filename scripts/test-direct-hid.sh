@@ -43,6 +43,19 @@ swiftc -swift-version 5 \
 
 swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \
+  "$repo_root/InpuDeck/Commandlet.swift" \
+  "$repo_root/Tests/CommandletStoreTests.swift" \
+  -o "$build_dir/commandlet-store-tests"
+"$build_dir/commandlet-store-tests"
+
+swiftc -swift-version 5 \
+  "$repo_root/Shared/CommandUnlockState.swift" \
+  "$repo_root/Tests/CommandUnlockStateTests.swift" \
+  -o "$build_dir/command-unlock-tests"
+"$build_dir/command-unlock-tests"
+
+swiftc -swift-version 5 \
+  "$repo_root/Shared/Localization.swift" \
   "$repo_root/InpuDeck/ESPBridgeStore.swift" \
   "$repo_root/Tests/ESPBridgeStoreTests.swift" \
   -o "$build_dir/esp-bridge-store-tests"

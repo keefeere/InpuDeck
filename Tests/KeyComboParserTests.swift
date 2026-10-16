@@ -111,6 +111,24 @@ struct KeyComboParserTests {
         check(tapsEqual(taps, [(HID.modLeftCtrl | HID.modLeftShift, HID.keyEscape)]),
               "A combo plans to one tap")
 
+        for (body, modifiers, keycode) in [
+            ("Ctrl+C", HID.modLeftCtrl, HID.keyC),
+            ("Ctrl+V", HID.modLeftCtrl, HID.keyV),
+            ("Ctrl+P", HID.modLeftCtrl, HID.keyP),
+            ("Win+L", HID.modLeftGUI, HID.keyL),
+            ("Ctrl+Shift+C", HID.modLeftCtrl | HID.modLeftShift, HID.keyC),
+            ("AltGr+E", HID.modRightAlt, HID.keyE),
+        ] {
+            let plan = KeyComboPlanner.makePlan(
+                for: body, startingLayout: .englishUS, layoutShortcut: shortcut)
+            check(tapsEqual(plan.taps, [(modifiers, keycode)]),
+                  "\(body) uses only explicit shortcut modifiers")
+        }
+        let uppercase = KeyComboPlanner.makePlan(
+            for: "C", startingLayout: .englishUS, layoutShortcut: shortcut)
+        check(tapsEqual(uppercase.taps, [(HID.modLeftShift, HID.keyC)]),
+              "A bare uppercase character still types uppercase")
+
         // Characters are typed with layout switching for non-English letters.
         let mixed = KeyComboPlanner.makePlan(
             for: "aі",

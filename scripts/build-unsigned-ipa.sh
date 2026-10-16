@@ -31,6 +31,14 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+# A successful compile cannot detect missing privacy keys. Validate the actual
+# built bundle, not only the source plist, before publishing another IPA.
+face_id_reason="$(/usr/libexec/PlistBuddy -c 'Print :NSFaceIDUsageDescription' "$app_path/Info.plist")"
+if [[ -z "$face_id_reason" ]]; then
+  echo "Built app is missing NSFaceIDUsageDescription" >&2
+  exit 1
+fi
+
 # Fake-sign both executables before packaging. SideStore replaces these
 # signatures with the user development certificate during installation.
 share_extension_path="$app_path/PlugIns/InpuDeckShare.appex"
