@@ -298,7 +298,7 @@ struct CommandPaletteView: View {
     @MainActor
     private func duplicate(_ commandlet: Commandlet) {
         guard requireUnlock(.duplicate(commandlet)) else { return }
-        store.duplicate(commandlet)
+        _ = store.duplicate(commandlet)
     }
 
     /// Copying the body to the clipboard requires an unlocked state.
@@ -403,7 +403,7 @@ struct CommandPaletteView: View {
             )
             completeUnlock()
         } catch {
-            authMessage = (error as? LAError)?.code == .authBiometryNotAvailable
+            authMessage = (error as? LAError)?.code == .biometryNotAvailable
                 ? localized("Розблокування недоступне")
                 : localized("Не вдалося розблокувати")
         }
@@ -474,7 +474,7 @@ struct CommandPaletteView: View {
         case let .edit(commandlet):
             editingCommandlet = commandlet
         case let .duplicate(commandlet):
-            store.duplicate(commandlet)
+            _ = store.duplicate(commandlet)
         case let .copy(commandlet):
             UIPasteboard.general.string = commandlet.body
         case let .delete(commandlet):
