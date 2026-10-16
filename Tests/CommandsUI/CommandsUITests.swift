@@ -87,7 +87,10 @@ final class CommandsUITests: XCTestCase {
     }
 
     private func closeTabSettings() {
-        app.buttons["dismissTabSettings"].tap()
+        let dismiss = app.buttons["dismissTabSettings"]
+        dismiss.tap()
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: dismiss)
+        wait(for: [closed], timeout: 5)
         XCTAssertTrue(app.buttons["openTabSettings"].waitForExistence(timeout: 5))
     }
 
@@ -150,7 +153,10 @@ final class CommandsUITests: XCTestCase {
         enabledControl("commands").tap()
         closeTabSettings()
         XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
-        app.tabBars.buttons["Команди"].tap()
+        let commands = app.tabBars.buttons["Команди"]
+        commands.tap()
+        let selected = expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: commands)
+        wait(for: [selected], timeout: 5)
         waitFor(app.staticTexts["selectedPage"], key: "label", value: "commands")
     }
 
@@ -212,21 +218,86 @@ final class CommandsUITests: XCTestCase {
         add.tap()
         let body = app.descendants(matching: .any).matching(identifier: "commandBody").firstMatch
         XCTAssertTrue(body.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["commandSyntaxHelp"].exists)
+        XCTAssertFalse(app.buttons["commandLegend"].exists)
         app.segmentedControls["commandSyntax"].buttons.element(boundBy: 1).tap()
         body.tap()
         body.typeText("hello")
-        XCTAssertFalse(app.staticTexts["commandSyntaxHelp"].exists)
+        XCTAssertFalse(app.buttons["commandLegend"].exists)
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
         XCTAssertFalse(app.staticTexts["Рядок 1"].exists,
                        "Successful parses must not echo a row below the editor")
         attachScreenshot("commands-editor-expert")
     }
 
+    private func newMixedEditor() -> XCUIElement {
+        launch(expert: false)
+        app.buttons["commandsAdd"].tap()
+        let body = app.textViews["commandBody"]
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        app.segmentedControls["commandSyntax"].buttons.element(boundBy: 1).tap()
+        body.tap()
+        return body
+    }
+
+    private func openLegend() {
+        let link = app.buttons["commandLegend"]
+        for _ in 0..<4 {
+            if link.exists && link.isHittable { break }
+            let form = app.collectionViews.firstMatch
+            if form.exists { form.swipeUp() } else { app.swipeUp() }
+        }
+        link.tap()
+        XCTAssertTrue(app.buttons["commandLegendDone"].waitForExistence(timeout: 5))
+    }
+
+    private func insertLegendEntry(_ identifier: String) {
+        let entry = app.buttons[identifier]
+        for _ in 0..<6 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(entry.isHittable)
+        entry.tap()
+        let closed = expectation(for: NSPredicate(format: "exists == false"),
+                                 evaluatedWith: app.buttons["commandLegendDone"])
+        wait(for: [closed], timeout: 5)
+    }
+
+    func testLegendModifierTemplateRestoresCaretBeforeClosingBracket() {
+        let body = newMixedEditor()
+        body.typeText("abc")
+        openLegend()
+        attachScreenshot("command-legend")
+        insertLegendEntry("legend-modifier-ctrl")
+        waitFor(body, key: "value", value: "abc<Ctrl+>")
+        openLegend()
+        insertLegendEntry("legend-modifier-shift")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+>")
+        openLegend()
+        insertLegendEntry("legend-key-enter")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>")
+        // Completed key insertion leaves the cursor after the original closing
+        // bracket, so ordinary text can continue without tapping the editor.
+        body.typeText("!")
+        waitFor(body, key: "value", value: "abc<Ctrl+Shift+Enter>!")
+        XCTAssertFalse(app.staticTexts["commandParseError"].exists)
+    }
+
+    func testLegendReplacesNativeSelectionInsteadOfAppending() {
+        let body = newMixedEditor()
+        body.typeText("replace")
+        // Double-tap inside the only word to select it with native UITextView.
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.09)).doubleTap()
+        openLegend()
+        insertLegendEntry("legend-key-enter")
+        waitFor(body, key: "value", value: "<Enter>")
+        body.typeText("!")
+        waitFor(body, key: "value", value: "<Enter>!")
+    }
+
     func testNormalEditorKeepsHelpButDoesNotEchoSuccessfulLines() {
         launch(expert: false)
         app.buttons["commandsAdd"].tap()
-        XCTAssertTrue(app.staticTexts["commandSyntaxHelp"].waitForExistence(timeout: 5))
         app.segmentedControls["commandSyntax"].buttons.element(boundBy: 1).tap()
         let body = app.descendants(matching: .any).matching(identifier: "commandBody").firstMatch
         body.tap()

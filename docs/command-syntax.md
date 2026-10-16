@@ -15,6 +15,9 @@ starting with `#`, whitespace and newlines. Only explicit angle markers are keys
 - `<Enter>` — press Enter.
 - `<Ctrl+V>` — press Ctrl+V (capitalization does not add Shift).
 - `<Ctrl+Shift+Esc>`, `<F5>`, `<Tab>` — other existing key/combo names.
+- `<Del>` / `<Delete>` — forward deletion (HID `0x4C`).
+- `<Backspace>` / `<⌫>` — backward deletion (HID `0x2A`).
+- `<Ctrl+Alt+Del>` — Ctrl+Alt+Delete, with the same forward Delete key.
 - `hello<Enter>world` — type hello, press Enter, type world.
 - A real newline also presses Enter; formatting lines are not ignored.
 
@@ -41,11 +44,37 @@ Within a marker the same escapes allow bracket keys, e.g. `<Ctrl+\>>`.
 The host keyboard-layout behavior and unsupported-character checks are shared
 with the existing input planners; HID does not report the actual host layout.
 
+## Interactive legend
+
+In normal mode, the editor footer has **Tap to see legend** (localized). It opens
+an opt-in sheet with Ctrl, Shift, Alt/Option, Win/Cmd/Super and AltGr, basic keys,
+three shortcut examples, and mixed-mode escapes. Expert mode keeps this footer
+hidden like the previous explanatory text.
+
+Tap a key/example to insert it at the saved cursor or replace the selected text,
+not append it at the end. Modifier rows insert a template such as `<Ctrl+>` and
+restore the caret before `>` so typing `V` completes `<Ctrl+V>`.
+If the cursor/selection is already inside an unescaped `<...>` marker, further
+modifiers/keys reuse its brackets: `<Ctrl+|>` + Shift becomes `<Ctrl+Shift+|>`.
+Picking a completed key at the end moves the caret after the original `>`.
+Escaped, unpaired and nested brackets are not treated as a reusable marker;
+Text mode never infers this context. The editor uses
+native UTF-16 selection with composed-character-safe replacement.
+
+Insertion never silently changes syntax mode. In Text mode markers are literal;
+the legend explains how to select Text + keys. Legacy mode inserts bare key
+names/templates on their own lines, adding line boundaries only as needed.
+
 ## Existing keys commands
 
 The persisted syntax value `keys` retains its exact line-based behavior: `Enter`
 on its own line is a key, `#` comments/blank lines are skipped, and line separators
 do not automatically type Enter. Existing commands are not migrated or rewritten.
+
+Correction in 3.3.27: `Del` previously mapped incorrectly to Backspace in the
+parser. It now means forward Delete in both mixed and legacy syntax, matching
+`Delete` and the on-screen keyboard. If a saved command relied on that bug, use
+`Backspace` or `⌫` explicitly for backward deletion.
 
 When editing one, **Keys (legacy)** remains available for that edit session,
 even after selecting another mode. New commands do not offer the legacy mode.

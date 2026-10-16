@@ -56,7 +56,7 @@ struct CommandsUIApp: App {
                 if tab == .commands {
                     CommandPalettePage(ble: input, isActiveTab: activeTab == .commands) {
                         HStack {
-                            Text(selectedTab.rawValue).accessibilityIdentifier("selectedPage")
+                            Text(selectedTab.rawValue)
                             Spacer()
                             settingsButton
                             Text(String(input.sentCount)).accessibilityIdentifier("sentCount")
@@ -66,12 +66,22 @@ struct CommandsUIApp: App {
                     }
                 } else {
                     VStack {
-                        Text(tab.rawValue).accessibilityIdentifier("selectedPage")
+                        Text(tab.rawValue)
                         settingsButton
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemGroupedBackground))
                 }
+            }
+            // One selection probe outside cached tab pages avoids matching
+            // stale accessibility nodes when tabs are removed and re-added.
+            .overlay(alignment: .topLeading) {
+                Text(selectedTab.rawValue)
+                    .font(.caption2)
+                    .padding(2)
+                    .background(.thinMaterial)
+                    .accessibilityIdentifier("selectedPage")
+                    .allowsHitTesting(false)
             }
             .sheet(isPresented: $showsSettings) {
                 NavigationStack {

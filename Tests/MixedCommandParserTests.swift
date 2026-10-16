@@ -42,6 +42,22 @@ struct MixedCommandParserTests {
         precondition(enter.taps.count == 1 && enter.taps[0].keycode == HID.keyEnter)
         let ctrl = plan("<Ctrl+V>")
         precondition(ctrl.taps.count == 1 && ctrl.taps[0].modifiers == HID.modLeftCtrl && ctrl.taps[0].keycode == HID.keyV)
+        for (body, modifiers, keycode): (String, UInt8, UInt8) in [
+            ("<Del>", 0, 0x4C),
+            ("<Delete>", 0, 0x4C),
+            ("<dEl>", 0, 0x4C),
+            ("<Ctrl+Alt+Del>", HID.modLeftCtrl | HID.modLeftAlt, 0x4C),
+            ("<Shift+Delete>", HID.modLeftShift, 0x4C),
+            ("<Backspace>", 0, 0x2A),
+            ("<⌫>", 0, 0x2A),
+        ] {
+            let deletion = plan(body)
+            precondition(deletion.taps.count == 1)
+            precondition(deletion.taps[0].keycode == keycode
+                         && deletion.taps[0].modifiers == modifiers,
+                         "\(body) must send the exact deletion usage and modifiers")
+        }
+        literal("Del", "Del")
         let mixed = plan("Enter<Enter>next<Ctrl+V>")
         let plainEnter = TextTypingPlanner.makePlan(for: "Enter", startingLayout: .englishUS, layoutShortcut: .controlSpace)
         precondition(equal(Array(mixed.taps.prefix(5)), plainEnter.taps), "Bare Enter must be literal")

@@ -709,7 +709,11 @@ private struct CommandletEditorView: View {
     @AppStorage("expertMode") private var expertMode = false
 
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var bodyFocused: Bool
+    @State private var bodyFocused = false
+    @State private var bodySelection = NSRange(location: 0, length: 0)
+    @State private var legendSelection = NSRange(location: 0, length: 0)
+    @State private var showsLegend = false
+    @State private var hasAppeared = false
 
     private var parses: [KeyLineParse] {
         switch commandlet.syntax {
@@ -720,17 +724,6 @@ private struct CommandletEditorView: View {
     }
 
     private var hasParseErrors: Bool { parses.contains(where: \.isError) }
-
-    private var syntaxHelp: String {
-        switch commandlet.syntax {
-        case .text:
-            localized("Надсилається як звичайний текст зі зміною розкладки.")
-        case .keys:
-            localized("Кожен рядок — окрема команда: Ctrl+Shift+Esc, F5, Enter або текст. Порожні рядки і # — коментарі.")
-        case .mixed:
-            localized("Текст — буквально; <Enter> і <Ctrl+V> — клавіші. \\< і \\> — дужки, \\\\ — бекслеш. Окремі < та > — текст.")
-        }
-    }
 
     var body: some View {
         NavigationStack {
@@ -749,16 +742,12 @@ private struct CommandletEditorView: View {
                 }
 
                 Section {
-                    TextField(
-                        localized("Тіло"),
+                    CommandBodyEditor(
                         text: $commandlet.body,
-                        axis: .vertical
+                        selection: $bodySelection,
+                        wantsFocus: $bodyFocused
                     )
-                    .lineLimit(6...14)
-                    .focused($bodyFocused)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .accessibilityIdentifier("commandBody")
+                    .frame(height: 180)
                     if hasParseErrors {
                         parseErrors
                     }
@@ -766,9 +755,16 @@ private struct CommandletEditorView: View {
                     Text(localized("Тіло команди"))
                 } footer: {
                     if !expertMode {
-                        Text(syntaxHelp)
-                            .font(.caption)
-                            .accessibilityIdentifier("commandSyntaxHelp")
+                        Button(localized("Tap to see legend")) {
+                            // Snapshot before the sheet can resign the editor or
+                            // collapse its native text selection.
+                            legendSelection = bodySelection
+                            bodyFocused = false
+                            showsLegend = true
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .accessibilityIdentifier("commandLegend")
                     }
                 }
             }
@@ -797,8 +793,28 @@ private struct CommandletEditorView: View {
             } message: {
                 Text(saveError ?? "")
             }
+            .sheet(isPresented: $showsLegend, onDismiss: { bodyFocused = true }) {
+                CommandLegendView(syntax: commandlet.syntax) { snippet, offset in
+                    let result = CommandTextInsertion.insert(
+                        snippet,
+                        into: commandlet.body,
+                        selection: legendSelection,
+                        caretOffset: offset,
+                        standaloneLine: commandlet.syntax == .keys,
+                        mergeIntoMarker: commandlet.syntax == .mixed
+                    )
+                    commandlet.body = result.text
+                    bodySelection = result.selection
+                    onActivity()
+                }
+                .presentationDetents([.medium, .large])
+            }
             .onChange(of: commandlet) { _, _ in onActivity() }
             .onAppear {
+                if !hasAppeared {
+                    bodySelection = NSRange(location: commandlet.body.utf16.count, length: 0)
+                    hasAppeared = true
+                }
                 bodyFocused = true
                 onActivity()
             }
