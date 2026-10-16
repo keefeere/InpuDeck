@@ -15,6 +15,9 @@ starting with `#`, whitespace and newlines. Only explicit angle markers are keys
 - `<Enter>` — press Enter.
 - `<Ctrl+V>` — press Ctrl+V (capitalization does not add Shift).
 - `<Ctrl+Shift+Esc>`, `<F5>`, `<Tab>` — other existing key/combo names.
+- `<Del>` / `<Delete>` — forward deletion (HID `0x4C`).
+- `<Backspace>` / `<⌫>` — backward deletion (HID `0x2A`).
+- `<Ctrl+Alt+Del>` — Ctrl+Alt+Delete, with the same forward Delete key.
 - `hello<Enter>world` — type hello, press Enter, type world.
 - A real newline also presses Enter; formatting lines are not ignored.
 
@@ -46,6 +49,11 @@ with the existing input planners; HID does not report the actual host layout.
 The persisted syntax value `keys` retains its exact line-based behavior: `Enter`
 on its own line is a key, `#` comments/blank lines are skipped, and line separators
 do not automatically type Enter. Existing commands are not migrated or rewritten.
+
+Correction in 3.3.27: `Del` previously mapped incorrectly to Backspace in the
+parser. It now means forward Delete in both mixed and legacy syntax, matching
+`Delete` and the on-screen keyboard. If a saved command relied on that bug, use
+`Backspace` or `⌫` explicitly for backward deletion.
 
 When editing one, **Keys (legacy)** remains available for that edit session,
 even after selecting another mode. New commands do not offer the legacy mode.

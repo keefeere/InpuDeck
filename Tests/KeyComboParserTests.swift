@@ -74,6 +74,21 @@ struct KeyComboParserTests {
                 == .tap(ParsedKeyTap(key: .special(keycode: HID.keyEnter))),
             "Enter maps to its HID keycode")
 
+        for alias in ["Del", "Delete", "DEL", "dEl", "FwDel", "ForwardDelete"] {
+            check(KeyComboParser.parseLine(alias, lineNumber: 1).outcome
+                    == .tap(ParsedKeyTap(key: .special(keycode: 0x4C))),
+                  "\(alias) must map to forward Delete, not Backspace")
+        }
+        for alias in ["Backspace", "BACKSPACE", "⌫"] {
+            check(KeyComboParser.parseLine(alias, lineNumber: 1).outcome
+                    == .tap(ParsedKeyTap(key: .special(keycode: 0x2A))),
+                  "\(alias) remains backward deletion")
+        }
+        check(KeyComboParser.parseLine("Ctrl+Alt+Del", lineNumber: 1).outcome
+                == .tap(ParsedKeyTap(modifiers: HID.modLeftCtrl | HID.modLeftAlt,
+                                    key: .special(keycode: 0x4C))),
+              "Ctrl+Alt+Del must retain modifiers and use the Delete usage")
+
         // Plain words are text.
         check(
             KeyComboParser.parseLine("hello world", lineNumber: 1).outcome == .text("hello world"),
