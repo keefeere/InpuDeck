@@ -34,8 +34,8 @@ final class CommandsUITests: XCTestCase {
             launch(expert: expert)
             let button = app.buttons["commandsLayout"]
             XCTAssertTrue(button.isHittable, "Floating layout control must be visible")
-            XCTAssertEqual(app.staticTexts["Команди"].exists, !expert,
-                           "Commands caption belongs in normal mode only")
+            XCTAssertTrue(app.tabBars.buttons["Команди"].exists,
+                          "Commands must keep its accessible tab name in both modes")
             XCTAssertEqual(button.value as? String, "EN")
             let orientations: [UIDeviceOrientation] = [.portrait, .landscapeLeft]
             for (index, orientation) in orientations.enumerated() {
@@ -73,14 +73,17 @@ final class CommandsUITests: XCTestCase {
     }
 
     private func settingsRow(_ tab: String) -> XCUIElement {
-        let id = "tabSetting-" + tab
-        let direct = app.cells[id]
-        return direct.exists ? direct : app.cells.containing(.any, identifier: id).firstMatch
+        app.cells.containing(.staticText, identifier: "tabTitle-" + tab).firstMatch
+    }
+
+    private func enabledControl(_ tab: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "tabEnabled-" + tab).firstMatch
     }
 
     private func openTabSettings() {
         app.buttons["openTabSettings"].tap()
-        XCTAssertTrue(app.buttons["tabEnabled-input"].waitForExistence(timeout: 5))
+        attachScreenshot("tab-settings-open")
+        XCTAssertTrue(enabledControl("input").waitForExistence(timeout: 5))
     }
 
     private func closeTabSettings() {
@@ -98,7 +101,7 @@ final class CommandsUITests: XCTestCase {
         launch(expert: false)
         XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
         openTabSettings()
-        let keyboard = app.buttons["tabEnabled-keyboard"]
+        let keyboard = enabledControl("keyboard")
         let before = keyboard.value as? String
         keyboard.tap()
         XCTAssertNotEqual(keyboard.value as? String, before)
@@ -134,9 +137,9 @@ final class CommandsUITests: XCTestCase {
         launch(expert: false)
         openTabSettings()
         for tab in ["commands", "keyboard", "tools"] {
-            app.buttons["tabEnabled-" + tab].tap()
+            enabledControl(tab).tap()
         }
-        XCTAssertFalse(app.buttons["tabEnabled-input"].isEnabled,
+        XCTAssertFalse(enabledControl("input").isEnabled,
                        "The final active tab checkbox must not be switchable")
         attachScreenshot("tab-settings-last-enabled")
         closeTabSettings()
@@ -144,7 +147,7 @@ final class CommandsUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["selectedPage"].label, "input",
                        "Hiding current Commands must choose a visible page")
         openTabSettings()
-        app.buttons["tabEnabled-commands"].tap()
+        enabledControl("commands").tap()
         closeTabSettings()
         XCTAssertTrue(app.tabBars.buttons["Команди"].exists)
         app.tabBars.buttons["Команди"].tap()

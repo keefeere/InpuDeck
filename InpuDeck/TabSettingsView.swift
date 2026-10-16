@@ -24,9 +24,9 @@ struct TabSettingsView: View {
                         .accessibilityValue(localized(configuration.isEnabled(tab) ? "Увімкнено" : "Вимкнено"))
                         .accessibilityIdentifier("tabEnabled-\(tab.rawValue)")
                         Text(localized(tab.titleKey))
+                            .accessibilityIdentifier("tabTitle-\(tab.rawValue)")
                         Spacer()
                     }
-                    .accessibilityIdentifier("tabSetting-\(tab.rawValue)")
                 }
                 .onMove { source, destination in
                     var next = configuration
