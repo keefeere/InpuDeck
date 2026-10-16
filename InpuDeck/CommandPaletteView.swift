@@ -5,9 +5,10 @@ import UIKit
 /// The "Команди" tab: a palette of reusable input commands (plain text or
 /// key combos) that can be sent to the active host.
 ///
-/// Privacy model (bank style):
-/// - Command bodies are hidden until the user unlocks with the access
-///   password; Face ID/Touch ID can then be enabled for later re-unlocks.
+/// Privacy model:
+/// - Command bodies are hidden until the user unlocks with Local
+///   Authentication: Face ID/Touch ID when available, with the device
+///   passcode as the system-provided fallback (no separate app password).
 /// - Tapping a row reveals only that command's body for 30 seconds.
 /// - The palette re-locks automatically after 60 seconds.
 /// - Deleting and editing commands requires an unlocked state.
@@ -31,16 +32,6 @@ struct CommandPaletteView: View {
     @State private var editMode: EditMode = .inactive
     /// Sensitive action waiting for the next successful unlock.
     @State private var pendingAction: PendingAction?
-    @State private var showsPasswordSheet = false
-    @State private var passwordInput = ""
-    @State private var passwordError: String?
-    @State private var showsSetupSheet = false
-    @State private var setupPassword = ""
-    @State private var setupConfirm = ""
-    @State private var setupError: String?
-    @State private var promptEnableBiometrics = false
-    /// Whether re-unlocks use Face ID after the password (bank style).
-    @AppStorage("commandsBiometricsEnabled") private var biometricsEnabled = false
 
     @State private var unlockTask: Task<Void, Never>?
     @State private var hideTasks: [UUID: Task<Void, Never>] = [:]
@@ -136,77 +127,9 @@ struct CommandPaletteView: View {
             set: { if !$0 { authMessage = nil } }
         )) {
             Button(localized("Спробувати ще")) { beginUnlock() }
-            Button(localized("Ввести пароль")) { beginPasswordUnlock() }
             Button(localized("Скасувати"), role: .cancel) { pendingAction = nil }
         } message: {
             Text(authMessage ?? "")
-        }
-        .sheet(isPresented: $showsPasswordSheet) {
-            NavigationStack {
-                VStack(spacing: 16) {
-                    Text(localized("Введіть пароль"))
-                        .font(.headline)
-                    SecureField(localized("Пароль"), text: $passwordInput)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                    if let error = passwordError {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                    Button(localized("Скасувати")) {
-                        showsPasswordSheet = false
-                        pendingAction = nil
-                    }
-                    Button(localized("Розблокувати")) { submitPassword() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(passwordInput.isEmpty)
-                }
-                .padding()
-                .navigationTitle(localized("Розблокування"))
-                .navigationBarTitleDisplayMode(.inline)
-            }
-        }
-        .sheet(isPresented: $showsSetupSheet) {
-            NavigationStack {
-                VStack(spacing: 16) {
-                    Text(localized("Встановити пароль"))
-                        .font(.headline)
-                    Text(localized("Пароль захищає доступ до команд. Збережіть його — без нього доступ не відновитіть."))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    SecureField(localized("Пароль (щонайменше 4 символи)"), text: $setupPassword)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                    SecureField(localized("Повторіть пароль"), text: $setupConfirm)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                    if let error = setupError {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                    Button(localized("Скасувати")) {
-                        showsSetupSheet = false
-                        pendingAction = nil
-                    }
-                    Button(localized("Зберегти")) { saveSetupPassword() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(setupPassword.isEmpty || setupConfirm.isEmpty)
-                }
-                .padding()
-                .navigationTitle(localized("Розблокування"))
-                .navigationBarTitleDisplayMode(.inline)
-            }
-        }
-        .confirmationDialog(
-            localized("Увімкнути розблокування через Face ID?"),
-            isPresented: $promptEnableBiometrics, titleVisibility: .visible
-        ) {
-            Button(localized("Увімкнути")) { biometricsEnabled = true }
-            Button(localized("Ні"), role: .cancel) {}
-        } message: {
-            Text(localized("Повторні розблокування після 60 с відбуватимуться без вводу пароля."))
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
@@ -243,15 +166,6 @@ struct CommandPaletteView: View {
             } label: {
                 Label(localized("Додати команду"), systemImage: "plus")
                     .frame(maxWidth: .infinity)
-            }
-
-            Section {
-                Toggle(localized("Розблокування через Face ID"), isOn: $biometricsEnabled)
-                    .disabled(!canUseBiometrics())
-            } header: {
-                Text(localized("Розблокування"))
-            } footer: {
-                Text(localized("Спочатку — пароль, далі повторні розблокування — через Face ID."))
             }
 
             if store.commandlets.isEmpty {
@@ -349,12 +263,11 @@ struct CommandPaletteView: View {
         sendStatusToken += 1
     }
 
-    // MARK: - Unlocking (bank style)
+    // MARK: - Unlocking (Local Authentication)
     //
-    // The access password is the primary credential: it is set on first use
-    // and is required whenever biometrics are off or unavailable. Once the
-    // user opts in, re-unlocks after the 60-second timeout use Face ID
-    // directly, like a bank app after login.
+    // Face ID/Touch ID is used whenever it is available; the system itself
+    // falls back to the device passcode (LAPolicy.deviceOwnerAuthentication),
+    // so no separate app password is needed.
 
     /// Sensitive command actions that require an unlocked session.
     private enum PendingAction {
@@ -383,85 +296,38 @@ struct CommandPaletteView: View {
         perform(action)
     }
 
-    /// Chooses between biometrics and the password sheet.
+    /// Prompts for Face ID/Touch ID; when biometrics are unavailable the
+    /// system offers the device passcode instead.
     @MainActor
     private func beginUnlock() {
-        if biometricsEnabled, canUseBiometrics() {
-            Task { @MainActor in await unlockWithBiometrics() }
-        } else {
-            beginPasswordUnlock()
-        }
-    }
-
-    @MainActor
-    private func unlockWithBiometrics() async {
         let context = LAContext()
-        do {
-            try await context.evaluatePolicy(
-                .deviceOwnerAuthenticationWithBiometrics,
-                localizedReason: localized("Відкрити команди")
-            )
-            completeUnlock()
-        } catch {
-            authMessage = (error as? LAError)?.code == .biometryNotAvailable
-                ? localized("Розблокування недоступне")
-                : localized("Не вдалося розблокувати")
-        }
-    }
-
-    /// Opens the password entry sheet, or the first-run setup sheet.
-    @MainActor
-    private func beginPasswordUnlock() {
-        if CommandletCredentials.hasPassword {
-            passwordInput = ""
-            passwordError = nil
-            showsPasswordSheet = true
-        } else {
-            setupPassword = ""
-            setupConfirm = ""
-            setupError = nil
-            showsSetupSheet = true
-        }
-    }
-
-    @MainActor
-    private func submitPassword() {
-        guard CommandletCredentials.verify(passwordInput) else {
-            passwordError = localized("Невірний пароль")
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+            authMessage = localized("Розблокування недоступне")
             return
         }
-        showsPasswordSheet = false
-        completeUnlock()
-    }
-
-    /// First run: stores the password, then offers to switch re-unlocks to
-    /// Face ID, like a bank app does after login.
-    @MainActor
-    private func saveSetupPassword() {
-        guard setupPassword.count >= 4 else {
-            setupError = localized("Пароль має містити щонайменше 4 символи")
-            return
+        context.cancelButtonTitle = localized("Скасувати")
+        context.fallbackButtonTitle = localized("Код-пароль")
+        Task { @MainActor in
+            do {
+                try await context.evaluatePolicy(
+                    .deviceOwnerAuthentication,
+                    localizedReason: localized("Відкрити команди")
+                )
+                completeUnlock()
+            } catch {
+                let code = (error as? LAError)?.code
+                switch code {
+                case .userCancel, .systemCancel:
+                    // The user dismissed the prompt; drop the queued action.
+                    pendingAction = nil
+                case .biometryNotAvailable, .biometryLockout:
+                    authMessage = localized("Біометрія недоступна, введіть код-пароль")
+                default:
+                    authMessage = localized("Не вдалося розблокувати")
+                }
+            }
         }
-        guard setupPassword == setupConfirm else {
-            setupError = localized("Паролі не збігаються")
-            return
-        }
-        guard CommandletCredentials.setPassword(setupPassword) else {
-            setupError = localized("Не вдалося зберегти пароль")
-            return
-        }
-        showsSetupSheet = false
-        completeUnlock()
-        if canUseBiometrics() {
-            promptEnableBiometrics = true
-        }
-    }
-
-    /// Whether Face ID/Touch ID can be used on this device right now.
-    @MainActor
-    private func canUseBiometrics() -> Bool {
-        var error: NSError?
-        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
     /// Executes a queued sensitive action after the session is unlocked.

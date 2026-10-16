@@ -287,24 +287,8 @@
 "Текст: %@" = "Text: %@";
 "%@ (копія)" = "%@ (copy)";
 
-// Commands tab unlocking (bank style: password first, then optional Face ID)
-"Розблокування" = "Unlocking";
-"Введіть пароль" = "Enter your password";
-"Пароль" = "Password";
-"Розблокувати" = "Unlock";
-"Невірний пароль" = "Wrong password";
-"Встановити пароль" = "Set a password";
-"Пароль захищає доступ до команд. Збережіть його — без нього доступ не відновитіть." = "The password protects access to your commands. Keep it safe — access cannot be recovered without it.";
-"Пароль (щонайменше 4 символи)" = "Password (at least 4 characters)";
-"Повторіть пароль" = "Repeat the password";
-"Пароль має містити щонайменше 4 символи" = "The password must contain at least 4 characters";
-"Паролі не збігаються" = "Passwords do not match";
-"Не вдалося зберегти пароль" = "Could not save the password";
+// Commands tab unlocking (Local Authentication: Face ID/Touch ID with the
+// device passcode as the system-provided fallback)
 "Спробувати ще" = "Try again";
-"Ввести пароль" = "Enter password";
-"Увімкнути розблокування через Face ID?" = "Enable unlocking with Face ID?";
-"Увімкнути" = "Enable";
-"Ні" = "No";
-"Повторні розблокування після 60 с відбуватимуться без вводу пароля." = "Re-unlocks after 60 seconds will happen without entering the password.";
-"Розблокування через Face ID" = "Unlock with Face ID";
-"Спочатку — пароль, далі повторні розблокування — через Face ID." = "First time — password; later re-unlocks — via Face ID.";
+"Код-пароль" = "Passcode";
+"Біометрія недоступна, введіть код-пароль" = "Biometrics unavailable; enter your passcode";
