@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor
 final class CommandsUITests: XCTestCase {
@@ -9,6 +10,7 @@ final class CommandsUITests: XCTestCase {
     }
 
     private func launch(expert: Bool) {
+        XCUIDevice.shared.orientation = .portrait
         app.launchArguments = expert ? ["--expert"] : []
         app.launch()
         XCTAssertTrue(app.buttons["commandsLayout"].waitForExistence(timeout: 5))
@@ -33,15 +35,27 @@ final class CommandsUITests: XCTestCase {
             let button = app.buttons["commandsLayout"]
             XCTAssertTrue(button.isHittable, "Layout must be visible below the connection header")
             XCTAssertEqual(button.value as? String, "EN")
-            attachScreenshot(expert ? "commands-expert" : "commands-normal")
-            let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            center.tap()
-            waitFor(button, key: "value", value: "UA")
-            waitFor(app.staticTexts["sentCount"], key: "label", value: "1")
-            center.press(forDuration: 0.8)
-            waitFor(button, key: "value", value: "EN")
-            XCTAssertEqual(app.staticTexts["sentCount"].label, "1",
-                           "Long press must not send a host shortcut")
+            let orientations: [UIDeviceOrientation] = [.portrait, .landscapeLeft]
+            for (index, orientation) in orientations.enumerated() {
+                XCUIDevice.shared.orientation = orientation
+                let hittable = expectation(
+                    for: NSPredicate(format: "hittable == true"), evaluatedWith: button)
+                wait(for: [hittable], timeout: 5)
+                attachScreenshot("commands-\(expert ? "expert" : "normal")-\(index)")
+                if orientation == .portrait {
+                    XCTAssertGreaterThan(app.frame.height, app.frame.width)
+                } else {
+                    XCTAssertGreaterThan(app.frame.width, app.frame.height)
+                }
+                let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                center.tap()
+                waitFor(button, key: "value", value: "UA")
+                waitFor(app.staticTexts["sentCount"], key: "label", value: String(index + 1))
+                center.press(forDuration: 0.8)
+                waitFor(button, key: "value", value: "EN")
+                XCTAssertEqual(app.staticTexts["sentCount"].label, String(index + 1),
+                               "Long press must not send a host shortcut")
+            }
             app.terminate()
         }
     }

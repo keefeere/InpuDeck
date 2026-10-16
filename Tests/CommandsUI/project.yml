@@ -15,6 +15,7 @@ targets:
     platform: iOS
     sources:
       - TestApp.swift
+      - CommandPalettePage.swift
       - CommandPaletteView.swift
       - Commandlet.swift
       - ShortAndLongPressButtonStyle.swift
@@ -26,6 +27,7 @@ targets:
     settings:
       base:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSFaceIDUsageDescription: Test command authentication.
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
   CommandsUITests:

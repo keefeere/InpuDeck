@@ -4,12 +4,16 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "InpuDeck/CommandPalettePage.swift"
       - "InpuDeck/CommandPaletteView.swift"
       - "InpuDeck/Commandlet.swift"
       - "InpuDeck/ContentView.swift"
       - "InpuDeck/ShortAndLongPressButtonStyle.swift"
       - "Shared/CommandUnlockState.swift"
       - "Shared/KeyComboParser.swift"
+      - "Shared/HID.swift"
+      - "Shared/TextTypingPlanner.swift"
+      - "Shared/Localization.swift"
       - "Tests/CommandsUI/**"
       - "scripts/test-commands-ui.sh"
       - ".github/workflows/test-commands-ui.yml"
@@ -27,6 +31,14 @@ jobs:
         run: brew install xcodegen
       - name: Test production Commands controls and expert editor
         run: bash scripts/test-commands-ui.sh
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [[ -d dist/commands-ui.xcresult ]]; then
+            xcrun xcresulttool export attachments \
+              --path dist/commands-ui.xcresult \
+              --output-path dist/commands-ui-attachments
+          fi
       - name: Upload Commands UI results and screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -35,5 +47,6 @@ jobs:
           path: |
             dist/commands-ui.xcresult
             dist/commands-ui-tests.log
+            dist/commands-ui-attachments
           if-no-files-found: ignore
           retention-days: 7

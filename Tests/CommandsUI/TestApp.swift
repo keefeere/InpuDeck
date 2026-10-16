@@ -34,7 +34,7 @@ struct CommandsUIApp: App {
         WindowGroup {
             TabView(selection: $selectedTab) {
                 Text("Other tab").tabItem { Text("Other") }.tag(0)
-                VStack(spacing: 0) {
+                CommandPalettePage(ble: input, isActiveTab: selectedTab == 3) {
                     HStack {
                         Text("Connection header")
                         Spacer()
@@ -42,7 +42,6 @@ struct CommandsUIApp: App {
                     }
                     .padding()
                     .background(.ultraThinMaterial)
-                    CommandPaletteView(ble: input, isActiveTab: selectedTab == 3)
                 }
                 .tabItem { Text("Commands") }.tag(3)
             }

@@ -6,7 +6,7 @@ test_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/inpudeck-commands-ui.XXXXXX")"
 trap 'rm -rf "$test_root"' EXIT
 
 cp "$repo_root/Tests/CommandsUI/"* "$test_root/"
-for source in CommandPaletteView Commandlet ShortAndLongPressButtonStyle; do
+for source in CommandPalettePage CommandPaletteView Commandlet ShortAndLongPressButtonStyle; do
   cp "$repo_root/InpuDeck/$source.swift" "$test_root/"
 done
 for source in CommandUnlockState HID KeyComboParser TextTypingPlanner Localization; do
@@ -27,7 +27,10 @@ sys.exit("No available iPhone simulator")
 ')"
 xcrun simctl boot "$simulator_id" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "$simulator_id" -b
+# This path contains only generated test output. xcodebuild refuses to replace
+# a previous result bundle, so make local reruns safe.
 mkdir -p "$repo_root/dist"
+rm -rf "$repo_root/dist/commands-ui.xcresult"
 xcodebuild test \
     -project "$test_root/CommandsUITests.xcodeproj" \
     -scheme CommandsHost \
