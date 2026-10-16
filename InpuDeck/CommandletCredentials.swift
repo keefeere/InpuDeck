@@ -35,7 +35,7 @@ enum CommandletCredentials {
     private static func digest(_ password: String, salt: Data) -> Data {
         var input = salt
         input.append(Data(password.utf8))
-        return Data(Insecure.SHA256.hash(data: input))
+        return Data(SHA256.hash(data: input))
     }
 
     private static func read(_ account: String) -> Data? {
@@ -47,7 +47,7 @@ enum CommandletCredentials {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSuccess,
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data
         else { return nil }
         return data
@@ -63,9 +63,10 @@ enum CommandletCredentials {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        let addStatus = SecItemAdd(query as CFDictionary, attributes as CFDictionary)
-        if addStatus == errSuccess { return true }
-        guard addStatus == errDuplicateItem else { return false }
-        return SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSuccess
+        var newItem: CFTypeRef?
+        let addStatus = SecItemAdd(query as CFDictionary, &newItem)
+        if addStatus == errSecSuccess { return true }
+        guard addStatus == errSecDuplicateItem else { return false }
+        return SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecSuccess
     }
 }
