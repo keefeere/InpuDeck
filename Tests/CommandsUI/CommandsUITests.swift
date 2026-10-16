@@ -9,8 +9,8 @@ final class CommandsUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(expert: Bool, manyCommands: Bool = false) {
-        XCUIDevice.shared.orientation = .portrait
+    private func launch(expert: Bool, manyCommands: Bool = false, orientation: UIDeviceOrientation = .portrait) {
+        XCUIDevice.shared.orientation = orientation
         app.launchArguments = (expert ? ["--expert"] : []) + (manyCommands ? ["--many-commands"] : [])
         app.launch()
         XCTAssertTrue(app.buttons["commandsLayout"].waitForExistence(timeout: 5))
@@ -79,8 +79,9 @@ final class CommandsUITests: XCTestCase {
 
     func testManyRowsReorderAndScrollClearOfBottomControls() {
         for orientation: UIDeviceOrientation in [.portrait, .landscapeLeft] {
-            launch(expert: false, manyCommands: true)
-            XCUIDevice.shared.orientation = orientation
+            // Launch directly in the target orientation rather than beginning
+            // a native reorder drag during a window-rotation transition.
+            launch(expert: false, manyCommands: true, orientation: orientation)
             let edit = app.buttons["commandsEdit"]
             let layout = app.buttons["commandsLayout"]
             XCTAssertTrue(edit.isHittable)
@@ -90,10 +91,14 @@ final class CommandsUITests: XCTestCase {
             XCTAssertTrue(first.waitForExistence(timeout: 5))
             XCTAssertTrue(second.isHittable)
             attachScreenshot("commands-before-reorder-\(orientation.rawValue)")
-            let handle = first.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
-            let start = (handle.exists ? handle : first).coordinate(
+            // Move the second row upward, away from the bottom overlay. A drop
+            // at the bottom of a row can land on floating controls in landscape.
+            let handle = second.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+            XCTAssertLessThan(second.frame.midY, layout.frame.minY)
+            if handle.exists { XCTAssertTrue(handle.isHittable) }
+            let start = (handle.exists ? handle : second).coordinate(
                 withNormalizedOffset: CGVector(dx: handle.exists ? 0.5 : 0.97, dy: 0.5))
-            let end = second.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.95))
+            let end = first.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.1))
             start.press(forDuration: 1, thenDragTo: end)
             XCTAssertGreaterThan(first.frame.minY, second.frame.minY,
                                  "Dragging must really change row order, not just the edit label")
