@@ -7,6 +7,8 @@ on:
     # part of its build. Include the harness and workflow so test changes run.
     paths:
       - "InpuDeck/ShortAndLongPressButtonStyle.swift"
+      - "InpuDeck/PressableKeyButton.swift"
+      - "InpuDeck/KeyboardSwipePointer.swift"
       - "Tests/PressActions/**"
       - "scripts/test-press-actions.sh"
       - ".github/workflows/test-press-actions.yml"

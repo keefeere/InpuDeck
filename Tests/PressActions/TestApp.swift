@@ -14,8 +14,19 @@ private struct PressActionsTestView: View {
     @State private var orientationHolds = 0
     @State private var controlsEnabled = true
 
+    // Mirrors the landscape keyboard: a swipeable letter key plus the two
+    // pointer click zones.
+    @State private var swipePointer = KeyboardSwipePointer()
+    @State private var keyPresses = 0
+    @State private var keyReleases = 0
+    @State private var pointerSteps = 0
+    @State private var leftDown = 0
+    @State private var leftUp = 0
+    @State private var rightDown = 0
+    @State private var rightUp = 0
+
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: 24) {
             HStack(spacing: 32) {
                 Button { languageTaps += 1 } label: {
                     Text(languageTaps.isMultiple(of: 2) ? "UA/EN" : "EN/UA")
@@ -48,6 +59,43 @@ private struct PressActionsTestView: View {
             }
             .disabled(!controlsEnabled)
 
+            PressableKeyButton(
+                title: "A",
+                isCompact: true,
+                fontSize: 17,
+                minHeight: 44,
+                onPress: { keyPresses += 1 },
+                onRelease: { keyReleases += 1 },
+                swipePointer: swipePointer,
+                accessibilityIdentifier: "swipeableKey"
+            )
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Swipeable key")
+
+            PressableKeyButton(
+                title: "L",
+                isCompact: true,
+                fontSize: 11,
+                minHeight: 44,
+                onPress: { leftDown += 1 },
+                onRelease: { leftUp += 1 },
+                accessibilityIdentifier: "leftClickZone"
+            )
+                .frame(width: 44, height: 44)
+
+            PressableKeyButton(
+                title: "R",
+                isCompact: true,
+                fontSize: 11,
+                minHeight: 44,
+                onPress: { rightDown += 1 },
+                onRelease: { rightUp += 1 },
+                accessibilityIdentifier: "rightClickZone"
+            )
+                .frame(width: 44, height: 44)
+
+            Text("\(keyPresses):\(keyReleases):\(pointerSteps)").accessibilityIdentifier("swipeCounts")
+            Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
             Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
             Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
             Button("Disable controls") { controlsEnabled = false }
@@ -55,5 +103,8 @@ private struct PressActionsTestView: View {
             Text(controlsEnabled ? "enabled" : "disabled").accessibilityIdentifier("enabledState")
         }
         .padding(24)
+        .onAppear {
+            swipePointer.onPointerMove = { _, _ in pointerSteps += 1 }
+        }
     }
 }

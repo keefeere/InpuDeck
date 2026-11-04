@@ -34,6 +34,7 @@ struct RemoteKeyboardView: View {
     @AppStorage("hideAlternateKeyLegendsInPortrait") private var hideAlternateKeyLegendsInPortrait = false
     @AppStorage("alternateKeyLegendScalePercent") private var alternateKeyLegendScalePercent = 72.0
     @AppStorage("expertMode") private var expertMode = false
+    @State private var swipePointer = KeyboardSwipePointer()
 
     private var orientationLock: KeyboardOrientationLock {
         KeyboardOrientationLock(rawValue: orientationLockRawValue) ?? .unlocked
@@ -48,6 +49,13 @@ struct RemoteKeyboardView: View {
     private var uppercaseLetters: Bool { shiftIsActive != capsLock }
     private let keySpacing: CGFloat = 3
     private let cursorClusterGap: CGFloat = 8
+    private let pointerStripHeight: CGFloat = 34
+
+    /// Swiping a key only makes sense while an input route can receive mouse
+    /// reports. Without a route the key keeps its plain press behaviour.
+    private var ordinaryKeySwipe: KeyboardSwipePointer? {
+        ble.isReady ? swipePointer : nil
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -58,6 +66,7 @@ struct RemoteKeyboardView: View {
             let keyboardRowCount = usesWideLayout ? 6 : 7
             let spacing = geometry.size.height < 600 ? CGFloat(3) : CGFloat(5)
             let statusHeight = usesWideLayout ? CGFloat(32) : CGFloat(38)
+            let showsPointerStrip = !showsTrackpad
             let keyHeight = max(
                 27,
                 min(
@@ -65,6 +74,7 @@ struct RemoteKeyboardView: View {
                     (geometry.size.height
                         - statusHeight
                         - 12
+                        - (showsPointerStrip ? pointerStripHeight + 2 : 0)
                         - (spacing * CGFloat(keyboardRowCount + 1)))
                         / CGFloat(keyboardRowCount)
                 )
@@ -123,6 +133,10 @@ struct RemoteKeyboardView: View {
                 )
                 commandRow(height: keyHeight, availableWidth: availableWidth)
 
+                if showsPointerStrip {
+                    pointerControls(height: pointerStripHeight, availableWidth: availableWidth)
+                }
+
                 if showsTrackpad {
                     keyboardTrackpad
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,6 +151,12 @@ struct RemoteKeyboardView: View {
         .background(Color(.systemGroupedBackground))
         .onAppear {
             AppOrientationLock.apply(orientationLock)
+            // Capture the controller, not this view, so the gesture object does not
+            // hold a reference back to the SwiftUI state that owns it.
+            let controller = ble
+            swipePointer.onPointerMove = { dx, dy in
+                controller.sendMouseMove(dx: dx, dy: dy)
+            }
         }
         .onChange(of: orientationLockRawValue) { _, _ in
             AppOrientationLock.apply(orientationLock)
@@ -146,6 +166,7 @@ struct RemoteKeyboardView: View {
             pressedKeycodes.removeAll()
             stickyModifiers = 0
             momentaryModifiers = 0
+            swipePointer.reset()
             usedMomentaryModifiers = 0
             modifierPressStartedAt.removeAll()
         }
@@ -381,7 +402,7 @@ struct RemoteKeyboardView: View {
                 modifierKey("Ctrl", mask: HID.modLeftCtrl, width: widths[1], height: height)
                 modifierKey("Win", mask: HID.modLeftGUI, width: widths[2], height: height)
                 modifierKey("Alt", mask: HID.modLeftAlt, width: widths[3], height: height)
-                actionKey("Space", keycode: HID.keySpace, width: widths[4], height: height)
+                actionKey("Space", keycode: HID.keySpace, width: widths[4], height: height, allowsSwipe: true)
             }
             .frame(width: primaryWidth, height: height)
 
@@ -392,6 +413,64 @@ struct RemoteKeyboardView: View {
             }
             .frame(width: arrowClusterWidth, height: height)
         }
+    }
+
+    /// Landscape has no trackpad surface, so pointer control comes from swiping
+    /// a key plus two dedicated click zones next to the tab bar.
+    private func pointerControls(height: CGFloat, availableWidth: CGFloat) -> some View {
+        let zoneWidth = max(44, min(96, availableWidth * 0.13))
+        return HStack(spacing: 8) {
+            mouseClickZone(
+                label: "Лівий клік",
+                symbol: "cursorarrow.click",
+                button: 1,
+                identifier: "keyboardLeftClick",
+                width: zoneWidth,
+                height: height
+            )
+            Spacer(minLength: 0)
+            mouseClickZone(
+                label: "Правий клік",
+                symbol: "cursorarrow.click.2",
+                button: 2,
+                identifier: "keyboardRightClick",
+                width: zoneWidth,
+                height: height
+            )
+        }
+        .frame(height: height)
+        .overlay(alignment: .center) {
+            if !expertMode {
+                Text(localized("Проведі пальцем по літерах — рух курсора"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func mouseClickZone(
+        label: String,
+        symbol: String,
+        button: UInt8,
+        identifier: String,
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
+        PressableKeyButton(
+            title: expertMode ? "" : localized(label),
+            systemImage: symbol,
+            isCompact: true,
+            fontSize: 10,
+            minHeight: height,
+            onPress: { ble.sendMouseButtonDown(button: button) },
+            onRelease: { ble.sendMouseButtonUp(button: button) },
+            accessibilityIdentifier: identifier
+        )
+        .frame(width: width, height: height)
+        .disabled(!ble.isReady)
+        .accessibilityLabel(localized(label))
+        .accessibilityIdentifier(identifier)
     }
 
     private var keyboardTrackpad: some View {
@@ -493,7 +572,8 @@ struct RemoteKeyboardView: View {
             onRelease: {
                 guard let command else { return }
                 releaseKey(command.keycode)
-            }
+            },
+            swipePointer: ordinaryKeySwipe
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)
@@ -505,7 +585,8 @@ struct RemoteKeyboardView: View {
         active: Bool = false,
         width: CGFloat? = nil,
         height: CGFloat,
-        onReleased: (() -> Void)? = nil
+        onReleased: (() -> Void)? = nil,
+        allowsSwipe: Bool = false
     ) -> some View {
         PressableKeyButton(
             title: title,
@@ -517,7 +598,8 @@ struct RemoteKeyboardView: View {
             onRelease: {
                 releaseKey(keycode)
                 onReleased?()
-            }
+            },
+            swipePointer: allowsSwipe ? ordinaryKeySwipe : nil
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)

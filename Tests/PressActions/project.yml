@@ -16,6 +16,9 @@ targets:
     sources:
       - TestApp.swift
       - ShortAndLongPressButtonStyle.swift
+      - PressableKeyButton.swift
+      - KeyboardSwipePointer.swift
+      - Localization.swift
     settings:
       base:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

@@ -31,6 +31,9 @@
 "Подвійний тап + утримання другого дотику — drag. Вертикальний рух уздовж правої грані — edge scroll." = "Double-tap and hold the second touch to drag. Move vertically along the right edge for edge scrolling.";
 "Ліва кнопка" = "Left button";
 "Права кнопка" = "Right button";
+"Лівий клік" = "Left click";
+"Правий клік" = "Right click";
+"Проведі пальцем по літерах — рух курсора" = "Swipe across the letters to move the cursor";
 "Системні клавіші" = "System keys";
 "Кнопки поводяться як клавіші апаратної клавіатури: натискання тримає HID usage, відпускання його відпускає. Power, Sleep і Win+L залежать від підтримки та політик ОС." = "Buttons behave like hardware keyboard keys: pressing holds the HID usage and releasing lets it go. Power, Sleep, and Win+L depend on OS support and policies.";
 "Медіа" = "Media";

@@ -59,6 +59,12 @@ swiftc -swift-version 5 \
 "$build_dir/commandlet-store-tests"
 
 swiftc -swift-version 5 \
+  "$repo_root/InpuDeck/KeyboardSwipePointer.swift" \
+  "$repo_root/Tests/KeyboardSwipePointerTests.swift" \
+  -o "$build_dir/keyboard-swipe-pointer-tests"
+"$build_dir/keyboard-swipe-pointer-tests"
+
+swiftc -swift-version 5 \
   "$repo_root/Shared/CommandTextInsertion.swift" \
   "$repo_root/Tests/CommandTextInsertionTests.swift" \
   -o "$build_dir/command-text-insertion-tests"
@@ -75,6 +81,12 @@ swiftc -swift-version 5 \
   "$repo_root/Tests/CommandUnlockStateTests.swift" \
   -o "$build_dir/command-unlock-tests"
 "$build_dir/command-unlock-tests"
+
+swiftc -swift-version 5 \
+  "$repo_root/InpuDeck/KeyboardSwipePointer.swift" \
+  "$repo_root/Tests/KeyboardSwipePointerTests.swift" \
+  -o "$build_dir/keyboard-swipe-tests"
+"$build_dir/keyboard-swipe-tests"
 
 swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \

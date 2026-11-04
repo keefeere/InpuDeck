@@ -14,15 +14,13 @@ struct PressableKeyButton: UIViewRepresentable {
 
     var onPress: () -> Void
     var onRelease: () -> Void
+    /// When set, a drag that starts on this key becomes pointer movement instead
+    /// of a key press. Taps and stationary holds keep their normal behaviour.
+    var swipePointer: KeyboardSwipePointer? = nil
+    var accessibilityIdentifier: String? = nil
 
     func makeUIView(context: Context) -> KeyUIButton {
         let button = KeyUIButton(type: .custom)
-        button.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
-        button.addTarget(context.coordinator, action: #selector(Coordinator.touchUp), for: .touchUpInside)
-        button.addTarget(context.coordinator, action: #selector(Coordinator.touchUp), for: .touchUpOutside)
-        button.addTarget(context.coordinator, action: #selector(Coordinator.touchUp), for: .touchCancel)
-        button.addTarget(context.coordinator, action: #selector(Coordinator.touchUp), for: .touchDragExit)
-
         button.baseTitle = title
         button.systemImage = systemImage
         button.secondaryTitle = secondaryTitle
@@ -33,6 +31,11 @@ struct PressableKeyButton: UIViewRepresentable {
         button.fontSize = fontSize
         button.minHeight = minHeight
         button.applyConfiguration()
+        button.onPress = onPress
+        button.onRelease = onRelease
+        button.swipePointer = swipePointer
+        button.setAccessibilityIdentifier(accessibilityIdentifier ?? "")
+        button.resetTouchState()
 
         return button
     }
@@ -48,38 +51,16 @@ struct PressableKeyButton: UIViewRepresentable {
         uiView.fontSize = fontSize
         uiView.minHeight = minHeight
         uiView.applyConfiguration()
-        context.coordinator.update(onPress: onPress, onRelease: onRelease)
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPress: onPress, onRelease: onRelease)
-    }
-
-    final class Coordinator: NSObject {
-        private var onPress: () -> Void
-        private var onRelease: () -> Void
-        private var isDown: Bool = false
-
-        init(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
-            self.onPress = onPress
-            self.onRelease = onRelease
-        }
-
-        func update(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
-            self.onPress = onPress
-            self.onRelease = onRelease
-        }
-
-        @objc func touchDown() {
-            guard !isDown else { return }
-            isDown = true
-            onPress()
-        }
-
-        @objc func touchUp() {
-            guard isDown else { return }
-            isDown = false
-            onRelease()
+        // The closures change every time the surrounding view is rebuilt, for
+        // example when the layout or caps lock changes. In-flight touches keep
+        // the handler they started with so a press is always paired with its own
+        // release.
+        uiView.onPress = onPress
+        uiView.onRelease = onRelease
+        uiView.swipePointer = swipePointer
+        uiView.setAccessibilityIdentifier(accessibilityIdentifier ?? "")
+        if uiView.swipePointer !== swipePointer {
+            uiView.resetTouchState()
         }
     }
 }
@@ -197,6 +178,132 @@ final class KeyUIButton: UIButton {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // Touch handling lives here rather than in target-action callbacks so one
+    // finger's whole path (down, moved, up) is visible: that is what lets a drag
+    // be told apart from a press.
+    var onPress: (() -> Void)?
+    var onRelease: (() -> Void)?
+    var swipePointer: KeyboardSwipePointer?
+
+    private struct TouchState {
+        let press: () -> Void
+        let release: () -> Void
+        var keySent = false
+        var swipeActive = false
+        var pendingPress: DispatchWorkItem?
+    }
+
+    private var touchStates: [ObjectIdentifier: TouchState] = [:]
+
+    func resetTouchState() {
+        for state in touchStates.values {
+            state.pendingPress?.cancel()
+        }
+        touchStates.removeAll()
+        swipePointer?.reset()
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        for touch in touches { beginTouch(touch) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        for touch in touches { dragTouch(touch) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { endTouch(touch) }
+        super.touchesEnded(touches, with: event)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { endTouch(touch) }
+        super.touchesCancelled(touches, with: event)
+    }
+
+    // VoiceOver activation has no finger path, so treat it as a plain tap.
+    override func accessibilityActivate() -> Bool {
+        guard let press = onPress, let release = onRelease else { return false }
+        press()
+        release()
+        return true
+    }
+
+    private func beginTouch(_ touch: UITouch) {
+        guard let press = onPress, let release = onRelease else { return }
+        let token = ObjectIdentifier(touch)
+        var state = TouchState(press: press, release: release)
+
+        if let swipe = swipePointer {
+            swipe.begin(token, at: touch.location(in: self))
+            touchStates[token] = state
+            scheduleDeferredPress(token)
+        } else {
+            state.keySent = true
+            touchStates[token] = state
+            press()
+        }
+    }
+
+    private func dragTouch(_ touch: UITouch) {
+        let token = ObjectIdentifier(touch)
+        guard var state = touchStates[token] else { return }
+
+        if let swipe = swipePointer, swipe.dragged(token, to: touch.location(in: self)) {
+            if !state.swipeActive {
+                state.swipeActive = true
+                state.pendingPress?.cancel()
+                state.pendingPress = nil
+                // A key-down that slipped through the grace window is released
+                // immediately, so the swipe cannot keep typing.
+                if state.keySent {
+                    state.keySent = false
+                    state.release()
+                }
+            }
+        }
+        touchStates[token] = state
+    }
+
+    private func endTouch(_ touch: UITouch) {
+        let token = ObjectIdentifier(touch)
+        guard var state = touchStates.removeValue(forKey: token) else { return }
+        state.pendingPress?.cancel()
+
+        if swipePointer?.end(token) ?? false {
+            return
+        }
+
+        if state.keySent {
+            state.release()
+        } else {
+            // The finger never travelled far enough to swipe: send a full tap.
+            state.press()
+            state.release()
+        }
+    }
+
+    private func scheduleDeferredPress(_ token: ObjectIdentifier) {
+        guard let grace = swipePointer?.pressGrace else { return }
+        let work = DispatchWorkItem { [weak self] in self?.commitPress(token) }
+        touchStates[token]?.pendingPress = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
+    }
+
+    private func commitPress(_ token: ObjectIdentifier) {
+        guard var state = touchStates[token], !state.swipeActive, !state.keySent else { return }
+        if let swipe = swipePointer, swipe.looksLikeDrag(token) {
+            // Still travelling: decide again after the next grace window.
+            scheduleDeferredPress(token)
+            return
+        }
+        state.keySent = true
+        touchStates[token] = state
+        state.press()
     }
 
     func applyConfiguration() {

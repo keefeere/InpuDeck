@@ -8,7 +8,10 @@ trap 'rm -rf "$test_root"' EXIT
 # Build the exact production button style in a small host app. The UI runner
 # exercises actual touches without Bluetooth permissions or a paired computer.
 cp "$repo_root/Tests/PressActions/"* "$test_root/"
-cp "$repo_root/InpuDeck/ShortAndLongPressButtonStyle.swift" "$test_root/"
+for source in ShortAndLongPressButtonStyle PressableKeyButton KeyboardSwipePointer; do
+  cp "$repo_root/InpuDeck/$source.swift" "$test_root/"
+done
+cp "$repo_root/Shared/Localization.swift" "$test_root/"
 xcodegen generate --spec "$test_root/project.yml"
 
 simulator_id="$(xcrun simctl list devices available -j | python3 -c '
