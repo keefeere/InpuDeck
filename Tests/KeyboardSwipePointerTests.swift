@@ -35,23 +35,23 @@ struct KeyboardSwipePointerTests {
         // HID mouse deltas are signed 8-bit, so a long drag is split into reports.
         var steps: [(dx: Int8, dy: Int8)] = []
         let splitter = KeyboardSwipePointer(
-            KeyboardSwipePointer.Config(movementSensitivity: 1, maximumStep: 50)
+            config: KeyboardSwipePointer.Config(movementSensitivity: 1, maximumStep: 50)
         )
         splitter.onPointerMove = { dx, dy in steps.append((dx, dy)) }
         splitter.begin(1, at: CGPoint(x: 0, y: 0))
-        splitter.dragged(1, to: CGPoint(x: 120, y: -130))
+        _ = splitter.dragged(1, to: CGPoint(x: 120, y: -130))
         expect(flat(steps) == [50, -50, 50, -50, 20, -30], "Every report must fit in Int8")
 
         // A touch that drifts past the tap tolerance is latched: it can no longer
         // commit a held key-down, so a swipe started after the hold delay cannot
         // type a character the host has already received.
         pointer.begin(4, at: CGPoint(x: 0, y: 0))
-        pointer.dragged(4, to: CGPoint(x: 5, y: 0))
+        _ = pointer.dragged(4, to: CGPoint(x: 5, y: 0))
         expect(pointer.canCommitPress(4), "5 pt is still a press")
-        pointer.dragged(4, to: CGPoint(x: 13, y: 0))
+        _ = pointer.dragged(4, to: CGPoint(x: 13, y: 0))
         expect(!pointer.canCommitPress(4), "13 pt latches the touch against a held press")
         // The latch survives the finger settling back inside the tolerance.
-        pointer.dragged(4, to: CGPoint(x: 2, y: 0))
+        _ = pointer.dragged(4, to: CGPoint(x: 2, y: 0))
         expect(!pointer.canCommitPress(4), "The latch is not cleared by drifting back")
         expect(!pointer.end(4), "The touch still ends as a key press, sent on lift")
 
@@ -61,15 +61,15 @@ struct KeyboardSwipePointerTests {
         fingers.onPointerMove = { dx, dy in fingerMoves.append((dx, dy)) }
         fingers.begin(5, at: CGPoint(x: 0, y: 0))
         fingers.begin(6, at: CGPoint(x: 200, y: 0))
-        fingers.dragged(5, to: CGPoint(x: 24, y: 0))
-        fingers.dragged(6, to: CGPoint(x: 224, y: 0))
+        _ = fingers.dragged(5, to: CGPoint(x: 24, y: 0))
+        _ = fingers.dragged(6, to: CGPoint(x: 224, y: 0))
         expect(flat(fingerMoves) == [36, 0, 36, 0], "Independent fingers each emit their own movement")
-        fingers.end(5)
-        fingers.end(6)
+        _ = fingers.end(5)
+        _ = fingers.end(6)
 
         // Switching destinations or layouts must forget in-flight touches.
         pointer.begin(7, at: CGPoint(x: 0, y: 0))
-        pointer.dragged(7, to: CGPoint(x: 40, y: 0))
+        _ = pointer.dragged(7, to: CGPoint(x: 40, y: 0))
         pointer.reset()
         expect(!pointer.end(7), "Reset forgets the previous touch")
         expect(!pointer.isPointerActive, "Reset leaves no active swipe")
