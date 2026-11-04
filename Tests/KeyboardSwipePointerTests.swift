@@ -74,6 +74,42 @@ struct KeyboardSwipePointerTests {
         expect(!pointer.end(7), "Reset forgets the previous touch")
         expect(!pointer.isPointerActive, "Reset leaves no active swipe")
 
+        // Postponed key-downs must reach the host in the order the fingers
+        // reached their keys, otherwise a fast Enter overtakes the letter that
+        // is still inside its hold window.
+        var order: [String] = []
+        let ordered = KeyboardSwipePointer()
+        ordered.deferPress("a", startedAt: 0) { order.append("a") }
+        ordered.deferPress("b", startedAt: 5) { order.append("b") }
+        ordered.flushDeferredPresses(before: 3)
+        expect(order == ["a"], "only keys touched by that moment are drained")
+        ordered.flushDeferredPresses(before: 100)
+        expect(order == ["a", "b"], "the rest drains oldest first")
+        ordered.deferPress("c", startedAt: 10) { order.append("c") }
+        ordered.cancelDeferredPress("c")
+        ordered.flushDeferredPresses(before: 100)
+        expect(order == ["a", "b"], "a cancelled key never reaches the host")
+
+        // A drained key-down runs the normal press path, which may try to drain
+        // again; entries leave the queue before running, so nothing runs twice.
+        var reentrant: [String] = []
+        let nested = KeyboardSwipePointer()
+        nested.deferPress("x", startedAt: 0) {
+            reentrant.append("x")
+            nested.flushDeferredPresses(before: 100)
+        }
+        nested.deferPress("y", startedAt: 1) { reentrant.append("y") }
+        nested.flushDeferredPresses(before: 100)
+        expect(reentrant == ["x", "y"], "a commit cannot drain the same queue twice")
+
+        // Reset must forget postponed key-downs along with the touches.
+        let dropped = KeyboardSwipePointer()
+        var droppedOrder: [String] = []
+        dropped.deferPress("z", startedAt: 0) { droppedOrder.append("z") }
+        dropped.reset()
+        dropped.flushDeferredPresses(before: 100)
+        expect(droppedOrder.isEmpty, "reset drops a postponed key-down")
+
         print("PASS: keyboard swipe separates taps from pointer drags and splits HID deltas")
     }
 

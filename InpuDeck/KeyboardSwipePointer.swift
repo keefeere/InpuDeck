@@ -37,6 +37,20 @@ final class KeyboardSwipePointer {
     private var touches: [AnyHashable: Touch] = [:]
     private var activeSwipes = 0
 
+    private struct DeferredPress {
+        let startedAt: TimeInterval
+        let commit: () -> Void
+    }
+
+    /// Key-downs the threshold has postponed, in the order the fingers reached
+    /// their keys. Immediate keys drain it so the host never sees letters out of
+    /// the order they were touched.
+    private var deferredPresses: [(token: AnyHashable, press: DeferredPress)] = []
+    private var isFlushingDeferredPresses = false
+
+    /// Monotonic clock, injectable so the ordering is testable without waiting.
+    var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+
     var onPointerMove: (Int8, Int8) -> Void = { _, _ in }
 
     init(config: Config = Config()) {
@@ -83,6 +97,7 @@ final class KeyboardSwipePointer {
 
     /// Ends one touch and reports whether it was a pointer swipe.
     func end(_ token: AnyHashable) -> Bool {
+        cancelDeferredPress(token)
         guard let touch = touches.removeValue(forKey: token) else { return false }
         if touch.isSwipe {
             activeSwipes = max(0, activeSwipes - 1)
@@ -90,9 +105,38 @@ final class KeyboardSwipePointer {
         return touch.isSwipe
     }
 
+    /// Records a key-down postponed by the hold delay, together with the moment
+    /// the finger reached the key.
+    func deferPress(_ token: AnyHashable, startedAt: TimeInterval, commit: @escaping () -> Void) {
+        deferredPresses.removeAll { $0.token == token }
+        deferredPresses.append((token, DeferredPress(startedAt: startedAt, commit: commit)))
+    }
+
+    func cancelDeferredPress(_ token: AnyHashable) {
+        deferredPresses.removeAll { $0.token == token }
+    }
+
+    /// Sends every postponed key-down that began before `moment`, oldest first.
+    /// The entries leave the queue before running, so the key-downs they trigger
+    /// cannot re-enter this method and run each other.
+    func flushDeferredPresses(before moment: TimeInterval) {
+        guard !isFlushingDeferredPresses else { return }
+        let due = deferredPresses.filter { $0.press.startedAt <= moment }
+        guard !due.isEmpty else { return }
+        let dueTokens = Set(due.map { $0.token })
+        deferredPresses.removeAll { dueTokens.contains($0.token) }
+        isFlushingDeferredPresses = true
+        defer { isFlushingDeferredPresses = false }
+        for entry in due {
+            entry.press.commit()
+        }
+    }
+
     /// Called when the keyboard route changes or the page disappears.
     func reset() {
         touches.removeAll()
+        deferredPresses.removeAll()
+        isFlushingDeferredPresses = false
         activeSwipes = 0
     }
 

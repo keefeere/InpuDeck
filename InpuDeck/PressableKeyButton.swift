@@ -17,6 +17,10 @@ struct PressableKeyButton: UIViewRepresentable {
     /// When set, a drag that starts on this key becomes pointer movement instead
     /// of a key press. Taps and stationary holds keep their normal behaviour.
     var swipePointer: KeyboardSwipePointer? = nil
+    /// Set false for keys that must always type (Tab, Enter, arrows …). They still
+    /// receive the shared object so their key-down stays ordered with key-downs
+    /// that the swipe threshold has postponed.
+    var allowsSwipe: Bool = true
     var accessibilityIdentifier: String? = nil
 
     func makeUIView(context: Context) -> KeyUIButton {
@@ -34,6 +38,7 @@ struct PressableKeyButton: UIViewRepresentable {
         button.onPress = onPress
         button.onRelease = onRelease
         button.swipePointer = swipePointer
+        button.allowsSwipe = allowsSwipe
         button.accessibilityIdentifier = accessibilityIdentifier ?? ""
 
         return button
@@ -57,6 +62,7 @@ struct PressableKeyButton: UIViewRepresentable {
         uiView.onPress = onPress
         uiView.onRelease = onRelease
         uiView.accessibilityIdentifier = accessibilityIdentifier ?? ""
+        uiView.allowsSwipe = allowsSwipe
         // Compare before assigning: the button must know whether the gesture
         // object it was tracking with is gone. A brand-new key button appearing
         // while another key is being swiped must not disturb that swipe.
@@ -188,6 +194,15 @@ final class KeyUIButton: UIButton {
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
     var swipePointer: KeyboardSwipePointer?
+    /// False for keys that must always type (Tab, arrows, Enter …) but still have
+    /// to respect the order of key-downs postponed by the swipe threshold.
+    var allowsSwipe = true
+
+    /// The touch rules apply only to keys that take part in the gesture; the
+    /// shared object still coordinates their ordering with postponed keys.
+    private var gesture: KeyboardSwipePointer? {
+        allowsSwipe ? swipePointer : nil
+    }
 
     private struct TouchState {
         let press: () -> Void
@@ -196,6 +211,7 @@ final class KeyUIButton: UIButton {
         var swipeActive = false
         var moved = false
         let start: CGPoint
+        let startedAt: TimeInterval
         var pendingPress: DispatchWorkItem?
     }
 
@@ -209,7 +225,8 @@ final class KeyUIButton: UIButton {
             if state.keySent {
                 state.release()
             }
-            swipePointer?.end(token)
+            swipePointer?.cancelDeferredPress(token)
+            gesture?.end(token)
         }
         touchStates.removeAll()
     }
@@ -245,13 +262,23 @@ final class KeyUIButton: UIButton {
     private func beginTouch(_ touch: UITouch) {
         guard let press = onPress, let release = onRelease else { return }
         let token = ObjectIdentifier(touch)
-        var state = TouchState(press: press, release: release, start: touch.location(in: self))
+        let point = touch.location(in: self)
+        let startedAt = swipePointer?.now() ?? 0
+        var state = TouchState(press: press, release: release, start: point, startedAt: startedAt)
 
-        if let swipe = swipePointer {
-            swipe.begin(token, at: touch.location(in: self))
+        if let swipe = gesture {
+            swipe.begin(token, at: point)
+            // The queue keeps the order the fingers reached their keys; the timer
+            // decides when a stationary touch becomes a held key.
+            swipe.deferPress(token, startedAt: startedAt) { [weak self] in
+                self?.commitPress(token)
+            }
             state.pendingPress = scheduleDeferredPress(token)
             touchStates[token] = state
         } else {
+            // An immediate key must not overtake a key whose hold window is still
+            // open: that one was touched first, so it goes out first.
+            swipePointer?.flushDeferredPresses(before: startedAt)
             state.keySent = true
             touchStates[token] = state
             press()
@@ -263,7 +290,7 @@ final class KeyUIButton: UIButton {
         let point = touch.location(in: self)
         guard var state = touchStates[token] else { return }
 
-        if let swipe = swipePointer {
+        if let swipe = gesture {
             // The button tracks drift itself, so a gesture that the system
             // interrupts, or that resets the shared pointer underneath it, can
             // never end up typing a key the host was never told about.
@@ -275,6 +302,7 @@ final class KeyUIButton: UIButton {
                     state.swipeActive = true
                     state.pendingPress?.cancel()
                     state.pendingPress = nil
+                    swipe.cancelDeferredPress(token)
                     // A key-down that slipped through the hold window is released
                     // immediately, so the swipe cannot keep the key held.
                     if state.keySent {
@@ -288,6 +316,9 @@ final class KeyUIButton: UIButton {
                 // Once the finger has drifted past it, no key can be held.
                 state.pendingPress?.cancel()
                 state.pendingPress = state.moved ? nil : scheduleDeferredPress(token)
+                if state.moved {
+                    swipe.cancelDeferredPress(token)
+                }
             }
         }
         touchStates[token] = state
@@ -298,7 +329,7 @@ final class KeyUIButton: UIButton {
         guard var state = touchStates.removeValue(forKey: token) else { return }
         state.pendingPress?.cancel()
 
-        if swipePointer?.end(token) ?? false {
+        if gesture?.end(token) ?? false {
             return
         }
 
@@ -307,13 +338,18 @@ final class KeyUIButton: UIButton {
         } else if !cancelled, !state.moved {
             // The finger lifted without travelling far enough to swipe: a full tap.
             // A touch that drifted, or a gesture the system cancelled, types nothing.
+            // Keys touched earlier may still sit inside their hold window, so they
+            // go out first: the host must see the characters in touch order.
+            if let swipe = gesture {
+                swipe.flushDeferredPresses(before: state.startedAt)
+            }
             state.press()
             state.release()
         }
     }
 
     private func scheduleDeferredPress(_ token: ObjectIdentifier) -> DispatchWorkItem? {
-        guard let delay = swipePointer?.holdCommitDelay else { return nil }
+        guard let delay = gesture?.holdCommitDelay else { return nil }
         let work = DispatchWorkItem { [weak self] in self?.commitPress(token) }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         return work
@@ -323,14 +359,17 @@ final class KeyUIButton: UIButton {
         guard var state = touchStates[token], !state.swipeActive, !state.keySent, !state.moved else { return }
         // A touch that has already travelled is latched: it becomes a swipe, or a
         // tap on lift, but never a held key the host has already been told about.
-        guard swipePointer?.canCommitPress(token) ?? false else {
+        guard gesture?.canCommitPress(token) ?? false else {
             state.pendingPress = nil
             touchStates[token] = state
             return
         }
-        state.keySent = true
-        touchStates[token] = state
-        state.press()
+        // Older postponed keys go out first, then this one.
+        gesture?.flushDeferredPresses(before: state.startedAt)
+        guard var current = touchStates[token], !current.keySent, !current.swipeActive else { return }
+        current.keySent = true
+        touchStates[token] = current
+        current.press()
     }
 
     func applyConfiguration() {

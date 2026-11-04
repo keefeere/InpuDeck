@@ -274,7 +274,8 @@ struct RemoteKeyboardView: View {
                 "⌫",
                 keycode: HID.keyBackspace,
                 width: widths[values.count],
-                height: height
+                height: height,
+                swipe: swipe
             )
         }
     }
@@ -290,7 +291,7 @@ struct RemoteKeyboardView: View {
         let widths = resolvedWidths(weights: weights, availableWidth: availableWidth)
 
         return HStack(spacing: keySpacing) {
-            actionKey("Tab", keycode: HID.keyTab, width: widths[0], height: height)
+            actionKey("Tab", keycode: HID.keyTab, width: widths[0], height: height, swipe: swipe)
             ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
                 characterKey(
                     key.character,
@@ -324,6 +325,7 @@ struct RemoteKeyboardView: View {
                 active: capsLock,
                 width: widths[0],
                 height: height,
+                swipe: swipe,
                 onReleased: { capsLock.toggle() }
             )
 
@@ -343,7 +345,8 @@ struct RemoteKeyboardView: View {
                 "Enter",
                 keycode: HID.keyEnter,
                 width: widths[keys.count + 1],
-                height: height
+                height: height,
+                swipe: swipe
             )
         }
     }
@@ -372,7 +375,8 @@ struct RemoteKeyboardView: View {
                     "Shift",
                     mask: HID.modLeftShift,
                     width: typingWidths[0],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
 
                 ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
@@ -394,7 +398,8 @@ struct RemoteKeyboardView: View {
                     "↑",
                     keycode: HID.keyUpArrow,
                     width: arrowWidths[1],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
                 Color.clear
                     .frame(width: arrowWidths[2], height: height)
@@ -416,23 +421,24 @@ struct RemoteKeyboardView: View {
         return HStack(spacing: cursorClusterGap) {
             HStack(spacing: keySpacing) {
                 layoutKey(width: widths[0], height: height)
-                modifierKey("Ctrl", mask: HID.modLeftCtrl, width: widths[1], height: height)
-                modifierKey("Win", mask: HID.modLeftGUI, width: widths[2], height: height)
-                modifierKey("Alt", mask: HID.modLeftAlt, width: widths[3], height: height)
+                modifierKey("Ctrl", mask: HID.modLeftCtrl, width: widths[1], height: height, swipe: swipe)
+                modifierKey("Win", mask: HID.modLeftGUI, width: widths[2], height: height, swipe: swipe)
+                modifierKey("Alt", mask: HID.modLeftAlt, width: widths[3], height: height, swipe: swipe)
                 actionKey(
                     "Space",
                     keycode: HID.keySpace,
                     width: widths[4],
                     height: height,
+                    allowsSwipe: true,
                     swipe: swipe
                 )
             }
             .frame(width: primaryWidth, height: height)
 
             HStack(spacing: keySpacing) {
-                actionKey("←", keycode: HID.keyLeftArrow, width: widths[5], height: height)
-                actionKey("↓", keycode: HID.keyDownArrow, width: widths[6], height: height)
-                actionKey("→", keycode: HID.keyRightArrow, width: widths[7], height: height)
+                actionKey("←", keycode: HID.keyLeftArrow, width: widths[5], height: height, swipe: swipe)
+                actionKey("↓", keycode: HID.keyDownArrow, width: widths[6], height: height, swipe: swipe)
+                actionKey("→", keycode: HID.keyRightArrow, width: widths[7], height: height, swipe: swipe)
             }
             .frame(width: arrowClusterWidth, height: height)
         }
@@ -546,6 +552,7 @@ struct RemoteKeyboardView: View {
         secondaryUsesCase: Bool = true,
         width: CGFloat? = nil,
         height: CGFloat,
+        allowsSwipe: Bool = true,
         swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let character: Character
@@ -597,7 +604,8 @@ struct RemoteKeyboardView: View {
                 guard let command else { return }
                 releaseKey(command.keycode)
             },
-            swipePointer: swipe
+            swipePointer: swipe,
+            allowsSwipe: allowsSwipe
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)
@@ -610,6 +618,7 @@ struct RemoteKeyboardView: View {
         width: CGFloat? = nil,
         height: CGFloat,
         onReleased: (() -> Void)? = nil,
+        allowsSwipe: Bool = false,
         swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         PressableKeyButton(
@@ -623,7 +632,8 @@ struct RemoteKeyboardView: View {
                 releaseKey(keycode)
                 onReleased?()
             },
-            swipePointer: swipe
+            swipePointer: swipe,
+            allowsSwipe: allowsSwipe
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)
@@ -653,7 +663,8 @@ struct RemoteKeyboardView: View {
         _ title: String,
         mask: UInt8,
         width: CGFloat? = nil,
-        height: CGFloat
+        height: CGFloat,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         PressableKeyButton(
             title: title,
@@ -661,7 +672,11 @@ struct RemoteKeyboardView: View {
             isCompact: true,
             minHeight: height,
             onPress: { beginModifierPress(mask) },
-            onRelease: { endModifierPress(mask) }
+            onRelease: { endModifierPress(mask) },
+            // Modifiers type immediately, but they must still go out after a key
+            // the swipe threshold has postponed, so they carry the coordinator.
+            swipePointer: swipe,
+            allowsSwipe: false
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)

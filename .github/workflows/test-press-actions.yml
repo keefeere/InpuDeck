@@ -9,6 +9,8 @@ on:
       - "InpuDeck/ShortAndLongPressButtonStyle.swift"
       - "InpuDeck/PressableKeyButton.swift"
       - "InpuDeck/KeyboardSwipePointer.swift"
+      - "InpuDeck/RemoteKeyboardView.swift"
+      - "Tests/KeyboardSwipePointerTests.swift"
       - "Tests/PressActions/**"
       - "scripts/test-press-actions.sh"
       - ".github/workflows/test-press-actions.yml"
