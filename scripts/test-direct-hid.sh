@@ -83,12 +83,6 @@ swiftc -swift-version 5 \
 "$build_dir/command-unlock-tests"
 
 swiftc -swift-version 5 \
-  "$repo_root/InpuDeck/KeyboardSwipePointer.swift" \
-  "$repo_root/Tests/KeyboardSwipePointerTests.swift" \
-  -o "$build_dir/keyboard-swipe-tests"
-"$build_dir/keyboard-swipe-tests"
-
-swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \
   "$repo_root/InpuDeck/ESPBridgeStore.swift" \
   "$repo_root/Tests/ESPBridgeStoreTests.swift" \

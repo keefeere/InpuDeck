@@ -51,12 +51,6 @@ struct RemoteKeyboardView: View {
     private let cursorClusterGap: CGFloat = 8
     private let pointerStripHeight: CGFloat = 34
 
-    /// Swiping a key only makes sense while an input route can receive mouse
-    /// reports. Without a route the key keeps its plain press behaviour.
-    private var ordinaryKeySwipe: KeyboardSwipePointer? {
-        ble.isReady ? swipePointer : nil
-    }
-
     var body: some View {
         GeometryReader { geometry in
             let usesWideLayout = geometry.size.width >= 600
@@ -80,6 +74,10 @@ struct RemoteKeyboardView: View {
                 )
             )
             let availableWidth = geometry.size.width - 12
+            // Portrait already has a trackpad surface, so a key drag must keep
+            // typing there. Swipe-to-point is landscape only, and only while an
+            // input route can actually receive mouse reports.
+            let keySwipe = (!showsTrackpad && ble.isReady) ? swipePointer : nil
 
             VStack(spacing: spacing) {
                 connectionStatus
@@ -114,24 +112,28 @@ struct RemoteKeyboardView: View {
                 numberRow(
                     height: keyHeight,
                     availableWidth: availableWidth,
-                    includesOuterSymbols: usesWideLayout
+                    includesOuterSymbols: usesWideLayout,
+                    swipe: keySwipe
                 )
                 tabRow(
                     height: keyHeight,
                     availableWidth: availableWidth,
-                    showsAlternateLegends: showsAlternateLegends
+                    showsAlternateLegends: showsAlternateLegends,
+                    swipe: keySwipe
                 )
                 homeRow(
                     height: keyHeight,
                     availableWidth: availableWidth,
-                    showsAlternateLegends: showsAlternateLegends
+                    showsAlternateLegends: showsAlternateLegends,
+                    swipe: keySwipe
                 )
                 shiftRow(
                     height: keyHeight,
                     availableWidth: availableWidth,
-                    showsAlternateLegends: showsAlternateLegends
+                    showsAlternateLegends: showsAlternateLegends,
+                    swipe: keySwipe
                 )
-                commandRow(height: keyHeight, availableWidth: availableWidth)
+                commandRow(height: keyHeight, availableWidth: availableWidth, swipe: keySwipe)
 
                 if showsPointerStrip {
                     pointerControls(height: pointerStripHeight, availableWidth: availableWidth)
@@ -170,7 +172,10 @@ struct RemoteKeyboardView: View {
             usedMomentaryModifiers = 0
             modifierPressStartedAt.removeAll()
         }
-        .onDisappear(perform: releaseAllInput)
+        .onDisappear {
+            swipePointer.reset()
+            releaseAllInput()
+        }
     }
 
     private var connectionStatus: some View {
@@ -242,7 +247,8 @@ struct RemoteKeyboardView: View {
     private func numberRow(
         height: CGFloat,
         availableWidth: CGFloat,
-        includesOuterSymbols: Bool
+        includesOuterSymbols: Bool,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let values = numberRowCharacters(includesTrailingSymbols: includesOuterSymbols)
         let weights: [CGFloat]
@@ -260,7 +266,8 @@ struct RemoteKeyboardView: View {
                     character,
                     usesCase: false,
                     width: widths[index],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
             }
             actionKey(
@@ -275,7 +282,8 @@ struct RemoteKeyboardView: View {
     private func tabRow(
         height: CGFloat,
         availableWidth: CGFloat,
-        showsAlternateLegends: Bool
+        showsAlternateLegends: Bool,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let keys = topTypingKeys
         let weights = [CGFloat(1.35)] + Array(repeating: CGFloat(1), count: keys.count)
@@ -290,7 +298,8 @@ struct RemoteKeyboardView: View {
                     secondary: showsAlternateLegends ? key.secondaryCharacter : nil,
                     secondaryUsesCase: key.secondaryUsesCase,
                     width: widths[index + 1],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
             }
         }
@@ -299,7 +308,8 @@ struct RemoteKeyboardView: View {
     private func homeRow(
         height: CGFloat,
         availableWidth: CGFloat,
-        showsAlternateLegends: Bool
+        showsAlternateLegends: Bool,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let keys = homeTypingKeys
         let weights = [CGFloat(1.45)]
@@ -324,7 +334,8 @@ struct RemoteKeyboardView: View {
                     secondary: showsAlternateLegends ? key.secondaryCharacter : nil,
                     secondaryUsesCase: key.secondaryUsesCase,
                     width: widths[index + 1],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
             }
 
@@ -340,7 +351,8 @@ struct RemoteKeyboardView: View {
     private func shiftRow(
         height: CGFloat,
         availableWidth: CGFloat,
-        showsAlternateLegends: Bool
+        showsAlternateLegends: Bool,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let keys = bottomTypingKeys
         let commandWidths = commandRowWidths(availableWidth: availableWidth)
@@ -370,7 +382,8 @@ struct RemoteKeyboardView: View {
                         secondary: showsAlternateLegends ? key.secondaryCharacter : nil,
                         secondaryUsesCase: key.secondaryUsesCase,
                         width: typingWidths[index + 1],
-                        height: height
+                        height: height,
+                        swipe: swipe
                     )
                 }
             }
@@ -391,7 +404,11 @@ struct RemoteKeyboardView: View {
         }
     }
 
-    private func commandRow(height: CGFloat, availableWidth: CGFloat) -> some View {
+    private func commandRow(
+        height: CGFloat,
+        availableWidth: CGFloat,
+        swipe: KeyboardSwipePointer? = nil
+    ) -> some View {
         let widths = commandRowWidths(availableWidth: availableWidth)
         let primaryWidth = widths.prefix(5).reduce(0, +) + (keySpacing * 4)
         let arrowClusterWidth = widths.suffix(3).reduce(0, +) + (keySpacing * 2)
@@ -402,7 +419,13 @@ struct RemoteKeyboardView: View {
                 modifierKey("Ctrl", mask: HID.modLeftCtrl, width: widths[1], height: height)
                 modifierKey("Win", mask: HID.modLeftGUI, width: widths[2], height: height)
                 modifierKey("Alt", mask: HID.modLeftAlt, width: widths[3], height: height)
-                actionKey("Space", keycode: HID.keySpace, width: widths[4], height: height, allowsSwipe: true)
+                actionKey(
+                    "Space",
+                    keycode: HID.keySpace,
+                    width: widths[4],
+                    height: height,
+                    swipe: swipe
+                )
             }
             .frame(width: primaryWidth, height: height)
 
@@ -416,7 +439,7 @@ struct RemoteKeyboardView: View {
     }
 
     /// Landscape has no trackpad surface, so pointer control comes from swiping
-    /// a key plus two dedicated click zones next to the tab bar.
+    /// a key plus two dedicated click zones below the keyboard.
     private func pointerControls(height: CGFloat, availableWidth: CGFloat) -> some View {
         let zoneWidth = max(44, min(96, availableWidth * 0.13))
         return HStack(spacing: 8) {
@@ -522,7 +545,8 @@ struct RemoteKeyboardView: View {
         secondary: Character? = nil,
         secondaryUsesCase: Bool = true,
         width: CGFloat? = nil,
-        height: CGFloat
+        height: CGFloat,
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         let character: Character
         if usesCase, uppercaseLetters {
@@ -573,7 +597,7 @@ struct RemoteKeyboardView: View {
                 guard let command else { return }
                 releaseKey(command.keycode)
             },
-            swipePointer: ordinaryKeySwipe
+            swipePointer: swipe
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)
@@ -586,7 +610,7 @@ struct RemoteKeyboardView: View {
         width: CGFloat? = nil,
         height: CGFloat,
         onReleased: (() -> Void)? = nil,
-        allowsSwipe: Bool = false
+        swipe: KeyboardSwipePointer? = nil
     ) -> some View {
         PressableKeyButton(
             title: title,
@@ -599,7 +623,7 @@ struct RemoteKeyboardView: View {
                 releaseKey(keycode)
                 onReleased?()
             },
-            swipePointer: allowsSwipe ? ordinaryKeySwipe : nil
+            swipePointer: swipe
         )
         .frame(maxWidth: width == nil ? .infinity : nil, minHeight: height, maxHeight: height)
         .frame(width: width)

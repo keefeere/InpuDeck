@@ -11,11 +11,13 @@ final class KeyboardSwipePointer {
     struct Config {
         /// Screen distance a touch must travel before it becomes a pointer drag.
         var activationDistance: CGFloat = 24
-        /// Movement still considered a press. Used to postpone the HID key-down
-        /// so a swipe that starts immediately never types a character.
+        /// Movement below which a touch still counts as a press. Past it the touch
+        /// is latched, so it can only become a tap on lift or a pointer swipe.
         var tapTolerance: CGFloat = 12
-        /// How long to wait before committing a key-down for a stationary touch.
-        var pressGrace: TimeInterval = 0.05
+        /// How long a touch must stay still before a held key-down is committed.
+        /// A moving touch keeps postponing it, so a drag that begins shortly after
+        /// touch-down never reaches the host as a keystroke.
+        var holdCommitDelay: TimeInterval = 0.35
         /// Screen points per HID step, matching the trackpad surface.
         var movementSensitivity: CGFloat = 1.5
         /// Largest delta one HID mouse report can carry.
@@ -24,9 +26,11 @@ final class KeyboardSwipePointer {
 
     private struct Touch {
         let origin: CGPoint
-        var last: CGPoint
         var emitted: CGPoint
         var isSwipe = false
+        /// Set once the finger has travelled past the tap tolerance. Such a touch
+        /// is on its way somewhere, so it must not become a held key press.
+        var drifted = false
     }
 
     private let config: Config
@@ -39,12 +43,12 @@ final class KeyboardSwipePointer {
         self.config = config
     }
 
+    var holdCommitDelay: TimeInterval { config.holdCommitDelay }
     var tapTolerance: CGFloat { config.tapTolerance }
-    var pressGrace: TimeInterval { config.pressGrace }
     var isPointerActive: Bool { activeSwipes > 0 }
 
     func begin(_ token: AnyHashable, at point: CGPoint) {
-        touches[token] = Touch(origin: point, last: point, emitted: point)
+        touches[token] = Touch(origin: point, emitted: point)
     }
 
     /// Reports one touch position. Returns true once that touch is a pointer
@@ -54,8 +58,8 @@ final class KeyboardSwipePointer {
 
         if !touch.isSwipe {
             let travelled = hypot(point.x - touch.origin.x, point.y - touch.origin.y)
+            touch.drifted = touch.drifted || travelled > config.tapTolerance
             guard travelled >= config.activationDistance else {
-                touch.last = point
                 touches[token] = touch
                 return false
             }
@@ -68,11 +72,13 @@ final class KeyboardSwipePointer {
         return true
     }
 
-    /// True when the touch has moved far enough that a key press is no longer
-    /// the right interpretation. The button uses this to postpone key-down.
-    func looksLikeDrag(_ token: AnyHashable) -> Bool {
+    /// True while committing a held key-down for this touch is still legitimate.
+    /// A touch that has already travelled past the tap tolerance is latched: the
+    /// button then sends the key as a tap on lift (or nothing at all, if it turns
+    /// into a swipe) instead of typing a keystroke the host cannot take back.
+    func canCommitPress(_ token: AnyHashable) -> Bool {
         guard let touch = touches[token] else { return false }
-        return hypot(touch.last.x - touch.origin.x, touch.last.y - touch.origin.y) > config.tapTolerance
+        return !touch.drifted && !touch.isSwipe
     }
 
     /// Ends one touch and reports whether it was a pointer swipe.

@@ -57,7 +57,7 @@ final class PressActionsUITests: XCTestCase {
         }
     }
 
-    func testSwipeOnASwipeableKeyMovesThePointerWithoutLeavingTheKeyHeld() {
+    func testKeyDragsOnASwipeableKeyMoveThePointerWithoutTyping() {
         let key = app.buttons["swipeableKey"]
         XCTAssertTrue(key.waitForExistence(timeout: 5))
         let center = key.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -70,27 +70,50 @@ final class PressActionsUITests: XCTestCase {
         center.press(forDuration: 0.8)
         assertCounts("swipe", "2:2:0")
 
-        // Movement below the swipe threshold stays a key press and moves nothing.
+        // A drift below the swipe threshold stays a key press and moves nothing.
         center.press(forDuration: 0.3, thenDragTo: center.withOffset(CGVector(dx: 0, dy: 8)))
         assertCounts("swipe", "3:3:0")
 
-        // A drag past the threshold becomes pointer control. Whatever the touch
-        // timing, the key must not be left held and the pointer must move.
+        // A drag past the threshold becomes pointer control and must not type.
         center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
-        let swipe = expectation(for: NSPredicate(format: "label BEGINSWITH '3:' OR label BEGINSWITH '4:'"), evaluatedWith: app.staticTexts["swipeCounts"])
-        wait(for: [swipe], timeout: 3)
-        let counts = fields("swipe")
-        XCTAssertEqual(counts.count, 3)
-        XCTAssertEqual(counts[0], counts[1], "A swipe never leaves a key-down unreleased")
-        XCTAssertGreaterThan(counts[2], 0, "A swipe must emit pointer movement")
+        let moved = expectation(
+            for: NSPredicate(format: "label BEGINSWITH '3:3:'"),
+            evaluatedWith: app.staticTexts["swipeCounts"]
+        )
+        wait(for: [moved], timeout: 3)
+        let afterSwipe = fields("swipe")
+        XCTAssertEqual(afterSwipe.count, 3)
+        XCTAssertEqual(afterSwipe[0], 3, "A swipe must not send a key-down the host would keep")
+        XCTAssertEqual(afterSwipe[1], 3, "A swipe must not release a key it never pressed")
+        XCTAssertGreaterThan(afterSwipe[2], 0, "A swipe must emit pointer movement")
 
-        // Repeating the swipe keeps emitting relative deltas.
+        // Dragging back keeps pointing and keeps typing nothing.
         center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: -140, dy: 0)))
-        let again = expectation(for: NSPredicate(format: "label != %@", "3:3:1"), evaluatedWith: app.staticTexts["swipeCounts"])
-        wait(for: [again], timeout: 3)
-        let repeated = fields("swipe")
-        XCTAssertEqual(repeated[0], repeated[1], "Every key-down is paired with a release")
-        XCTAssertGreaterThan(repeated[2], counts[2], "The second swipe moved the pointer again")
+        let movedBack = expectation(
+            for: NSPredicate(format: "label BEGINSWITH '3:3:'"),
+            evaluatedWith: app.staticTexts["swipeCounts"]
+        )
+        wait(for: [movedBack], timeout: 3)
+        XCTAssertGreaterThan(fields("swipe")[2], afterSwipe[2], "The second swipe moved the pointer again")
+        XCTAssertEqual(fields("swipe")[0], 3, "A swipe never types")
+    }
+
+    func testAHeldKeyThatTurnsIntoASwipeIsReleasedWithoutStayingHeld() {
+        let center = app.buttons["swipeableKey"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+
+        // A stationary hold past the commit delay is a deliberate key press. When
+        // the finger then drags, the held key must be released instead of staying
+        // down for the rest of the session.
+        center.press(forDuration: 0.8, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
+        let released = expectation(
+            for: NSPredicate(format: "label BEGINSWITH '1:1:'"),
+            evaluatedWith: app.staticTexts["swipeCounts"]
+        )
+        wait(for: [released], timeout: 3)
+        let counts = fields("swipe")
+        XCTAssertEqual(counts[0], 1, "The committed hold sent exactly one key-down")
+        XCTAssertEqual(counts[1], 1, "Starting the swipe released the held key")
+        XCTAssertGreaterThan(counts[2], 0, "The drag still moved the pointer")
     }
 
     func testClickZonesPressAndReleaseMouseButtons() {
