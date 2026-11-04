@@ -34,7 +34,7 @@ struct PressableKeyButton: UIViewRepresentable {
         button.onPress = onPress
         button.onRelease = onRelease
         button.swipePointer = swipePointer
-        button.setAccessibilityIdentifier(accessibilityIdentifier ?? "")
+        button.accessibilityIdentifier = accessibilityIdentifier ?? ""
         button.resetTouchState()
 
         return button
@@ -58,7 +58,7 @@ struct PressableKeyButton: UIViewRepresentable {
         uiView.onPress = onPress
         uiView.onRelease = onRelease
         uiView.swipePointer = swipePointer
-        uiView.setAccessibilityIdentifier(accessibilityIdentifier ?? "")
+        uiView.accessibilityIdentifier = accessibilityIdentifier ?? ""
         if uiView.swipePointer !== swipePointer {
             uiView.resetTouchState()
         }
