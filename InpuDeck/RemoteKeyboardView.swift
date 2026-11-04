@@ -325,8 +325,8 @@ struct RemoteKeyboardView: View {
                 active: capsLock,
                 width: widths[0],
                 height: height,
-                swipe: swipe,
-                onReleased: { capsLock.toggle() }
+                onReleased: { capsLock.toggle() },
+                swipe: swipe
             )
 
             ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
