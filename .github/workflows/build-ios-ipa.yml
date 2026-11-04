@@ -1,61 +1,15 @@
 name: Build unsigned iOS IPA
 
+# The build job needs a hosted macOS runner, the most expensive minutes on the
+# account, so it runs for releases only. Pushes to main and pull requests no
+# longer build an IPA; use workflow_dispatch when a branch needs a test build.
+# auto-release-tag.yml dispatches this workflow against the new ios-v* tag,
+# because a tag pushed with GITHUB_TOKEN starts no run of its own.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "InpuDeck/**"
-      - "InpuDeckShare/**"
-      - "Shared/**"
-      - "InpuDeck.xcodeproj/**"
-      - "Tests/DirectHIDTests.swift"
-      - "Tests/ESPBridgeStoreTests.swift"
-      - "Tests/MouseButtonMaskTests.swift"
-      - "Tests/KeyComboParserTests.swift"
-      - "Tests/MixedCommandParserTests.swift"
-      - "Tests/CommandUnlockStateTests.swift"
-      - "Tests/CommandletStoreTests.swift"
-      - "Tests/AppTabConfigurationTests.swift"
-      - "Tests/CommandTextInsertionTests.swift"
-      - "scripts/test-direct-hid.sh"
-      - "scripts/test-localizations.sh"
-      - "scripts/build-unsigned-ipa.sh"
-      - "scripts/update-sidestore-source.py"
-      - "scripts/install-esp32.py"
-      - "scripts/install-esp32.sh"
-      - "scripts/install-esp32.ps1"
-      - "Tests/test_esp32_installer.py"
-      - "inpudeck_bridge/**"
-      - ".github/workflows/build-ios-ipa.yml"
   push:
-    branches:
-      - main
     tags:
       - "ios-v*"
-    paths:
-      - "InpuDeck/**"
-      - "InpuDeckShare/**"
-      - "Shared/**"
-      - "InpuDeck.xcodeproj/**"
-      - "Tests/DirectHIDTests.swift"
-      - "Tests/ESPBridgeStoreTests.swift"
-      - "Tests/MouseButtonMaskTests.swift"
-      - "Tests/KeyComboParserTests.swift"
-      - "Tests/MixedCommandParserTests.swift"
-      - "Tests/CommandUnlockStateTests.swift"
-      - "Tests/CommandletStoreTests.swift"
-      - "Tests/AppTabConfigurationTests.swift"
-      - "Tests/CommandTextInsertionTests.swift"
-      - "scripts/test-direct-hid.sh"
-      - "scripts/test-localizations.sh"
-      - "scripts/build-unsigned-ipa.sh"
-      - "scripts/update-sidestore-source.py"
-      - "scripts/install-esp32.py"
-      - "scripts/install-esp32.sh"
-      - "scripts/install-esp32.ps1"
-      - "Tests/test_esp32_installer.py"
-      - "inpudeck_bridge/**"
-      - ".github/workflows/build-ios-ipa.yml"
 
 permissions:
   contents: read
