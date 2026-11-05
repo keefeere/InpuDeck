@@ -16,6 +16,7 @@ targets:
     sources:
       - TestApp.swift
       - ConfiguredTabView.swift
+      - EdgeTabNavigation.swift
       - TabSettingsView.swift
       - AppTabConfiguration.swift
       - Assets.xcassets

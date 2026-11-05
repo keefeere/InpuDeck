@@ -111,6 +111,21 @@ final class PressActionsUITests: XCTestCase {
         XCTAssertEqual(fields("swipe")[0], 0, "Pointer drag must not type a key")
     }
 
+    func testEdgeNavigationWorksInBothDirectionsAndRejectsShortDrags() {
+        let window = app.windows.firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        let left = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 15, dy: 0))
+        let right = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -15, dy: 0))
+        left.press(forDuration: 0.05, thenDragTo: left.withOffset(CGVector(dx: 50, dy: 0)))
+        assertCounts("navigation", "0:0")
+        left.press(forDuration: 0.05, thenDragTo: left.withOffset(CGVector(dx: 150, dy: 0)))
+        assertCounts("navigation", "1:-1")
+        right.press(forDuration: 0.05, thenDragTo: right.withOffset(CGVector(dx: -150, dy: 0)))
+        assertCounts("navigation", "2:1")
+    }
+
     func testAHeldKeyThatTurnsIntoASwipeIsReleasedWithoutStayingHeld() {
         let center = app.buttons["swipeableKey"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
 
