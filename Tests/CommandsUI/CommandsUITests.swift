@@ -260,33 +260,19 @@ final class CommandsUITests: XCTestCase {
         wait(for: [closed], timeout: 15)
     }
 
-    // Older simulator runtimes sometimes drop first-responder state right after
-    // a tap on SwiftUI text inputs, so wait for actual focus and retry once in
-    // a while instead of typing into an unfocused control.
-    private func focusAndType(_ element: XCUIElement, _ text: String) {
-        let waiter = XCTWaiter()
-        for attempt in 0..<3 {
-            element.tap()
-            let focused = expectation(for: NSPredicate(format: "hasKeyboardFocus(true)"),
-                                      evaluatedWith: element)
-            if waiter.wait(for: [focused], timeout: attempt == 2 ? 10 : 3) == .completed {
-                element.typeText(text)
-                return
-            }
-        }
-        XCTFail("Could not give keyboard focus to \(element.identifier)")
-    }
-
     func testCommandNameAndBodyCanExchangeKeyboardFocus() {
         launch(expert: false)
         app.buttons["commandsAdd"].tap()
         let body = app.textViews["commandBody"]
         XCTAssertTrue(body.waitForExistence(timeout: 5))
         let name = app.textFields["commandName"]
-        focusAndType(name, "Named")
+        name.tap()
+        name.typeText("Named")
         XCTAssertEqual(name.value as? String, "Named")
-        focusAndType(body, "Body")
-        focusAndType(name, " command")
+        body.tap()
+        body.typeText("Body")
+        name.tap()
+        name.typeText(" command")
         XCTAssertEqual(name.value as? String, "Named command")
         XCTAssertEqual(body.value as? String, "Body")
     }
