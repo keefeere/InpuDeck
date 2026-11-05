@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Shared production tab rendering and edge navigation. Selection uses stable
 /// IDs so hiding/reordering a tab cannot select a different page by accident.
@@ -28,16 +29,7 @@ struct ConfiguredTabView<Content: View>: View {
                 }
             }
             .id(expertMode)
-            .simultaneousGesture(DragGesture(minimumDistance: 24, coordinateSpace: .local).onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                let atLeft = value.startLocation.x <= 28
-                let atRight = value.startLocation.x >= geometry.size.width - 28
-                guard abs(horizontal) >= 120, abs(horizontal) > abs(vertical) * 1.25 else { return }
-                let direction: Int
-                if atRight, horizontal < 0 { direction = 1 }
-                else if atLeft, horizontal > 0 { direction = -1 }
-                else { return }
+            .background(EdgeTabNavigation { direction in
                 if let next = configuration.adjacent(to: selection, direction: direction) {
                     withAnimation(.easeOut(duration: 0.2)) { selection = next }
                 }

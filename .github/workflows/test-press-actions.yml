@@ -9,6 +9,8 @@ on:
       - "InpuDeck/ShortAndLongPressButtonStyle.swift"
       - "InpuDeck/PressableKeyButton.swift"
       - "InpuDeck/KeyboardSwipePointer.swift"
+      - "InpuDeck/EdgeTabNavigation.swift"
+      - "InpuDeck/ConfiguredTabView.swift"
       - "InpuDeck/RemoteKeyboardView.swift"
       - "Tests/KeyboardSwipePointerTests.swift"
       - "Tests/PressActions/**"

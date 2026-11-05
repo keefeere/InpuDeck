@@ -98,6 +98,19 @@ final class PressActionsUITests: XCTestCase {
         XCTAssertEqual(fields("swipe")[0], 3, "A swipe never types")
     }
 
+    func testLongKeyDragContinuesPastTheEdgeNavigationThreshold() {
+        let key = app.buttons["swipeableKey"]
+        XCTAssertTrue(key.waitForExistence(timeout: 5))
+        let center = key.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
+        let values = app.staticTexts["pointerDistance"].label.split(separator: ":").compactMap { Int($0) }
+        XCTAssertEqual(values.count, 2)
+        guard values.count == 2 else { return }
+        XCTAssertGreaterThan(values[0], 150, "Most of the 140-point drag must reach the pointer")
+        XCTAssertEqual(values[1], 0, "A drag starting in the middle must not navigate tabs")
+        XCTAssertEqual(fields("swipe")[0], 0, "Pointer drag must not type a key")
+    }
+
     func testAHeldKeyThatTurnsIntoASwipeIsReleasedWithoutStayingHeld() {
         let center = app.buttons["swipeableKey"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
 
