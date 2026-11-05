@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   press-ui-test:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 10
 
     steps:
