@@ -18,6 +18,7 @@ targets:
       - ShortAndLongPressButtonStyle.swift
       - PressableKeyButton.swift
       - KeyboardSwipePointer.swift
+      - EdgeTabNavigation.swift
       - Localization.swift
     settings:
       base:

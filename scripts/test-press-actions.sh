@@ -17,7 +17,7 @@ xcrun swiftc -swift-version 5 \
 # Build the exact production button style in a small host app. The UI runner
 # exercises actual touches without Bluetooth permissions or a paired computer.
 cp "$repo_root/Tests/PressActions/"* "$test_root/"
-for source in ShortAndLongPressButtonStyle PressableKeyButton KeyboardSwipePointer; do
+for source in ShortAndLongPressButtonStyle PressableKeyButton KeyboardSwipePointer EdgeTabNavigation; do
   cp "$repo_root/InpuDeck/$source.swift" "$test_root/"
 done
 cp "$repo_root/Shared/Localization.swift" "$test_root/"

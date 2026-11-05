@@ -20,6 +20,9 @@ private struct PressActionsTestView: View {
     @State private var keyPresses = 0
     @State private var keyReleases = 0
     @State private var pointerSteps = 0
+    @State private var pointerDistance = 0
+    @State private var edgeNavigations = 0
+    @State private var lastNavigation = 0
     @State private var leftDown = 0
     @State private var leftUp = 0
     @State private var rightDown = 0
@@ -95,6 +98,8 @@ private struct PressActionsTestView: View {
                 .frame(width: 44, height: 44)
 
             Text("\(keyPresses):\(keyReleases):\(pointerSteps)").accessibilityIdentifier("swipeCounts")
+            Text("\(pointerDistance):\(edgeNavigations)").accessibilityIdentifier("pointerDistance")
+            Text("\(edgeNavigations):\(lastNavigation)").accessibilityIdentifier("navigationCounts")
             Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
             Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
             Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
@@ -103,8 +108,15 @@ private struct PressActionsTestView: View {
             Text(controlsEnabled ? "enabled" : "disabled").accessibilityIdentifier("enabledState")
         }
         .padding(24)
+        .background(EdgeTabNavigation { direction in
+            edgeNavigations += 1
+            lastNavigation = direction
+        })
         .onAppear {
-            swipePointer.onPointerMove = { _, _ in pointerSteps += 1 }
+            swipePointer.onPointerMove = { dx, _ in
+                pointerSteps += 1
+                pointerDistance += Int(dx)
+            }
         }
     }
 }

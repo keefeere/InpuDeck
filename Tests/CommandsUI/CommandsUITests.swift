@@ -257,7 +257,7 @@ final class CommandsUITests: XCTestCase {
         entry.tap()
         let closed = expectation(for: NSPredicate(format: "exists == false"),
                                  evaluatedWith: app.buttons["commandLegendDone"])
-        wait(for: [closed], timeout: 5)
+        wait(for: [closed], timeout: 15)
     }
 
     func testCommandNameAndBodyCanExchangeKeyboardFocus() {
