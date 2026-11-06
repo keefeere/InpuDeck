@@ -27,6 +27,9 @@ private struct PressActionsTestView: View {
     @State private var leftUp = 0
     @State private var rightDown = 0
     @State private var rightUp = 0
+    @State private var edgeKeyPresses = 0
+    @State private var edgeReleases = 0
+    @State private var showModal = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -101,13 +104,41 @@ private struct PressActionsTestView: View {
             Text("\(pointerDistance):\(edgeNavigations)").accessibilityIdentifier("pointerDistance")
             Text("\(edgeNavigations):\(lastNavigation)").accessibilityIdentifier("navigationCounts")
             Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
+            Text("\(edgeKeyPresses):\(edgeReleases)").accessibilityIdentifier("edgeCounts")
             Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
             Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
             Button("Disable controls") { controlsEnabled = false }
                 .accessibilityIdentifier("disableControls")
             Text(controlsEnabled ? "enabled" : "disabled").accessibilityIdentifier("enabledState")
+            Button("Show modal") { showModal = true }
+                .accessibilityIdentifier("showModalButton")
         }
         .padding(24)
+        // A swipeable key flush against the window's leading edge: edge
+        // navigation must yield to the keyboard when the touch starts here.
+        .overlay(alignment: .leading) {
+            PressableKeyButton(
+                title: "E",
+                isCompact: true,
+                fontSize: 17,
+                minHeight: 44,
+                onPress: { edgeKeyPresses += 1 },
+                onRelease: { edgeReleases += 1 },
+                swipePointer: swipePointer,
+                accessibilityIdentifier: "edgeSwipeableKey"
+            )
+                .frame(width: 44, height: 44)
+                .offset(y: 220)
+        }
+        .fullScreenCover(isPresented: $showModal) {
+            VStack(spacing: 24) {
+                Text("Modal content").accessibilityIdentifier("modalContent")
+                Button("Close modal") { showModal = false }
+                    .accessibilityIdentifier("closeModalButton")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+        }
         .background(EdgeTabNavigation { direction in
             edgeNavigations += 1
             lastNavigation = direction

@@ -73,7 +73,7 @@ struct PressableKeyButton: UIViewRepresentable {
     }
 }
 
-final class KeyUIButton: UIButton {
+final class KeyUIButton: UIButton, KeyGestureParticipant {
     var baseTitle: String = "" {
         didSet {
             if baseTitle != oldValue {
@@ -335,11 +335,14 @@ final class KeyUIButton: UIButton {
 
         if state.keySent {
             state.release()
-        } else if !cancelled, !state.moved {
-            // The finger lifted without travelling far enough to swipe: a full tap.
-            // A touch that drifted, or a gesture the system cancelled, types nothing.
-            // Keys touched earlier may still sit inside their hold window, so they
-            // go out first: the host must see the characters in touch order.
+        } else if !cancelled {
+            // The finger lifted before reaching the swipe threshold: send a full
+            // tap, even when it drifted inside the dead zone between the tap
+            // tolerance and the activation distance. During normal typing a
+            // slightly sliding tap must never swallow the character.
+            // A gesture the system cancelled still types nothing.
+            // Keys touched earlier may still sit inside their hold window, so
+            // they go out first: the host must see the characters in touch order.
             if let swipe = gesture {
                 swipe.flushDeferredPresses(before: state.startedAt)
             }

@@ -74,28 +74,33 @@ final class PressActionsUITests: XCTestCase {
         center.press(forDuration: 0.3, thenDragTo: center.withOffset(CGVector(dx: 0, dy: 8)))
         assertCounts("swipe", "3:3:0")
 
+        // A drift between the tap tolerance and the swipe threshold is a lost
+        // swipe attempt, not a swallowed keystroke: the tap goes out on lift.
+        center.press(forDuration: 0.3, thenDragTo: center.withOffset(CGVector(dx: 0, dy: 16)))
+        assertCounts("swipe", "4:4:0")
+
         // A drag past the threshold becomes pointer control and must not type.
         center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
         let moved = expectation(
-            for: NSPredicate(format: "label BEGINSWITH '3:3:'"),
+            for: NSPredicate(format: "label BEGINSWITH '4:4:'"),
             evaluatedWith: app.staticTexts["swipeCounts"]
         )
         wait(for: [moved], timeout: 3)
         let afterSwipe = fields("swipe")
         XCTAssertEqual(afterSwipe.count, 3)
-        XCTAssertEqual(afterSwipe[0], 3, "A swipe must not send a key-down the host would keep")
-        XCTAssertEqual(afterSwipe[1], 3, "A swipe must not release a key it never pressed")
+        XCTAssertEqual(afterSwipe[0], 4, "A swipe must not send a key-down the host would keep")
+        XCTAssertEqual(afterSwipe[1], 4, "A swipe must not release a key it never pressed")
         XCTAssertGreaterThan(afterSwipe[2], 0, "A swipe must emit pointer movement")
 
         // Dragging back keeps pointing and keeps typing nothing.
         center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: -140, dy: 0)))
         let movedBack = expectation(
-            for: NSPredicate(format: "label BEGINSWITH '3:3:'"),
+            for: NSPredicate(format: "label BEGINSWITH '4:4:'"),
             evaluatedWith: app.staticTexts["swipeCounts"]
         )
         wait(for: [movedBack], timeout: 3)
         XCTAssertGreaterThan(fields("swipe")[2], afterSwipe[2], "The second swipe moved the pointer again")
-        XCTAssertEqual(fields("swipe")[0], 3, "A swipe never types")
+        XCTAssertEqual(fields("swipe")[0], 4, "A swipe never types")
     }
 
     func testLongKeyDragContinuesPastTheEdgeNavigationThreshold() {
@@ -124,6 +129,46 @@ final class PressActionsUITests: XCTestCase {
         assertCounts("navigation", "1:-1")
         right.press(forDuration: 0.05, thenDragTo: right.withOffset(CGVector(dx: -150, dy: 0)))
         assertCounts("navigation", "2:1")
+    }
+
+    func testEdgeNavigationYieldsToASwipeableKeyAtTheScreenEdge() {
+        // A swipe that starts on the keyboard key touching the left edge
+        // belongs to the keyboard: it must drive the pointer and must never
+        // navigate the tab behind it, no matter how far it travels.
+        let key = app.buttons["edgeSwipeableKey"]
+        XCTAssertTrue(key.waitForExistence(timeout: 5))
+        let center = key.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
+
+        let moved = expectation(
+            for: NSPredicate(format: "label != '0:0:0'"),
+            evaluatedWith: app.staticTexts["swipeCounts"]
+        )
+        wait(for: [moved], timeout: 3)
+        XCTAssertEqual(fields("edge").prefix(2), [0, 0], "The edge key swipe must not type")
+        assertCounts("navigation", "0:0")
+        XCTAssertGreaterThan(fields("swipe")[2], 0, "The edge key swipe still moves the pointer")
+    }
+
+    func testEdgeNavigationIsBlockedWhileAModalCoverIsPresented() {
+        app.buttons["showModalButton"].tap()
+        XCTAssertTrue(app.staticTexts["modalContent"].waitForExistence(timeout: 5))
+
+        let window = app.windows.firstMatch
+        let left = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 15, dy: 0))
+        left.press(forDuration: 0.05, thenDragTo: left.withOffset(CGVector(dx: 150, dy: 0)))
+        assertCounts("navigation", "0:0")
+
+        // Navigation resumes as soon as the cover is dismissed.
+        app.buttons["closeModalButton"].tap()
+        let dismissed = expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: app.staticTexts["modalContent"]
+        )
+        wait(for: [dismissed], timeout: 5)
+        left.press(forDuration: 0.05, thenDragTo: left.withOffset(CGVector(dx: 150, dy: 0)))
+        assertCounts("navigation", "1:-1")
     }
 
     func testAHeldKeyThatTurnsIntoASwipeIsReleasedWithoutStayingHeld() {

@@ -91,7 +91,8 @@ struct RemoteKeyboardView: View {
                         keycodes: [HID.keyEscape]
                             + functionKeys
                             + [HID.keyInsert, HID.keyHome, HID.keyEnd, HID.keyDelete],
-                        height: keyHeight
+                        height: keyHeight,
+                        swipe: keySwipe
                     )
                 } else {
                     functionRow(
@@ -99,13 +100,15 @@ struct RemoteKeyboardView: View {
                         keycodes: [HID.keyEscape]
                             + Array(functionKeys.prefix(6))
                             + [HID.keyHome],
-                        height: keyHeight
+                        height: keyHeight,
+                        swipe: keySwipe
                     )
                     functionRow(
                         labels: ["F7", "F8", "F9", "F10", "F11", "F12", "Ins", "Del", "End"],
                         keycodes: Array(functionKeys.suffix(6))
                             + [HID.keyInsert, HID.keyDelete, HID.keyEnd],
-                        height: keyHeight
+                        height: keyHeight,
+                        swipe: keySwipe
                     )
                 }
 
@@ -232,13 +235,22 @@ struct RemoteKeyboardView: View {
         .accessibilityLabel("Налаштування")
     }
 
-    private func functionRow(labels: [String], keycodes: [UInt8], height: CGFloat) -> some View {
+    private func functionRow(
+        labels: [String],
+        keycodes: [UInt8],
+        height: CGFloat,
+        swipe: KeyboardSwipePointer? = nil
+    ) -> some View {
         HStack(spacing: keySpacing) {
             ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                // These keys always type, but they must still carry the shared
+                // coordinator so Esc or F1 pressed while a letter is inside its
+                // hold window cannot overtake the letter touched first.
                 actionKey(
                     label,
                     keycode: keycodes[index],
-                    height: height
+                    height: height,
+                    swipe: swipe
                 )
             }
         }
