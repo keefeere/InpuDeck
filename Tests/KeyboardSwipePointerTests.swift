@@ -110,6 +110,16 @@ struct KeyboardSwipePointerTests {
         dropped.flushDeferredPresses(before: 100)
         expect(droppedOrder.isEmpty, "reset drops a postponed key-down")
 
+        // A reset that lands while a finger is still down also forgets the touch
+        // itself, so `end` can no longer report that it was a pointer swipe. The
+        // key button must therefore keep its own latch: trusting this answer
+        // alone would let an in-flight swipe type a character on lift.
+        let forgot = KeyboardSwipePointer()
+        forgot.begin("swipe", at: .zero)
+        expect(forgot.dragged("swipe", to: CGPoint(x: 120, y: 0)), "the drag becomes a swipe")
+        forgot.reset()
+        expect(!forgot.end("swipe"), "a reset touch is not reported as a swipe any more")
+
         print("PASS: keyboard swipe separates taps from pointer drags and splits HID deltas")
     }
 

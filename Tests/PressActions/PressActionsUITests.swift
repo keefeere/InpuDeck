@@ -137,7 +137,17 @@ final class PressActionsUITests: XCTestCase {
         // navigate the tab behind it, no matter how far it travels.
         let key = app.buttons["edgeSwipeableKey"]
         XCTAssertTrue(key.waitForExistence(timeout: 5))
+        let window = app.windows.firstMatch
+
+        // The navigation pan only claims touches inside a 28-point band at the
+        // window edge, so the fixture is worthless unless its touch really sits
+        // in that band. Without this, a layout change would quietly turn the
+        // test into "a middle-of-screen drag does not navigate".
         let center = key.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let startFromWindowLeft = key.frame.midX - window.frame.minX
+        XCTAssertLessThanOrEqual(startFromWindowLeft, 28,
+                                 "The fixture key must sit inside the pan's edge band")
+
         center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 140, dy: 0)))
 
         let moved = expectation(

@@ -335,12 +335,16 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
 
         if state.keySent {
             state.release()
-        } else if !cancelled {
+        } else if !cancelled, !state.swipeActive {
             // The finger lifted before reaching the swipe threshold: send a full
             // tap, even when it drifted inside the dead zone between the tap
             // tolerance and the activation distance. During normal typing a
             // slightly sliding tap must never swallow the character.
-            // A gesture the system cancelled still types nothing.
+            // A gesture the system cancelled still types nothing, and neither
+            // does a touch the button already handed to the pointer: the shared
+            // coordinator can forget it while the finger is down (a reconnect
+            // resets it), which would otherwise turn an in-flight swipe into a
+            // keystroke. The button's own latch is what keeps that promise.
             // Keys touched earlier may still sit inside their hold window, so
             // they go out first: the host must see the characters in touch order.
             if let swipe = gesture {
