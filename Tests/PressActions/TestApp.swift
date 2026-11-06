@@ -27,87 +27,119 @@ private struct PressActionsTestView: View {
     @State private var leftUp = 0
     @State private var rightDown = 0
     @State private var rightUp = 0
+    @State private var edgeKeyPresses = 0
+    @State private var edgeReleases = 0
+    @State private var showModal = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            HStack(spacing: 32) {
-                Button { languageTaps += 1 } label: {
-                    Text(languageTaps.isMultiple(of: 2) ? "UA/EN" : "EN/UA")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .frame(width: 60, height: 36)
-                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(ShortAndLongPressButtonStyle(
-                    longPressLabel: "Layout only", onLongPress: { languageHolds += 1 }
-                ))
-                .accessibilityLabel("Language")
-                .accessibilityIdentifier("languageButton")
-
-                Button { orientationTaps += 1 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "rectangle.landscape")
-                        Image(systemName: orientationTaps.isMultiple(of: 2) ? "lock.open" : "lock.fill")
+        ZStack(alignment: .bottomLeading) {
+            VStack(spacing: 24) {
+                HStack(spacing: 32) {
+                    Button { languageTaps += 1 } label: {
+                        Text(languageTaps.isMultiple(of: 2) ? "UA/EN" : "EN/UA")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .frame(width: 60, height: 36)
+                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
                     }
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.accentColor.opacity(0.16))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(ShortAndLongPressButtonStyle(
-                    longPressLabel: "Landscape", onLongPress: { orientationHolds += 1 }
-                ))
-                .accessibilityLabel("Orientation")
-                .accessibilityIdentifier("orientationButton")
-            }
-            .disabled(!controlsEnabled)
+                    .buttonStyle(ShortAndLongPressButtonStyle(
+                        longPressLabel: "Layout only", onLongPress: { languageHolds += 1 }
+                    ))
+                    .accessibilityLabel("Language")
+                    .accessibilityIdentifier("languageButton")
 
+                    Button { orientationTaps += 1 } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "rectangle.landscape")
+                            Image(systemName: orientationTaps.isMultiple(of: 2) ? "lock.open" : "lock.fill")
+                        }
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor.opacity(0.16))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(ShortAndLongPressButtonStyle(
+                        longPressLabel: "Landscape", onLongPress: { orientationHolds += 1 }
+                    ))
+                    .accessibilityLabel("Orientation")
+                    .accessibilityIdentifier("orientationButton")
+                }
+                .disabled(!controlsEnabled)
+
+                PressableKeyButton(
+                    title: "A",
+                    isCompact: true,
+                    fontSize: 17,
+                    minHeight: 44,
+                    onPress: { keyPresses += 1 },
+                    onRelease: { keyReleases += 1 },
+                    swipePointer: swipePointer,
+                    accessibilityIdentifier: "swipeableKey"
+                )
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Swipeable key")
+
+                PressableKeyButton(
+                    title: "L",
+                    isCompact: true,
+                    fontSize: 11,
+                    minHeight: 44,
+                    onPress: { leftDown += 1 },
+                    onRelease: { leftUp += 1 },
+                    accessibilityIdentifier: "leftClickZone"
+                )
+                    .frame(width: 44, height: 44)
+
+                PressableKeyButton(
+                    title: "R",
+                    isCompact: true,
+                    fontSize: 11,
+                    minHeight: 44,
+                    onPress: { rightDown += 1 },
+                    onRelease: { rightUp += 1 },
+                    accessibilityIdentifier: "rightClickZone"
+                )
+                    .frame(width: 44, height: 44)
+
+                Text("\(keyPresses):\(keyReleases):\(pointerSteps)").accessibilityIdentifier("swipeCounts")
+                Text("\(pointerDistance):\(edgeNavigations)").accessibilityIdentifier("pointerDistance")
+                Text("\(edgeNavigations):\(lastNavigation)").accessibilityIdentifier("navigationCounts")
+                Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
+                Text("\(edgeKeyPresses):\(edgeReleases)").accessibilityIdentifier("edgeCounts")
+                Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
+                Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
+                Button("Disable controls") { controlsEnabled = false }
+                    .accessibilityIdentifier("disableControls")
+                Text(controlsEnabled ? "enabled" : "disabled").accessibilityIdentifier("enabledState")
+                Button("Show modal") { showModal = true }
+                    .accessibilityIdentifier("showModalButton")
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // A swipeable key flush against the window's leading edge: when a
+            // swipe starts here the keyboard owns it, not tab navigation.
             PressableKeyButton(
-                title: "A",
+                title: "E",
                 isCompact: true,
                 fontSize: 17,
                 minHeight: 44,
-                onPress: { keyPresses += 1 },
-                onRelease: { keyReleases += 1 },
+                onPress: { edgeKeyPresses += 1 },
+                onRelease: { edgeReleases += 1 },
                 swipePointer: swipePointer,
-                accessibilityIdentifier: "swipeableKey"
+                accessibilityIdentifier: "edgeSwipeableKey"
             )
                 .frame(width: 44, height: 44)
-                .accessibilityLabel("Swipeable key")
-
-            PressableKeyButton(
-                title: "L",
-                isCompact: true,
-                fontSize: 11,
-                minHeight: 44,
-                onPress: { leftDown += 1 },
-                onRelease: { leftUp += 1 },
-                accessibilityIdentifier: "leftClickZone"
-            )
-                .frame(width: 44, height: 44)
-
-            PressableKeyButton(
-                title: "R",
-                isCompact: true,
-                fontSize: 11,
-                minHeight: 44,
-                onPress: { rightDown += 1 },
-                onRelease: { rightUp += 1 },
-                accessibilityIdentifier: "rightClickZone"
-            )
-                .frame(width: 44, height: 44)
-
-            Text("\(keyPresses):\(keyReleases):\(pointerSteps)").accessibilityIdentifier("swipeCounts")
-            Text("\(pointerDistance):\(edgeNavigations)").accessibilityIdentifier("pointerDistance")
-            Text("\(edgeNavigations):\(lastNavigation)").accessibilityIdentifier("navigationCounts")
-            Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
-            Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
-            Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
-            Button("Disable controls") { controlsEnabled = false }
-                .accessibilityIdentifier("disableControls")
-            Text(controlsEnabled ? "enabled" : "disabled").accessibilityIdentifier("enabledState")
+                .padding(.bottom, 90)
         }
-        .padding(24)
+        .fullScreenCover(isPresented: $showModal) {
+            VStack(spacing: 24) {
+                Text("Modal content").accessibilityIdentifier("modalContent")
+                Button("Close modal") { showModal = false }
+                    .accessibilityIdentifier("closeModalButton")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+        }
         .background(EdgeTabNavigation { direction in
             edgeNavigations += 1
             lastNavigation = direction

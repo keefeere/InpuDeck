@@ -297,16 +297,33 @@ final class CommandsUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["commandParseError"].exists)
     }
 
+    /// Reveals the legend's F1-F12 grid.
+    ///
+    /// The grid is a `LazyVGrid` inside a `DisclosureGroup`: its cells only exist
+    /// once they are near the viewport. So expanding is not enough - the test has
+    /// to expand, then scroll until the first cell is rendered, and only then
+    /// assert. A single swipe loop that stops at the visible header races that
+    /// lazy rendering and fails on a loaded machine.
+    private func expandFunctionKeyGrid() {
+        let functions = app.descendants(matching: .any).matching(identifier: "legend-functions").firstMatch
+        let firstKey = app.buttons["legend-key-f1"]
+        for _ in 0..<6 {
+            if firstKey.exists { return }
+            if functions.isHittable {
+                functions.tap()
+                if firstKey.waitForExistence(timeout: 3) { return }
+            }
+            app.swipeUp()
+            if firstKey.waitForExistence(timeout: 3) { return }
+        }
+        XCTFail("The legend must render its F1-F12 grid once expanded")
+    }
+
     func testLegendFunctionAndNavigationGridsInsertOnlySelectedKey() {
         let body = newMixedEditor()
         openLegend()
-        let functions = app.descendants(matching: .any).matching(identifier: "legend-functions").firstMatch
-        for _ in 0..<6 {
-            if functions.exists && functions.isHittable { break }
-            app.swipeUp()
-        }
-        functions.tap()
-        XCTAssertTrue(app.buttons["legend-key-f1"].waitForExistence(timeout: 5))
+        expandFunctionKeyGrid()
+        XCTAssertTrue(app.buttons["legend-key-f1"].exists)
         attachScreenshot("command-legend-functions")
         insertLegendEntry("legend-key-f12")
         waitFor(body, key: "value", value: "<F12>")

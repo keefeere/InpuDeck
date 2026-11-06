@@ -23,7 +23,9 @@ permissions:
 jobs:
   press-ui-test:
     runs-on: macos-15
-    timeout-minutes: 10
+    # Hosted macOS runners queue often; the limit covers queue time too, so a
+    # tight value kills the job before a runner is ever assigned.
+    timeout-minutes: 30
 
     steps:
       - name: Check out source

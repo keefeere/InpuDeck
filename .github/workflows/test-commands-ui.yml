@@ -33,7 +33,9 @@ permissions:
 jobs:
   commands-ui-test:
     runs-on: macos-26
-    timeout-minutes: 25
+    # Hosted macOS runners queue often; the limit covers queue time too, so a
+    # tight value kills the job before a runner is ever assigned.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
       - name: Install UI test project generator
