@@ -29,6 +29,9 @@ private struct PressActionsTestView: View {
     @State private var rightUp = 0
     @State private var edgeKeyPresses = 0
     @State private var edgeReleases = 0
+    @State private var plainPresses = 0
+    @State private var plainReleases = 0
+    @State private var plainAllowsSwipe = true
     @State private var showModal = false
 
     var body: some View {
@@ -106,6 +109,7 @@ private struct PressActionsTestView: View {
                 Text("\(edgeNavigations):\(lastNavigation)").accessibilityIdentifier("navigationCounts")
                 Text("\(leftDown):\(leftUp):\(rightDown):\(rightUp)").accessibilityIdentifier("clickCounts")
                 Text("\(edgeKeyPresses):\(edgeReleases)").accessibilityIdentifier("edgeCounts")
+            Text("\(plainPresses):\(plainReleases)").accessibilityIdentifier("plainCounts")
                 Text("\(languageTaps):\(languageHolds)").accessibilityIdentifier("languageCounts")
                 Text("\(orientationTaps):\(orientationHolds)").accessibilityIdentifier("orientationCounts")
                 Button("Disable controls") { controlsEnabled = false }
@@ -130,6 +134,31 @@ private struct PressActionsTestView: View {
             )
                 .frame(width: 44, height: 44)
                 .padding(.bottom, 90)
+
+            // The keyboard with the pointer setting off: the same production
+            // button, but it never receives the shared coordinator, and the
+            // setting can flip while a finger is already on it. It lives in an
+            // overlay because the main column already overflows in landscape,
+            // and adding rows there would push existing controls off-screen.
+            VStack(alignment: .trailing, spacing: 8) {
+                PressableKeyButton(
+                    title: "Q",
+                    isCompact: true,
+                    fontSize: 17,
+                    minHeight: 44,
+                    onPress: { plainPresses += 1 },
+                    onRelease: { plainReleases += 1 },
+                    swipePointer: swipePointer,
+                    allowsSwipe: plainAllowsSwipe,
+                    accessibilityIdentifier: "plainKey"
+                )
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Plain key")
+                Button("Disable swipe") { plainAllowsSwipe = false }
+                    .accessibilityIdentifier("disableSwipe")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(14)
         }
         .fullScreenCover(isPresented: $showModal) {
             VStack(spacing: 24) {

@@ -194,12 +194,15 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
     var swipePointer: KeyboardSwipePointer?
-    /// False for keys that must always type (Tab, arrows, Enter …) but still have
-    /// to respect the order of key-downs postponed by the swipe threshold.
+    /// False for keys that must always type (Tab, arrows, Enter …): they never
+    /// become the pointer, they only keep their key-downs ordered with the keys
+    /// whose hold window the swipe threshold postponed.
     var allowsSwipe = true
 
-    /// The touch rules apply only to keys that take part in the gesture; the
-    /// shared object still coordinates their ordering with postponed keys.
+    /// The single gate for the pointer. Only keys that take part in the gesture
+    /// get hold of the shared object at all — for every other key the touch
+    /// handling behaves exactly as it did before the pointer existed, so a drag
+    /// over Esc or Tab can never move the cursor.
     private var gesture: KeyboardSwipePointer? {
         allowsSwipe ? swipePointer : nil
     }
@@ -225,8 +228,8 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
             if state.keySent {
                 state.release()
             }
-            swipePointer?.cancelDeferredPress(token)
-            gesture?.end(token)
+            gesture?.cancelDeferredPress(token)
+            _ = gesture?.end(token)
         }
         touchStates.removeAll()
     }
@@ -263,7 +266,7 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
         guard let press = onPress, let release = onRelease else { return }
         let token = ObjectIdentifier(touch)
         let point = touch.location(in: self)
-        let startedAt = swipePointer?.now() ?? 0
+        let startedAt = gesture?.now() ?? 0
         var state = TouchState(press: press, release: release, start: point, startedAt: startedAt)
 
         if let swipe = gesture {
@@ -278,7 +281,7 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
         } else {
             // An immediate key must not overtake a key whose hold window is still
             // open: that one was touched first, so it goes out first.
-            swipePointer?.flushDeferredPresses(before: startedAt)
+            gesture?.flushDeferredPresses(before: startedAt)
             state.keySent = true
             touchStates[token] = state
             press()
@@ -326,7 +329,7 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
 
     private func endTouch(_ touch: UITouch, cancelled: Bool) {
         let token = ObjectIdentifier(touch)
-        guard var state = touchStates.removeValue(forKey: token) else { return }
+        guard let state = touchStates.removeValue(forKey: token) else { return }
         state.pendingPress?.cancel()
 
         if gesture?.end(token) ?? false {
