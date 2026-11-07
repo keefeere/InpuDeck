@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage("showAlternateKeyLegends") private var showAlternateKeyLegends = true
     @AppStorage("hideAlternateKeyLegendsInPortrait") private var hideAlternateKeyLegendsInPortrait = false
     @AppStorage("alternateKeyLegendScalePercent") private var alternateKeyLegendScalePercent = 72.0
+    @AppStorage("keyboardPointerSwipe") private var keyboardPointerSwipe = false
 
     @State private var inputText = ""
     @State private var wantsFocus = false
@@ -762,6 +763,16 @@ struct ContentView: View {
 
                     if !expertMode {
                         Text("Активна розкладка показується по центру. Друга — у нижньому правому куті; відсоток задає її розмір відносно основного символу.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Курсор клавіатури") {
+                    Toggle("Свайп по клавішах як миша", isOn: $keyboardPointerSwipe)
+                        .accessibilityIdentifier("settingsPointerSwipe")
+                    if !expertMode {
+                        Text("Працює в ландшафтній орієнтації, коли клавіатура підключена: проведіть пальцем по літерах — це рух курсора, а кнопки лівого та правого кліка з’являються під клавіатурою. Вимкнено — кожен тап лишається звичайним натисканням клавіші, а рядок кліків і висота клавіш повертаються.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

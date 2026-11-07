@@ -180,6 +180,9 @@ jobs:
       - name: Install ldid
         run: brew install ldid
 
+      - name: Parse the app views no test target compiles
+        run: ./scripts/parse-app-sources.sh
+
       - name: Build unsigned IPA
         run: ./scripts/build-unsigned-ipa.sh
 
