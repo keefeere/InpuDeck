@@ -120,6 +120,17 @@ struct KeyboardSwipePointerTests {
         forgot.reset()
         expect(!forgot.end("swipe"), "a reset touch is not reported as a swipe any more")
 
+        // A key that refuses the gesture (Esc, Tab, arrows, the function row)
+        // carries the shared object only to keep its key-down ordered. It never
+        // announces a touch, so the same drag cannot drive the pointer through it.
+        moves.removeAll()
+        let untouched = KeyboardSwipePointer()
+        untouched.onPointerMove = { dx, dy in moves.append((dx, dy)) }
+        expect(!untouched.dragged("esc", to: CGPoint(x: 200, y: 0)), "an unannounced touch is not a swipe")
+        expect(!untouched.end("esc"), "an unannounced touch is nothing to the pointer")
+        expect(moves.isEmpty, "an unannounced touch must not move the pointer")
+        expect(!untouched.isPointerActive, "an unannounced touch must not enter pointer mode")
+
         print("PASS: keyboard swipe separates taps from pointer drags and splits HID deltas")
     }
 
