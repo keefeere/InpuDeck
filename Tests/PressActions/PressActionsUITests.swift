@@ -103,6 +103,38 @@ final class PressActionsUITests: XCTestCase {
         XCTAssertEqual(fields("swipe")[0], 4, "A swipe never types")
     }
 
+    /// The pointer setting is opt-in: a key built without the shared coordinator
+    /// must behave exactly like a keyboard key from before the feature — a tap
+    /// types, a drag types nothing, and the pointer never moves.
+    func testAKeyWithoutThePointerSettingNeverPointsAndAlwaysTypesNormally() {
+        let key = app.buttons["plainKey"]
+        XCTAssertTrue(key.waitForExistence(timeout: 5))
+        let frame = key.frame
+        XCTAssertGreaterThan(frame.width, 30, "plainKey frame: \(frame)")
+        XCTAssertGreaterThan(frame.height, 30, "plainKey frame: \(frame)")
+        let window = app.windows.firstMatch.frame
+        XCTAssertLessThan(frame.minX + 22 - window.minX, 34, "plainKey must sit outside the leading edge band: \(frame) in \(window)")
+        let center = key.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+
+        center.tap()
+        assertCounts("plain", "1:1")
+        XCTAssertEqual(fields("swipe")[2], 0, "A plain key must not move the pointer")
+
+        // The same drag that points on an enabled key: the button is not tracking
+        // a swipe, so no pointer step is emitted. It types nothing either, exactly
+        // as a key with no pointer support did before the feature existed. Leftward
+        // because this fixture sits in the trailing corner of the window.
+        center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: -140, dy: 0)))
+        assertCounts("plain", "1:1")
+        XCTAssertEqual(fields("swipe")[2], 0, "A plain key drag must not move the pointer")
+
+        // Turning the setting off between gestures must not break the tap path.
+        app.buttons["disableSwipe"].tap()
+        center.tap()
+        assertCounts("plain", "2:2")
+        XCTAssertEqual(fields("swipe")[2], 0, "A plain key must not move the pointer")
+    }
+
     func testLongKeyDragContinuesPastTheEdgeNavigationThreshold() {
         let key = app.buttons["swipeableKey"]
         XCTAssertTrue(key.waitForExistence(timeout: 5))
