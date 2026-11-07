@@ -33,6 +33,10 @@ struct RemoteKeyboardView: View {
     @AppStorage("showAlternateKeyLegends") private var showAlternateKeyLegends = true
     @AppStorage("hideAlternateKeyLegendsInPortrait") private var hideAlternateKeyLegendsInPortrait = false
     @AppStorage("alternateKeyLegendScalePercent") private var alternateKeyLegendScalePercent = 72.0
+    /// Landscape swipe-to-point is opt-in: without it the keyboard keeps every
+    /// row height it had before the pointer feature existed, and a key drag
+    /// never turns into pointer movement.
+    @AppStorage("keyboardPointerSwipe") private var keyboardPointerSwipe = false
     @AppStorage("expertMode") private var expertMode = false
     @State private var swipePointer = KeyboardSwipePointer()
 
@@ -60,7 +64,9 @@ struct RemoteKeyboardView: View {
             let keyboardRowCount = usesWideLayout ? 6 : 7
             let spacing = geometry.size.height < 600 ? CGFloat(3) : CGFloat(5)
             let statusHeight = usesWideLayout ? CGFloat(32) : CGFloat(38)
-            let showsPointerStrip = !showsTrackpad
+            // The click strip exists only as part of swipe-to-point; hiding it
+            // returns its height to the keyboard rows.
+            let showsPointerStrip = !showsTrackpad && keyboardPointerSwipe
             let keyHeight = max(
                 27,
                 min(
@@ -75,9 +81,9 @@ struct RemoteKeyboardView: View {
             )
             let availableWidth = geometry.size.width - 12
             // Portrait already has a trackpad surface, so a key drag must keep
-            // typing there. Swipe-to-point is landscape only, and only while an
-            // input route can actually receive mouse reports.
-            let keySwipe = (!showsTrackpad && ble.isReady) ? swipePointer : nil
+            // typing there. Swipe-to-point is landscape only, opt-in, and only
+            // while an input route can actually receive mouse reports.
+            let keySwipe = (showsPointerStrip && ble.isReady) ? swipePointer : nil
 
             VStack(spacing: spacing) {
                 connectionStatus
@@ -165,6 +171,13 @@ struct RemoteKeyboardView: View {
         }
         .onChange(of: orientationLockRawValue) { _, _ in
             AppOrientationLock.apply(orientationLock)
+        }
+        .onChange(of: keyboardPointerSwipe) { _, enabled in
+            // Turning the feature off while a finger is on the keyboard must not
+            // leave the pointer half-active or a key held down.
+            if !enabled {
+                swipePointer.reset()
+            }
         }
         .onChange(of: ble.inputEpoch) { _, _ in
             // The controller already released the old route. Only clear UI state.

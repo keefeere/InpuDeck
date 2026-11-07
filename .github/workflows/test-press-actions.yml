@@ -12,15 +12,35 @@ on:
       - "InpuDeck/EdgeTabNavigation.swift"
       - "InpuDeck/ConfiguredTabView.swift"
       - "InpuDeck/RemoteKeyboardView.swift"
+      - "InpuDeck/ContentView.swift"
+      - "InpuDeck/TrackpadView.swift"
+      - "InpuDeck/ConnectionStatusView.swift"
+      - "InpuDeck/CodeScannerView.swift"
+      - "InpuDeck/InpuDeckApp.swift"
       - "Tests/KeyboardSwipePointerTests.swift"
       - "Tests/PressActions/**"
       - "scripts/test-press-actions.sh"
+      - "scripts/parse-app-sources.sh"
       - ".github/workflows/test-press-actions.yml"
 
 permissions:
   contents: read
 
 jobs:
+  # A syntax pass over the app views that no test target compiles. It exists so
+  # a malformed SwiftUI file fails a pull request in a minute instead of a
+  # release build ten minutes in; it does not replace the release `xcodebuild`.
+  app-syntax:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Parse app sources
+        run: ./scripts/parse-app-sources.sh
+
   press-ui-test:
     runs-on: macos-15
     # Hosted macOS runners queue often; the limit covers queue time too, so a
