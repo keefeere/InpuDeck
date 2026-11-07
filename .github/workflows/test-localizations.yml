@@ -1,0 +1,42 @@
+name: Validate localizations
+
+# `scripts/test-localizations.sh` used to run only inside build-ios-ipa.yml, so
+# a missing English entry was discovered after the release tag existed: the
+# ios-v3.4.6 build failed on it, the tag was left without a release, and the
+# version had to be skipped to 3.4.7. The gate now runs on the pull request that
+# changes the strings, on ubuntu-latest, in about ten seconds.
+#
+# It stays in its own workflow rather than joining test-press-actions.yml, which
+# filters on a hand-maintained list of files that its test app compiles; the
+# localization check needs the whole app source tree instead.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "InpuDeck/**/*.swift"
+      - "InpuDeckShare/**/*.swift"
+      - "Shared/**/*.swift"
+      - "InpuDeck/**/*.strings"
+      - "InpuDeckShare/**/*.strings"
+      - "scripts/test-localizations.sh"
+      - ".github/workflows/test-localizations.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  localizations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      # The script lints .strings with plutil when it is available and falls
+      # back to an awk syntax check otherwise. Both paths are exercised: macOS
+      # runners take the plutil one inside the release build, this job takes the
+      # fallback.
+      - name: Validate English and Ukrainian localizations
+        run: bash ./scripts/test-localizations.sh
