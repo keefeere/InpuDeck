@@ -56,6 +56,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Precision trackpad** - Cursor movement, two-finger scrolling/right click, pinch-to-zoom, tap-drag, edge scrolling, and three-finger middle click
 - **Keyboard trackpad** - Uses the free portrait space below the full keyboard without extra mouse buttons
 - **Landscape swipe pointer** - Drag across keyboard keys to move the mouse without typing, with left- and right-click zones beside the keyboard-tools row
+- **Air mouse** - Tilt the phone to move the cursor: gyroscope-driven and aligned to gravity, so turning the phone reverses the cursor instead of losing it, with tremor filtering, adjustable sensitivity and dead zone, axis inversion, and a recentre control ([details](docs/air-mouse.md))
 - **Hardware control deck** - System, media, audio, microphone-mute, and numpad HID controls
 - **QR and barcode scanner** - Scan into the composer or automatically type codes, including an optional batch mode
 - **Mouse jiggler** - Configurable foreground pointer movement with a selectable movement interval

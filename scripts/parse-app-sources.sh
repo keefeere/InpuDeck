@@ -15,6 +15,7 @@ test -d InpuDeck -a -d Shared || { echo "run from the repository root"; exit 1; 
 # Every source is parsed here unless a cheaper gate already compiles it fully
 # (scripts/test-press-actions.sh, scripts/test-direct-hid.sh).
 compiled_by_other_gates=(
+  "Shared/AirMouseEngine.swift"
   "InpuDeck/KeyboardSwipePointer.swift"
   "InpuDeck/PressableKeyButton.swift"
   "InpuDeck/EdgeTabNavigation.swift"

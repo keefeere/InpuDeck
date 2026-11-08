@@ -22,6 +22,8 @@
 	<string>Unlock command bodies for viewing, editing, copying and deletion.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan QR and 2D codes so their contents can be typed on the connected computer.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>InpuDeck reads the gyroscope and the accelerometer so tilting the phone can move the pointer on the connected computer.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
