@@ -1,5 +1,7 @@
+import Combine
 import CoreMotion
 import Foundation
+import UIKit
 
 /// Pointer surface shown on the input screen.
 enum PointerSurface: String, CaseIterable, Identifiable {
@@ -10,6 +12,22 @@ enum PointerSurface: String, CaseIterable, Identifiable {
 
     var title: String {
         localized(self == .trackpad ? "Тачпад" : "Air mouse")
+    }
+}
+
+extension AirMouseHolding {
+    /// Map the physical device orientation. Face up, face down and unknown give
+    /// no holding: a phone lying flat has no direction to prefer, and guessing
+    /// one would move the cursor while nothing moved.
+    init?(deviceOrientation: UIDeviceOrientation) {
+        switch deviceOrientation {
+        case .portrait: self = .portrait
+        case .portraitUpsideDown: self = .portraitUpsideDown
+        case .landscapeLeft: self = .landscapeLeft
+        case .landscapeRight: self = .landscapeRight
+        case .faceUp, .faceDown, .unknown: return nil
+        @unknown default: return nil
+        }
     }
 }
 

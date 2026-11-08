@@ -74,7 +74,10 @@ struct AirMouseScreenAxes: Equatable {
 /// Kept free of CoreMotion, UIKit and HID types so the rules are testable
 /// without a device, a simulator or a paired host.
 final class AirMouseEngine {
-    struct Config {
+    // Settings arrive from @AppStorage and are compared on every change, so the
+    // interface only needs equality between the values a slider and two toggles
+    // can produce.
+    struct Config: Equatable {
         /// Pointer units per radian per second of steady tilt at the sensitivity
         /// the interface shows as 100 %.
         static let basePointerUnitsPerRadianPerSecond = 90.0
