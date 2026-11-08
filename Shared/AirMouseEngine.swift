@@ -13,6 +13,8 @@ struct AirMouseAngularVelocity: Equatable {
     }
 }
 
+/// A direction or a magnitude expressed in the device frame the rotation rate
+/// arrives in, which is the only frame the sensors speak.
 struct AirMouseVector3: Equatable {
     var x: Double
     var y: Double
@@ -23,99 +25,126 @@ struct AirMouseVector3: Equatable {
         self.y = y
         self.z = z
     }
-}
-
-/// A direction inside the plane of the screen, expressed in the same frame as the
-/// rotation rate. The third component is always zero for an in-plane direction.
-struct AirMouseVector2: Equatable {
-    var x: Double
-    var y: Double
-
-    init(x: Double = 0, y: Double = 0) {
-        self.x = x
-        self.y = y
-    }
 
     var length: Double {
-        (x * x + y * y).squareRoot()
+        (x * x + y * y + z * z).squareRoot()
     }
 
-    var normalized: AirMouseVector2 {
+    var normalized: AirMouseVector3 {
         let scale = length
-        guard scale > 1e-9 else { return AirMouseVector2() }
-        return AirMouseVector2(x: x / scale, y: y / scale)
+        guard scale > 1e-9 else { return AirMouseVector3() }
+        return AirMouseVector3(x: x / scale, y: y / scale, z: z / scale)
+    }
+
+    func dot(_ other: AirMouseVector3) -> Double {
+        x * other.x + y * other.y + z * other.z
+    }
+
+    func cross(_ other: AirMouseVector3) -> AirMouseVector3 {
+        AirMouseVector3(
+            x: y * other.z - z * other.y,
+            y: z * other.x - x * other.z,
+            z: x * other.y - y * other.x
+        )
+    }
+
+    static func - (left: AirMouseVector3, right: AirMouseVector3) -> AirMouseVector3 {
+        AirMouseVector3(x: left.x - right.x, y: left.y - right.y, z: left.z - right.z)
+    }
+
+    static func + (left: AirMouseVector3, right: AirMouseVector3) -> AirMouseVector3 {
+        AirMouseVector3(x: left.x + right.x, y: left.y + right.y, z: left.z + right.z)
+    }
+
+    static func * (left: AirMouseVector3, scale: Double) -> AirMouseVector3 {
+        AirMouseVector3(x: left.x * scale, y: left.y * scale, z: left.z * scale)
+    }
+
+    static prefix func - (value: AirMouseVector3) -> AirMouseVector3 {
+        AirMouseVector3(x: -value.x, y: -value.y, z: -value.z)
     }
 }
 
-/// Which way the pointer surface is held: the two directions a pointer can move
-/// on it, in the device-motion frame the rotation rate arrives in. Deriving the
-/// pair from gravity instead of from a reported interface orientation keeps the
-/// pointer attached to the screen while the phone is tilted or rotated, and
-/// needs no UIKit types.
-struct AirMouseScreenAxes: Equatable {
-    var right: AirMouseVector2
-    var up: AirMouseVector2
+/// The two directions the host pointer can travel in, as axes of the device
+/// frame: the pointer moves along the host screen, and the host screen is fixed
+/// to the world, not to the phone. Gravity gives the world's vertical, the
+/// screen normal gives the heading the phone points at, and from those two the
+/// pair follows.
+///
+/// `horizontalAxis` is read as "how fast is the phone turning sideways" and
+/// `verticalAxis` as "how fast is it being tipped over the heading", so a
+/// deliberate wrist movement is worth the same amount of cursor whatever angle
+/// the phone happens to be held at. Deriving the pair from the plane of the
+/// screen instead makes that worth fall off with the hold, which is what makes a
+/// phone cradled against the chest feel sluggish on one axis.
+struct AirMousePointerFrame: Equatable {
+    var horizontalAxis: AirMouseVector3
+    var verticalAxis: AirMouseVector3
 
-    /// Portrait, phone held upright: device x is the screen's right, device y is
-    /// the screen's up. Used as a fallback when gravity gives no screen plane.
-    static let portrait = AirMouseScreenAxes(
-        right: AirMouseVector2(x: 1, y: 0),
-        up: AirMouseVector2(x: 0, y: 1)
+    /// The phone lying flat: no heading, only the direction the top edge points.
+    static let flatOnTable = AirMousePointerFrame(
+        horizontalAxis: AirMouseVector3(x: 0, y: -1, z: 0),
+        verticalAxis: AirMouseVector3(x: 1, y: 0, z: 0)
     )
 }
 
 /// Turns gyroscope rotation rate into relative HID pointer deltas.
 ///
-/// The pointer follows the direction the screen normal sweeps: tilting the phone
-/// up moves the cursor up, and no translation of the phone in space matters.
-/// Only the fused gravity vector is used to know how the screen is held, so the
-/// raw accelerometer is never integrated into movement.
+/// The pointer follows the phone's rotation about the world's own axes: turn the
+/// phone to the right and the cursor goes right, tip it up and the cursor goes
+/// up, whatever way the phone is rolled or tilted in the hand. Only the fused
+/// gravity vector is consulted to know which way is up and where the screen
+/// faces, so the raw accelerometer is never integrated into movement and walking
+/// across the room with the phone sends nothing at all.
 ///
 /// Kept free of CoreMotion, UIKit and HID types so the rules are testable
 /// without a device, a simulator or a paired host.
 final class AirMouseEngine {
+
     // Settings arrive from @AppStorage and are compared on every change, so the
-    // interface only needs equality between the values a slider and two toggles
-    // can produce.
+    // interface only needs equality between the values two sliders and two
+    // toggles can produce.
     struct Config: Equatable {
-        /// Pointer units per radian per second of steady tilt at the sensitivity
+        /// Pointer units per radian per second of steady turn at the sensitivity
         /// the interface shows as 100 %.
         static let basePointerUnitsPerRadianPerSecond = 90.0
-        /// Dead zone the interface shows as 100 %.
+        /// The widest dead zone the interface can ask for.
         static let maximumDeadZone = 0.3
 
-        var pointerUnitsPerRadianPerSecond: Double = Config.basePointerUnitsPerRadianPerSecond
-        /// Angular speed that is absorbed before anything moves.
-        var deadZone: Double = 0.12
-        /// Deliberate turn, in rad/s, that has to be reached before a phone that
-        /// was at rest starts moving again.
-        var minimumTurn: Double = 0.5
-        /// Angular speed, in rad/s, that keeps an already moving pointer moving.
-        /// Sitting between this and the dead zone is what makes a hand that is
-        /// only shaking its tremor ignored, so the cursor never creeps.
-        var reengage: Double = 0.35
-        /// Share of the previous reading kept when smoothing: 0 is off,
-        /// 0.9 keeps almost everything and feels heavy.
-        var smoothing: Double = 0.45
-        /// Extra gain while tilting fast: 0 stays linear, 1 doubles the gain at
-        /// `accelerationReference`.
-        var acceleration: Double = 0.4
-        /// Angular speed where that extra gain reaches its maximum.
-        var accelerationReference: Double = 3
+        /// The two axes are separate because the gestures that drive them are not
+        /// the same movement: a sideways turn comes from the wrist and the whole
+        /// forearm, a tip comes from the wrist alone, and a hand does one of them
+        /// far more generously than the other.
+        var horizontalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 2.2
+        var verticalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 2.2
+        /// Rotation rate absorbed before the pointer moves at all. A held hand
+        /// turned out to be quieter than a single threshold needs, so this starts
+        /// at nothing and is there for a hand that says otherwise.
+        var deadZone = 0.0
+        /// Rotation rate a still axis has to exceed to start moving. This is the
+        /// threshold that does the tremor work, and it is deliberately above the
+        /// dead zone rather than merged into it.
+        var minimumTurn = 0.3
+        /// Rotation rate a moving axis has to stay above to keep moving.
+        var reengage = 0.2
+        var smoothing = 0.45
+        var acceleration = 0.4
+        var accelerationReference = 3.0
         var invertX = false
         var invertY = false
-        /// Largest delta a single HID mouse report may carry.
         var maximumStep: Int = 60
-        /// Largest burst of reports produced for one sensor sample. Movement that
-        /// does not fit is dropped rather than flooding the transport queue after
-        /// a pause in the stream.
         var maximumReportsPerSample: Int = 16
-        /// Movement is ignored for this long after activation or recentring, so
+        /// Movement is ignored for this long after activation or re-anchoring, so
         /// lifting the phone into pointing position cannot throw the cursor.
         var activationHold: TimeInterval = 0.35
-        /// Gravity magnitude inside the screen plane below which that plane is
-        /// unknown, for example when the phone lies flat on a table.
-        var minimumInPlaneGravity: Double = 0.15
+        /// How long the phone may sit still before the filters are quietly
+        /// cleared, so the next deliberate turn starts from nothing.
+        var idleReanchor: TimeInterval = 0.8
+        /// Horizontal size of the screen normal below which the heading the phone
+        /// points at is not knowable, for example with the phone lying flat on a
+        /// table. Near vertical the direction is defined but noisy, and noise in
+        /// the heading is noise in the cursor, so the plane is given up early.
+        var minimumHorizontalNormal = 0.25
     }
 
     /// Longest gap accepted as a real sample; a longer one resets the clock.
@@ -126,6 +155,10 @@ final class AirMouseEngine {
 
     /// True while the post-activation hold still absorbs movement.
     private(set) var isHolding = true
+    /// True once the phone has been still long enough for the filters to be
+    /// cleared and nothing to be left pending. A status readout or a test can ask
+    /// this instead of poking at the filters.
+    private(set) var isSettled = false
 
     private var smoothedX = 0.0
     private var smoothedY = 0.0
@@ -134,6 +167,7 @@ final class AirMouseEngine {
     private var isMovingX = false
     private var isMovingY = false
     private var lastSampleAt: TimeInterval?
+    private var lastMotionAt: TimeInterval?
     private var holdUntil: TimeInterval?
     private var isRunning = false
 
@@ -141,8 +175,8 @@ final class AirMouseEngine {
         self.config = config
     }
 
-    /// Start tracking. Also the recentre entry point: it clears the filters, so a
-    /// tilt that was already in progress cannot be carried into the new position.
+    /// Start tracking. Also the re-anchor entry point: it clears the filters, so
+    /// a turn that was already in progress cannot be carried into the new start.
     func begin(now: TimeInterval) {
         smoothedX = 0
         smoothedY = 0
@@ -151,9 +185,11 @@ final class AirMouseEngine {
         isMovingX = false
         isMovingY = false
         lastSampleAt = nil
+        lastMotionAt = nil
         let hold = max(0, config.activationHold)
         holdUntil = hold > 0 ? now + hold : nil
         isHolding = hold > 0
+        isSettled = false
         isRunning = true
     }
 
@@ -168,12 +204,13 @@ final class AirMouseEngine {
         isMovingX = false
         isMovingY = false
         lastSampleAt = nil
+        lastMotionAt = nil
         holdUntil = nil
     }
 
     func update(
         rotationRate rate: AirMouseAngularVelocity,
-        axes: AirMouseScreenAxes,
+        frame: AirMousePointerFrame,
         at now: TimeInterval
     ) {
         guard isRunning else { return }
@@ -200,7 +237,7 @@ final class AirMouseEngine {
             return
         }
 
-        let (rawX, rawY) = Self.screenRates(of: rate, axes: axes)
+        let (rawX, rawY) = Self.pointerRates(of: rate, frame: frame)
         let alpha = 1 - min(max(config.smoothing, 0), 0.95)
         smoothedX += alpha * (rawX - smoothedX)
         smoothedY += alpha * (rawY - smoothedY)
@@ -222,13 +259,20 @@ final class AirMouseEngine {
         isMovingX = nextX
         isMovingY = nextY
 
+        if thresholdX == 0, thresholdY == 0 {
+            reanchorIfIdle(now: now)
+        } else {
+            lastMotionAt = now
+            isSettled = false
+        }
+
         let gain = 1 + max(0, config.acceleration) * min(
             Self.speed(ofX: thresholdX, y: thresholdY) / max(config.accelerationReference, 0.01),
             1
         )
 
-        var unitsPerSecondX = thresholdX * config.pointerUnitsPerRadianPerSecond * gain
-        var unitsPerSecondY = thresholdY * config.pointerUnitsPerRadianPerSecond * gain
+        var unitsPerSecondX = thresholdX * config.horizontalUnitsPerRadianPerSecond * gain
+        var unitsPerSecondY = thresholdY * config.verticalUnitsPerRadianPerSecond * gain
         if config.invertX { unitsPerSecondX = -unitsPerSecondX }
         if config.invertY { unitsPerSecondY = -unitsPerSecondY }
 
@@ -242,32 +286,63 @@ final class AirMouseEngine {
         emit(stepX: stepX, stepY: stepY)
     }
 
-    /// Rotate the angular velocity into the two directions a pointer can travel on
-    /// the screen. The pointer follows the screen normal, whose velocity is
-    /// `rotationRate × normal`, and the HID y axis points downwards.
-    static func screenRates(
-        of rate: AirMouseAngularVelocity,
-        axes: AirMouseScreenAxes
-    ) -> (x: Double, y: Double) {
-        let normalVelocityX = rate.y
-        let normalVelocityY = -rate.x
-        let alongRight = normalVelocityX * axes.right.x + normalVelocityY * axes.right.y
-        let alongUp = normalVelocityX * axes.up.x + normalVelocityY * axes.up.y
-        return (alongRight, -alongUp)
+    /// Clear the filters once the phone has been still for a while, so nothing is
+    /// left over in them when the next deliberate turn begins. This is not
+    /// forgetting a tilt — movement comes from rotation rate, so a tilt that is
+    /// merely being held has never contributed anything.
+    private func reanchorIfIdle(now: TimeInterval) {
+        guard config.idleReanchor > 0 else { return }
+        if let lastMotionAt, now - lastMotionAt < config.idleReanchor { return }
+        smoothedX = 0
+        smoothedY = 0
+        pendingX = 0
+        pendingY = 0
+        isSettled = true
     }
 
-    /// Build the screen basis from gravity. The screen's up is the component of
-    /// "away from the ground" that lies in the screen plane; `right` is that
-    /// direction turned a quarter turn clockwise as seen by the user.
-    static func screenAxes(
+    /// Read the rotation rate along the two directions the pointer travels in.
+    /// The HID y axis points downwards, and the vertical axis is defined so that
+    /// tipping the phone over the heading upwards already comes out negative.
+    static func pointerRates(
+        of rate: AirMouseAngularVelocity,
+        frame: AirMousePointerFrame
+    ) -> (x: Double, y: Double) {
+        let spin = AirMouseVector3(x: rate.x, y: rate.y, z: rate.z)
+        return (spin.dot(frame.horizontalAxis), spin.dot(frame.verticalAxis))
+    }
+
+    /// Build the pointer frame from gravity. The horizontal axis is the gravity
+    /// direction itself: turning the phone sideways is rotation about the
+    /// world's vertical, whatever way the phone is held. The vertical axis is the
+    /// world-horizontal axis at right angles to the heading, which is where the
+    /// screen faces.
+    ///
+    /// With the screen pointing up or down there is no heading to speak of, so the
+    /// direction the top edge points at stands in for it, and the frame is the one
+    /// a phone lying on a table has.
+    static func pointerFrame(
         fromGravity gravity: AirMouseVector3,
-        fallback: AirMouseScreenAxes,
-        minimumInPlaneGravity: Double = 0.15
-    ) -> AirMouseScreenAxes {
-        let inPlane = AirMouseVector2(x: -gravity.x, y: -gravity.y)
-        guard inPlane.length >= max(0, minimumInPlaneGravity) else { return fallback }
-        let up = inPlane.normalized
-        return AirMouseScreenAxes(right: AirMouseVector2(x: up.y, y: -up.x), up: up)
+        minimumHorizontalNormal: Double = 0.25
+    ) -> AirMousePointerFrame {
+        let down = gravity.normalized
+        let normal = AirMouseVector3(x: 0, y: 0, z: 1)
+        // The threshold is applied to the component of the screen normal that is
+        // actually horizontal, before normalising: normalising first would make it
+        // either one or zero and the guard could only ever catch a phone lying
+        // perfectly flat.
+        let horizontalNormal = normal - down * normal.dot(down)
+        let deviceUp = AirMouseVector3(x: 0, y: 1, z: 0)
+
+        let heading: AirMouseVector3
+        if horizontalNormal.length >= max(0, minimumHorizontalNormal) {
+            heading = horizontalNormal.normalized
+        } else {
+            heading = (deviceUp - down * deviceUp.dot(down)).normalized
+        }
+        guard heading.length > 1e-9 else { return .flatOnTable }
+
+        let verticalAxis = (-down).cross(heading)
+        return AirMousePointerFrame(horizontalAxis: down, verticalAxis: verticalAxis)
     }
 
     /// Subtract the dead zone, or hold the axis at zero.
@@ -325,17 +400,25 @@ final class AirMouseEngine {
 /// Splits gravity out of the raw accelerometer reading with an exponential
 /// low-pass filter, so wrist movement and the slow change of how the phone is
 /// held stay separate. Only this estimate is ever consulted, and only to learn
-/// how the screen is held: acceleration is never integrated into movement.
+/// which way is down and where the screen faces: acceleration is never
+/// integrated into movement.
 struct AirMouseGravityEstimator {
     /// How quickly the estimate follows a new holding angle, in seconds.
     var timeConstant: TimeInterval = 0.5
 
-    private(set) var value = AirMouseVector3()
+    /// Gravity as it would be read by a device held upright at rest. Seeds the
+    /// estimate so the pointer frame is sensible before the first accelerometer
+    /// sample arrives.
+    static let initialGravity = AirMouseVector3(x: 0, y: -1, z: 0)
+
+    /// Seeded with `initialGravity`, written out so a default-value expression
+    /// does not have to reach for a static member of its own type.
+    private(set) var value = AirMouseVector3(x: 0, y: -1, z: 0)
     private var isStarted = false
 
     mutating func reset() {
         isStarted = false
-        value = AirMouseVector3()
+        value = Self.initialGravity
     }
 
     @discardableResult
@@ -353,45 +436,5 @@ struct AirMouseGravityEstimator {
             z: value.z + alpha * (sample.z - value.z)
         )
         return value
-    }
-}
-
-/// How the phone is held, used as the screen plane when the accelerometer gives
-/// no usable gravity direction, for example with the phone lying flat on a desk.
-/// The landscape cases follow the physical device, matching
-/// `UIDeviceOrientation`: the device held upright with its home button on the
-/// right and on the left.
-enum AirMouseHolding: String, CaseIterable, Identifiable {
-    case portrait
-    case portraitUpsideDown
-    case landscapeLeft
-    case landscapeRight
-
-    var id: String { rawValue }
-
-    /// Device x points to the right of the device, device y to its top edge.
-    var screenAxes: AirMouseScreenAxes {
-        switch self {
-        case .portrait:
-            return .portrait
-        case .portraitUpsideDown:
-            return AirMouseScreenAxes(
-                right: AirMouseVector2(x: -1, y: 0),
-                up: AirMouseVector2(x: 0, y: -1)
-            )
-        case .landscapeLeft:
-            // Home button to the right: the top edge is to the left, so the
-            // screen's right runs along the device's negative y and its up along
-            // the device's x.
-            return AirMouseScreenAxes(
-                right: AirMouseVector2(x: 0, y: -1),
-                up: AirMouseVector2(x: 1, y: 0)
-            )
-        case .landscapeRight:
-            return AirMouseScreenAxes(
-                right: AirMouseVector2(x: 0, y: 1),
-                up: AirMouseVector2(x: -1, y: 0)
-            )
-        }
     }
 }

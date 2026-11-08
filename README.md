@@ -4,9 +4,9 @@ Turn your iPhone into an additional keyboard, trackpad, command launcher, and
 control deck for multiple computers over direct Bluetooth or an optional
 ESP32-S3 USB bridge.
 
-**New in 3.5:** an Air mouse — tilt the phone and the cursor follows — over
-the existing saved Commands, interactive cursor-aware key legend, biometric
-unlocking, and configurable tabs.
+**New in 3.5:** an Air mouse — the cursor follows how you rotate the phone, at
+any angle you hold it — over the existing saved Commands, interactive
+cursor-aware key legend, biometric unlocking, and configurable tabs.
 
 <p align="center">
   <img src="docs/images/input-portrait.png" width="42%" alt="InpuDeck text input and trackpad screen">
@@ -57,7 +57,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Precision trackpad** - Cursor movement, two-finger scrolling/right click, pinch-to-zoom, tap-drag, edge scrolling, and three-finger middle click
 - **Keyboard trackpad** - Uses the free portrait space below the full keyboard without extra mouse buttons
 - **Landscape swipe pointer** - Drag across keyboard keys to move the mouse without typing, with left- and right-click zones beside the keyboard-tools row
-- **Air mouse** - Tilt the phone to move the cursor: gyroscope-driven and aligned to gravity, so turning the phone reverses the cursor instead of losing it, with tremor filtering, adjustable sensitivity and dead zone, axis inversion, and a recentre control ([details](docs/air-mouse.md))
+- **Air mouse** - Rotate the phone to move the cursor: gyroscope-driven and read about the world's own axes, so the cursor travels the same way at any angle you hold the phone, with tremor filtering, per-axis sensitivity, a dead zone, axis inversion, automatic filter reset when the phone rests, and a recentre control ([details](docs/air-mouse.md))
 - **Hardware control deck** - System, media, audio, microphone-mute, and numpad HID controls
 - **QR and barcode scanner** - Scan into the composer or automatically type codes, including an optional batch mode
 - **Mouse jiggler** - Configurable foreground pointer movement with a selectable movement interval

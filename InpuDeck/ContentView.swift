@@ -23,12 +23,17 @@ struct ContentView: View {
     @AppStorage("keyboardPointerSwipe") private var keyboardPointerSwipe = false
     @AppStorage("airMouseEnabled") private var airMouseEnabled = false
     @AppStorage("pointerSurface") private var pointerSurfaceRawValue = PointerSurface.trackpad.rawValue
-    @AppStorage("airMouseSensitivityPercent") private var airMouseSensitivityPercent = 100.0
-    @AppStorage("airMouseDeadZonePercent") private var airMouseDeadZonePercent = 40.0
-    @AppStorage("airMouseInvertX") private var airMouseInvertX = false
-    @AppStorage("airMouseInvertY") private var airMouseInvertY = false
+    // Two sensitivities, because the sideways turn and the tip are not the same
+    // movement of the same limb: the forearm swings wide, the wrist does not.
+    @AppStorage("airMouseHorizontalSensitivityPercent") private var airMouseHorizontalSensitivityPercent = 220.0
+    @AppStorage("airMouseVerticalSensitivityPercent") private var airMouseVerticalSensitivityPercent = 220.0
+    @AppStorage("airMouseDeadZonePercent") private var airMouseDeadZonePercent = 0.0
+    // Inverted out of the box: pushing the top edge of the phone away is what
+    // most people mean by "look over there", and it is easier to switch off than
+    // to find.
+    @AppStorage("airMouseInvertX") private var airMouseInvertX = true
+    @AppStorage("airMouseInvertY") private var airMouseInvertY = true
     @StateObject private var airMouse = AirMousePointer()
-    @State private var holding: AirMouseHolding = .portrait
 
     @State private var inputText = ""
     @State private var wantsFocus = false
@@ -72,10 +77,6 @@ struct ContentView: View {
         .onChange(of: airMouseConfig) { _, config in
             airMouse.updateConfig(config)
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-            holding = AirMouseHolding(deviceOrientation: UIDevice.current.orientation) ?? holding
-            airMouse.updateHolding(holding)
-        }
         .onChange(of: ble.isReady) { _, isReady in
             if isReady {
                 sendPendingShortcutTextIfPossible()
@@ -111,9 +112,6 @@ struct ContentView: View {
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
             updateIdleTimer()
-            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-            holding = AirMouseHolding(deviceOrientation: UIDevice.current.orientation) ?? holding
-            airMouse.updateHolding(holding)
             syncPointerSurface()
         }
         .onDisappear {
@@ -464,7 +462,7 @@ struct ContentView: View {
             }
 
             if pointerSurface == .airMouse {
-                AirMousePadView(pointer: airMouse, isReady: ble.isReady)
+                AirMousePadView(pointer: airMouse, isReady: ble.isReady, expertMode: expertMode)
                     .frame(height: 250)
                     .background(
                         LinearGradient(
@@ -512,7 +510,7 @@ struct ContentView: View {
 
             if !expertMode {
                 Text(pointerSurface == .airMouse
-                    ? localized("Нахил телефона рухає курсор у площині екрана; ліва та права кнопки — під цим полем.")
+                    ? localized("Курсор іде за обертанням телефона відносно світу: повертаєш вправо — вправо, нахиляєш вгору — вгору. Кнопки кліка — під цим полем.")
                     : localized("Подвійний тап + утримання другого дотику — drag. Вертикальний рух уздовж правої грані — edge scroll."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -851,12 +849,21 @@ struct ContentView: View {
 
                     if airMouseEnabled {
                         VStack(alignment: .leading, spacing: 4) {
-                            LabeledContent("Чутливість") {
-                                Text("\(Int(airMouseSensitivityPercent.rounded()))%")
+                            LabeledContent("Чутливість горизонталі") {
+                                Text("\(Int(airMouseHorizontalSensitivityPercent.rounded()))%")
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $airMouseSensitivityPercent, in: 40...250, step: 5)
-                                .accessibilityIdentifier("settingsAirMouseSensitivity")
+                            Slider(value: $airMouseHorizontalSensitivityPercent, in: 40...500, step: 10)
+                                .accessibilityIdentifier("settingsAirMouseSensitivityX")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Чутливість вертикалі") {
+                                Text("\(Int(airMouseVerticalSensitivityPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseVerticalSensitivityPercent, in: 40...500, step: 10)
+                                .accessibilityIdentifier("settingsAirMouseSensitivityY")
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -873,7 +880,7 @@ struct ContentView: View {
                     }
 
                     if !expertMode {
-                        Text("Телефон рухає курсор за нахилом: повертається екран — рухається курсор, а не сам телефон у кімнаті. Тремтіння руки та повільні рухи не рахуються, а скидання нахилу зупиняє дрейф. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
+                        Text("Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -979,8 +986,9 @@ struct ContentView: View {
 
     private var airMouseConfig: AirMouseEngine.Config {
         var config = AirMouseEngine.Config()
-        config.pointerUnitsPerRadianPerSecond =
-            AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond * (airMouseSensitivityPercent / 100)
+        let base = AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond
+        config.horizontalUnitsPerRadianPerSecond = base * (airMouseHorizontalSensitivityPercent / 100)
+        config.verticalUnitsPerRadianPerSecond = base * (airMouseVerticalSensitivityPercent / 100)
         config.deadZone = AirMouseEngine.Config.maximumDeadZone * (airMouseDeadZonePercent / 100)
         config.invertX = airMouseInvertX
         config.invertY = airMouseInvertY
@@ -999,7 +1007,6 @@ struct ContentView: View {
             }
             return
         }
-        airMouse.updateHolding(holding)
         // Capture the controller, not this view, so the motion stream does not
         // hold a reference back to the SwiftUI state that owns it.
         let controller = ble

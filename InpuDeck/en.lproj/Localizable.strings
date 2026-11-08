@@ -59,6 +59,10 @@
 "Air mouse" = "Air mouse";
 "Поверхня курсора" = "Pointer surface";
 "Чутливість" = "Sensitivity";
+"Чутливість горизонталі" = "Horizontal sensitivity";
+"Чутливість вертикалі" = "Vertical sensitivity";
+"Курсор іде за обертанням телефона відносно світу: повертаєш вправо — вправо, нахиляєш вгору — вгору. Кнопки кліка — під цим полем." = "The cursor follows how the phone rotates in the world: turn it right and it goes right, tip it up and it goes up. The click buttons are below this field.";
+"Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід»." = "The cursor follows the phone's rotation relative to the world rather than its own axes: hold the phone at any angle and the direction the cursor travels does not change. Horizontal and vertical have separate sensitivity because they are different movements of the arm. While the phone is still, the filters reset themselves. It needs motion permission (Settings → Privacy & Security → Motion & Fitness) and a working gyroscope; the sensor runs while the Input tab is open.";
 "Мертва зона" = "Dead zone";
 "Інвертувати горизонталь" = "Invert horizontal";
 "Інвертувати вертикаль" = "Invert vertical";
@@ -68,7 +72,7 @@
 "Спочатку під’єднай комп’ютер: нахил рухатиме курсор, щойно з’явиться зв’язок." = "Connect the computer first: tilting moves the cursor as soon as the link is up.";
 "Air mouse вимкнено" = "Air mouse is off";
 "Читаю гіроскоп…" = "Reading the gyroscope…";
-"Нахиляй телефон — курсор іде за ним. Кнопки кліка — під цим полем." = "Tilt the phone — the cursor follows. The click buttons are below this field.";
+"Крути телефон — курсор іде за ним. Кнопки кліка — під цим полем." = "Turn the phone — the cursor follows. The click buttons are below this field.";
 "На цьому пристрої немає гіроскопа" = "This device has no gyroscope";
 "iOS не дає доступ до руху: Налаштування → Конфіденційність і безпека → Рух і фітнес" = "iOS is not allowing motion access: Settings → Privacy & Security → Motion & Fitness";
 "Тачпад" = "Trackpad";

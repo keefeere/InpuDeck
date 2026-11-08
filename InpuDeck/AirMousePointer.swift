@@ -1,7 +1,6 @@
 import Combine
 import CoreMotion
 import Foundation
-import UIKit
 
 /// Pointer surface shown on the input screen.
 enum PointerSurface: String, CaseIterable, Identifiable {
@@ -15,30 +14,14 @@ enum PointerSurface: String, CaseIterable, Identifiable {
     }
 }
 
-extension AirMouseHolding {
-    /// Map the physical device orientation. Face up, face down and unknown give
-    /// no holding: a phone lying flat has no direction to prefer, and guessing
-    /// one would move the cursor while nothing moved.
-    init?(deviceOrientation: UIDeviceOrientation) {
-        switch deviceOrientation {
-        case .portrait: self = .portrait
-        case .portraitUpsideDown: self = .portraitUpsideDown
-        case .landscapeLeft: self = .landscapeLeft
-        case .landscapeRight: self = .landscapeRight
-        case .faceUp, .faceDown, .unknown: return nil
-        @unknown default: return nil
-        }
-    }
-}
-
 /// Streams the gyroscope and the accelerometer and turns them into HID pointer
 /// reports.
 ///
-/// Movement comes from the gyroscope only, in the device coordinate system:
-/// translation of the phone never reaches the host. The accelerometer is used
-/// solely to learn how the phone is held, so the screen directions stay attached
-/// to the screen while the wrist rolls. Nothing is sent while the activation
-/// hold absorbs the lift into pointing position.
+/// Movement comes from the gyroscope only, read along the world's own axes: the
+/// accelerometer is consulted solely to learn which way is down and where the
+/// screen faces, so translation of the phone never reaches the host and the
+/// pointer does not care what angle the phone is cradled at. Nothing is sent
+/// while the activation hold absorbs the lift into pointing position.
 @MainActor
 final class AirMousePointer: ObservableObject {
     enum Status: Equatable {
@@ -63,8 +46,7 @@ final class AirMousePointer: ObservableObject {
     private let manager = CMMotionManager()
     private let engine = AirMouseEngine()
     private var gravity = AirMouseGravityEstimator()
-    private var axes = AirMouseScreenAxes.portrait
-    private var holdingFallback = AirMouseHolding.portrait
+    private var frame = AirMousePointerFrame.flatOnTable
     private var lastAccelerometerAt: TimeInterval?
     private var isStreaming = false
     /// Invalidated by every activation, so an older wait cannot overwrite a newer
@@ -90,7 +72,6 @@ final class AirMousePointer: ObservableObject {
             return
         }
 
-        axes = holdingFallback.screenAxes
         gravity.reset()
         lastAccelerometerAt = nil
         engine.begin(now: Self.now())
@@ -117,12 +98,13 @@ final class AirMousePointer: ObservableObject {
         }
     }
 
-    /// Apply sensitivity, dead zone, inversion or smoothing while pointing.
+    /// Apply sensitivity, dead zone or inversion while pointing.
     func updateConfig(_ config: AirMouseEngine.Config) {
         engine.config = config
     }
 
-    /// Forget the tilt that is currently held, so the cursor stops where it is.
+    /// Drop whatever the filters are holding on to, so the pointer starts from
+    /// nothing where the phone currently is.
     func recentre() {
         guard status == .tracking || status == .waiting else { return }
         gravity.reset()
@@ -135,12 +117,6 @@ final class AirMousePointer: ObservableObject {
         engine.onPointerMove = { _, _ in }
         engine.end()
         status = .off
-    }
-
-    /// Remember how the phone is held. It is only the plane used while the
-    /// accelerometer cannot see gravity, for example with the phone lying flat.
-    func updateHolding(_ holding: AirMouseHolding) {
-        holdingFallback = holding
     }
 
     private func startStreaming() {
@@ -177,7 +153,7 @@ final class AirMousePointer: ObservableObject {
                 y: sample.rotationRate.y,
                 z: sample.rotationRate.z
             ),
-            axes: axes,
+            frame: frame,
             at: Self.now()
         )
     }
@@ -185,17 +161,19 @@ final class AirMousePointer: ObservableObject {
     private func receiveAccelerometer(_ sample: CMAccelerometerData?) {
         guard isStreaming, let sample else { return }
         let now = Self.now()
-        let dt = lastAccelerometerAt.map { now - $0 } ?? 0
+        // The first sample of a stream has no previous one to measure against;
+        // assume the configured rate rather than zero, which the estimator would
+        // simply drop.
+        let dt = lastAccelerometerAt.map { now - $0 } ?? Self.accelerometerInterval
         lastAccelerometerAt = now
 
         let estimate = gravity.addSample(
             AirMouseVector3(x: sample.acceleration.x, y: sample.acceleration.y, z: sample.acceleration.z),
             dt: dt
         )
-        axes = AirMouseEngine.screenAxes(
+        frame = AirMouseEngine.pointerFrame(
             fromGravity: estimate,
-            fallback: holdingFallback.screenAxes,
-            minimumInPlaneGravity: engine.config.minimumInPlaneGravity
+            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
         )
     }
 
