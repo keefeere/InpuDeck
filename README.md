@@ -4,8 +4,9 @@ Turn your iPhone into an additional keyboard, trackpad, command launcher, and
 control deck for multiple computers over direct Bluetooth or an optional
 ESP32-S3 USB bridge.
 
-**New in 3.4:** saved Commands with explicit text/key syntax, an interactive
-cursor-aware key legend, biometric unlocking, and configurable tabs.
+**New in 3.5:** an Air mouse — tilt the phone and the cursor follows — over
+the existing saved Commands, interactive cursor-aware key legend, biometric
+unlocking, and configurable tabs.
 
 <p align="center">
   <img src="docs/images/input-portrait.png" width="42%" alt="InpuDeck text input and trackpad screen">
@@ -56,6 +57,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Precision trackpad** - Cursor movement, two-finger scrolling/right click, pinch-to-zoom, tap-drag, edge scrolling, and three-finger middle click
 - **Keyboard trackpad** - Uses the free portrait space below the full keyboard without extra mouse buttons
 - **Landscape swipe pointer** - Drag across keyboard keys to move the mouse without typing, with left- and right-click zones beside the keyboard-tools row
+- **Air mouse** - Tilt the phone to move the cursor: gyroscope-driven and aligned to gravity, so turning the phone reverses the cursor instead of losing it, with tremor filtering, adjustable sensitivity and dead zone, axis inversion, and a recentre control ([details](docs/air-mouse.md))
 - **Hardware control deck** - System, media, audio, microphone-mute, and numpad HID controls
 - **QR and barcode scanner** - Scan into the composer or automatically type codes, including an optional batch mode
 - **Mouse jiggler** - Configurable foreground pointer movement with a selectable movement interval
@@ -551,9 +553,8 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **TV remote** - Create a dynamic remote screen defined by a template; design the template format (e.g. JSON). Bundle a default template with directional buttons, Enter in the center, Home and Back; choose suitable additional controls. Consider a switch between touchpad and the planned air-mouse mode.
+- **TV remote** - Create a dynamic remote screen defined by a template; design the template format (e.g. JSON). Bundle a default template with directional buttons, Enter in the center, Home and Back; choose suitable additional controls. Consider a switch between the touchpad and the Air mouse.
 - **ESP Bluetooth-client USB HID bridge** - Investigate allowing physical Bluetooth keyboards and mice to connect to the ESP and send input as USB HID, while preserving existing InpuDeck functionality. Design standalone pairing without a PC or app, with persistent bonds and reconnect. Test candidates: Logitech MX Keys, MX Master 3S, Pebble, and an unnamed Chinese folding keyboard/mouse. Investigate device/protocol compatibility and coexistence before committing to an implementation.
-- **Air mouse** - Add an optional two-dimensional pointer mode driven by `CoreMotion` device motion (primarily gyroscope rotation rate, with sensor fusion rather than raw accelerometer-only input). Include activation/recentering, sensitivity, dead-zone, smoothing, acceleration, axis inversion, orientation handling, and convenient click controls, and keep behavior consistent across Direct BLE and ESP32 transports.
 - **Adaptive layouts for iPhone Duo and iPad (wishlist)** - Once the iPhone Duo simulator is available, verify the app in full-screen and half-screen configurations. Also test representative iPad sizes and multitasking widths (Split View and Stage Manager), then consider layouts that make better use of the additional space.
 
 ### Ideas / won't do

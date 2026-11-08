@@ -21,6 +21,14 @@ struct ContentView: View {
     @AppStorage("hideAlternateKeyLegendsInPortrait") private var hideAlternateKeyLegendsInPortrait = false
     @AppStorage("alternateKeyLegendScalePercent") private var alternateKeyLegendScalePercent = 72.0
     @AppStorage("keyboardPointerSwipe") private var keyboardPointerSwipe = false
+    @AppStorage("airMouseEnabled") private var airMouseEnabled = false
+    @AppStorage("pointerSurface") private var pointerSurfaceRawValue = PointerSurface.trackpad.rawValue
+    @AppStorage("airMouseSensitivityPercent") private var airMouseSensitivityPercent = 100.0
+    @AppStorage("airMouseDeadZonePercent") private var airMouseDeadZonePercent = 40.0
+    @AppStorage("airMouseInvertX") private var airMouseInvertX = false
+    @AppStorage("airMouseInvertY") private var airMouseInvertY = false
+    @StateObject private var airMouse = AirMousePointer()
+    @State private var holding: AirMouseHolding = .portrait
 
     @State private var inputText = ""
     @State private var wantsFocus = false
@@ -53,6 +61,20 @@ struct ContentView: View {
             if newValue != .input {
                 wantsFocus = false
             }
+            syncPointerSurface()
+        }
+        .onChange(of: airMouseEnabled) { _, _ in
+            syncPointerSurface()
+        }
+        .onChange(of: pointerSurfaceRawValue) { _, _ in
+            syncPointerSurface()
+        }
+        .onChange(of: airMouseConfig) { _, config in
+            airMouse.updateConfig(config)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            holding = AirMouseHolding(deviceOrientation: UIDevice.current.orientation) ?? holding
+            airMouse.updateHolding(holding)
         }
         .onChange(of: ble.isReady) { _, isReady in
             if isReady {
@@ -64,8 +86,10 @@ struct ContentView: View {
                 ble.becameActive()
                 receiveSharedTextIfNeeded()
                 receiveShortcutTextIfNeeded()
+                syncPointerSurface()
             } else if newPhase == .background {
                 jigglerEnabled = false
+                airMouse.deactivate()
                 ble.enteredBackground()
             }
             updateIdleTimer()
@@ -87,8 +111,13 @@ struct ContentView: View {
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
             updateIdleTimer()
+            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            holding = AirMouseHolding(deviceOrientation: UIDevice.current.orientation) ?? holding
+            airMouse.updateHolding(holding)
+            syncPointerSurface()
         }
         .onDisappear {
+            airMouse.deactivate()
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .task(id: "\(jigglerEnabled)-\(jigglerIntervalIndex)") {
@@ -407,46 +436,84 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             if !expertMode {
                 HStack {
-                    Label("Trackpad", systemImage: "rectangle.and.hand.point.up.left")
+                    Label(
+                        pointerSurface.title,
+                        systemImage: pointerSurface == .airMouse
+                            ? "smallcircle.filled.circle"
+                            : "rectangle.and.hand.point.up.left"
+                    )
                         .font(.headline)
                     Spacer()
-                    Text("1 — клік · 2 — правий · 3 — середній")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if pointerSurface == .trackpad {
+                        Text("1 — клік · 2 — правий · 3 — середній")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            TrackpadView(
-                onMove: { ble.sendMouseMove(dx: $0, dy: $1) },
-                onTap: { fingers in
-                    let button: UInt8 = switch fingers {
-                    case 3: 3
-                    case 2: 2
-                    default: 1
+            if airMouseEnabled {
+                Picker("Поверхня курсора", selection: $pointerSurfaceRawValue) {
+                    ForEach(PointerSurface.allCases) { surface in
+                        Text(surface.title).tag(surface.rawValue)
                     }
-                    ble.sendMouseClick(button: button)
-                },
-                onScroll: { ble.sendMouseScroll(dx: $0, dy: $1) },
-                onZoom: { sendTrackpadZoom($0) },
-                onDragStart: { ble.sendMouseButtonDown(button: 1) },
-                onDragEnd: { ble.sendMouseButtonUp(button: 1) }
-            )
-            .frame(height: 250)
-            .background(
-                LinearGradient(
-                    colors: [Color.accentColor.opacity(0.10), Color(.tertiarySystemGroupedBackground)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityIdentifier("pointerSurfacePicker")
+            }
+
+            if pointerSurface == .airMouse {
+                AirMousePadView(pointer: airMouse, isReady: ble.isReady)
+                    .frame(height: 250)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.10), Color(.tertiarySystemGroupedBackground)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08))
+                    }
+                    .accessibilityIdentifier("airMousePad")
+            } else {
+                TrackpadView(
+                    onMove: { ble.sendMouseMove(dx: $0, dy: $1) },
+                    onTap: { fingers in
+                        let button: UInt8 = switch fingers {
+                        case 3: 3
+                        case 2: 2
+                        default: 1
+                        }
+                        ble.sendMouseClick(button: button)
+                    },
+                    onScroll: { ble.sendMouseScroll(dx: $0, dy: $1) },
+                    onZoom: { sendTrackpadZoom($0) },
+                    onDragStart: { ble.sendMouseButtonDown(button: 1) },
+                    onDragEnd: { ble.sendMouseButtonUp(button: 1) }
                 )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08))
+                .frame(height: 250)
+                .background(
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.10), Color(.tertiarySystemGroupedBackground)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08))
+                }
             }
 
             if !expertMode {
-                Text("Подвійний тап + утримання другого дотику — drag. Вертикальний рух уздовж правої грані — edge scroll.")
+                Text(pointerSurface == .airMouse
+                    ? localized("Нахил телефона рухає курсор у площині екрана; ліва та права кнопки — під цим полем.")
+                    : localized("Подвійний тап + утримання другого дотику — drag. Вертикальний рух уздовж правої грані — edge scroll."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -778,6 +845,40 @@ struct ContentView: View {
                     }
                 }
 
+                Section("Air mouse") {
+                    Toggle("Air mouse", isOn: $airMouseEnabled)
+                        .accessibilityIdentifier("settingsAirMouse")
+
+                    if airMouseEnabled {
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Чутливість") {
+                                Text("\(Int(airMouseSensitivityPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseSensitivityPercent, in: 40...250, step: 5)
+                                .accessibilityIdentifier("settingsAirMouseSensitivity")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Мертва зона") {
+                                Text("\(Int(airMouseDeadZonePercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseDeadZonePercent, in: 0...100, step: 5)
+                                .accessibilityIdentifier("settingsAirMouseDeadZone")
+                        }
+
+                        Toggle("Інвертувати горизонталь", isOn: $airMouseInvertX)
+                        Toggle("Інвертувати вертикаль", isOn: $airMouseInvertY)
+                    }
+
+                    if !expertMode {
+                        Text("Телефон рухає курсор за нахилом: повертається екран — рухається курсор, а не сам телефон у кімнаті. Тремтіння руки та повільні рухи не рахуються, а скидання нахилу зупиняє дрейф. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Тачпад") {
                     Picker("Pinch zoom", selection: $trackpadZoomShortcutRawValue) {
                         ForEach(TrackpadZoomShortcut.allCases) { shortcut in
@@ -864,6 +965,47 @@ struct ContentView: View {
 
     private var jigglerInterval: Double {
         jigglerIntervals[safeJigglerIntervalIndex]
+    }
+
+    /// Which pointer the input page shows. The trackpad stays selectable while
+    /// the Air mouse is enabled, so both can be compared in one session; turning
+    /// the feature off always returns to the trackpad.
+    private var pointerSurface: PointerSurface {
+        guard airMouseEnabled, PointerSurface(rawValue: pointerSurfaceRawValue) == .airMouse else {
+            return .trackpad
+        }
+        return .airMouse
+    }
+
+    private var airMouseConfig: AirMouseEngine.Config {
+        var config = AirMouseEngine.Config()
+        config.pointerUnitsPerRadianPerSecond =
+            AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond * (airMouseSensitivityPercent / 100)
+        config.deadZone = AirMouseEngine.Config.maximumDeadZone * (airMouseDeadZonePercent / 100)
+        config.invertX = airMouseInvertX
+        config.invertY = airMouseInvertY
+        return config
+    }
+
+    /// Run the gyroscope exactly while the Air mouse is the surface on screen.
+    /// Leaving the surface also drops held buttons: the surface the user lands on
+    /// cannot hold one, and a button state that outlives its source is the worst
+    /// failure this feature can produce.
+    private func syncPointerSurface() {
+        guard pointerSurface == .airMouse, scenePhase == .active else {
+            if airMouse.status != .off {
+                airMouse.deactivate()
+                ble.releaseAllInput()
+            }
+            return
+        }
+        airMouse.updateHolding(holding)
+        // Capture the controller, not this view, so the motion stream does not
+        // hold a reference back to the SwiftUI state that owns it.
+        let controller = ble
+        airMouse.activate(config: airMouseConfig) { dx, dy in
+            controller.sendMouseMove(dx: dx, dy: dy)
+        }
     }
 
     private func jigglerIntervalLabel(_ interval: Double) -> String {

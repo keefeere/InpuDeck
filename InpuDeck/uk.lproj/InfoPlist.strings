@@ -1,3 +1,4 @@
 "NSBluetoothAlwaysUsageDescription" = "InpuDeck використовує Bluetooth як клавіатуру й мишу напряму або через адаптер ESP32.";
 "NSFaceIDUsageDescription" = "Розблокування тексту команд для перегляду, редагування, копіювання та видалення.";
 "NSCameraUsageDescription" = "Скануйте QR- та 2D-коди, щоб вводити їхній вміст на підключеному пристрої.";
+"NSMotionUsageDescription" = "InpuDeck читає гіроскоп та акселерометр, щоб нахил телефона рухав курсор на під’єднаному комп’ютері.";

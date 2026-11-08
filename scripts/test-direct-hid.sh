@@ -5,6 +5,12 @@ build_dir="$(mktemp -d "${TMPDIR:-/tmp}/inpudeck-hid-tests.XXXXXX")"
 trap 'rm -rf "$build_dir"' EXIT
 
 swiftc -swift-version 5 \
+  "$repo_root/Shared/AirMouseEngine.swift" \
+  "$repo_root/Tests/AirMouseEngineTests.swift" \
+  -o "$build_dir/air-mouse-engine-tests"
+"$build_dir/air-mouse-engine-tests"
+
+swiftc -swift-version 5 \
   "$repo_root/Shared/Localization.swift" \
   "$repo_root/Shared/HIDReports.swift" \
   "$repo_root/Shared/HIDHostStore.swift" \

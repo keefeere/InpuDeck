@@ -8,7 +8,7 @@
       "bundleIdentifier": "com.keefeere.InpuDeck",
       "developerName": "keefeere",
       "subtitle": "Keyboard, trackpad and commands",
-      "localizedDescription": "Use your iPhone as an additional keyboard, trackpad, and control deck for multiple computers over direct Bluetooth or an optional ESP32-S3 BLE-to-USB HID bridge. Create Commands that combine literal text, keys and shortcuts, with a clickable key legend and authenticated execution. Includes customizable tabs, English and Ukrainian input, Shortcuts for text and URLs, a full-screen keyboard, clipboard typing, hardware controls, code scanning, and multiple-host selection. Commands are not an encrypted password vault.",
+      "localizedDescription": "Use your iPhone as an additional keyboard, trackpad, and control deck for multiple computers over direct Bluetooth or an optional ESP32-S3 BLE-to-USB HID bridge. Create Commands that combine literal text, keys and shortcuts, with a clickable key legend and authenticated execution. Includes customizable tabs, English and Ukrainian input, Shortcuts for text and URLs, a full-screen keyboard, clipboard typing, hardware controls, code scanning, multiple-host selection, and an Air mouse that moves the cursor with the tilt of the phone. Commands are not an encrypted password vault.",
       "iconURL": "https://raw.githubusercontent.com/keefeere/InpuDeck/main/InpuDeck/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
       "tintColor": "#445BE7",
       "screenshots": [
