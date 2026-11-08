@@ -246,7 +246,7 @@ struct AirMouseEngineTests {
         let later = Double(-sink.totals.y) / 120
 
         expect(first > 0, "the first sample still moves")
-        expect(later > first * 1.5, "and a steady turn reaches its full speed instead of snapping to it")
+        expect(later > Double(first) * 1.5, "and a steady turn reaches its full speed instead of snapping to it")
     }
 
     private static func fastTurnsGetExtraGain() {
