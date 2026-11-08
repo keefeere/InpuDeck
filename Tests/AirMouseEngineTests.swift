@@ -208,7 +208,9 @@ struct AirMouseEngineTests {
             config.horizontalUnitsPerRadianPerSecond = 1_000
         }
         sink.begin()
-        sink.feedHorizontal(4.0, samples: 1)
+        // The first sample of a stream only sets the clock, so the demand lands in
+        // the second one.
+        sink.feedHorizontal(4.0, samples: 2)
         // Four thousand units a second inside one 16 ms sample is 66 units, over
         // the per-report limit, so it has to leave as several legal reports.
         expect(sink.totals.x == 66, "the whole step arrives rather than being clipped")
@@ -225,7 +227,7 @@ struct AirMouseEngineTests {
             config.maximumStep = 10_000
         }
         runaway.begin()
-        runaway.feedHorizontal(4.0, samples: 1)
+        runaway.feedHorizontal(4.0, samples: 2)
         expect(runaway.reports.count == 16, "a sample stops at the report cap")
         expect(runaway.reports.allSatisfy { abs(Int($0.dx)) <= Int(Int8.max) },
                "and never asks the wire for more than a signed byte")
@@ -239,7 +241,8 @@ struct AirMouseEngineTests {
     private static func smoothingDampsTheFirstStepAndConverges() {
         let sink = Sink()
         sink.begin()
-        sink.feedVertical(1.0, samples: 1)
+        // Two samples: the first sets the clock, the second is the first movement.
+        sink.feedVertical(1.0, samples: 2)
         let first = -sink.totals.y
         sink.clear()
         sink.feedVertical(1.0, samples: 120)
