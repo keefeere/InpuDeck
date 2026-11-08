@@ -243,7 +243,7 @@ struct AirMouseEngineTests {
         let first = -sink.totals.y
         sink.clear()
         sink.feedVertical(1.0, samples: 120)
-        let later = -sink.totals.y / 120
+        let later = Double(-sink.totals.y) / 120
 
         expect(first > 0, "the first sample still moves")
         expect(later > first * 1.5, "and a steady turn reaches its full speed instead of snapping to it")
@@ -342,7 +342,8 @@ struct AirMouseEngineTests {
         var filter = AirMouseGravityEstimator()
         let held = AirMouseVector3(y: -1)
         _ = filter.addSample(held, dt: 0.05)
-        let afterBump = filter.addSample(AirMouseVector3(x: 0.3, y: -0.9), dt: 0.05)        expect((afterBump - held).length < 0.1, "a wrist bump must not re-aim the pointer frame")
+        let afterBump = filter.addSample(AirMouseVector3(x: 0.3, y: -0.9), dt: 0.05)
+        expect((afterBump - held).length < 0.1, "a wrist bump must not re-aim the pointer frame")
 
         var turned = filter.value
         for _ in 0..<60 {
