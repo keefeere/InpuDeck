@@ -401,14 +401,24 @@ runs in the same domain; check with `getenforce` and `ausearch -m avc` (this hos
 reported `avc_bluetooth_hits=0`). Name the drop-in after the InpuDeck ones
 (`zz-…`) so it wins over `90-inpudeck-le.conf` for `ExecStart`, and keep `-E`/
 `--experimental` in it: the LE bearer API needs it. `inpudeck-le-setup.py`
-accepts this daemon path, so `install-linux.sh` preserves it. Rollback is one
-removal:
+accepts this daemon path, so `install-linux.sh` preserves it. That also means
+the managed `90-inpudeck-le.conf` picks up the replacement path when the
+installer runs while the replacement is active, so deleting the binary alone
+leaves a drop-in pointing at a missing file and Bluetooth will not start.
+Rollback in the right order:
 
 ```bash
-sudo rm -f /etc/systemd/system/bluetooth.service.d/zz-inpudeck-unpatched-bluez.conf \
-  /usr/local/libexec/bluetooth/bluetoothd
+sudo rm -f /etc/systemd/system/bluetooth.service.d/zz-inpudeck-unpatched-bluez.conf
+sudo systemctl daemon-reload
+sudo python3 scripts/inpudeck-le-setup.py enable   # rewrites 90-... to the packaged daemon
+sudo rm -f /usr/local/libexec/bluetooth/bluetoothd
 sudo systemctl daemon-reload && sudo systemctl restart bluetooth.service
+systemctl show bluetooth.service -p ExecStart --value | grep -c /usr/local/libexec
 ```
+
+The last line must print `0` and `systemctl is-active bluetooth.service` must
+print `active`; if `90-inpudeck-le.conf` still names `/usr/local`, the packaged
+daemon is not restored.
 
 After this replacement the daemon ran with `NRestarts=0` and no `code=dumped`
 entries, and pairing completed: `bluetoothctl info` reported `Paired: yes`,
@@ -659,7 +669,10 @@ only when ready to interrupt Bluetooth immediately. `disable --temporary` remove
 only our `/run` overrides. Repeated removal is harmless; unrelated overrides,
 main.conf settings, packages and manually created audio rules remain in place.
 If experimental APIs were independently enabled elsewhere, removing our drop-in
-does not disable that separate configuration.
+does not disable that separate configuration. When a local daemon replacement is
+active, remove it with the ordered sequence in
+“Distro-patched BlueZ builds that crash on unbonded LE advertisements”, because
+`90-inpudeck-le.conf` may have been rewritten to point at the replacement binary.
 
 ## Validation
 
