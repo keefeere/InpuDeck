@@ -14,7 +14,7 @@ enum PointerSurface: String, CaseIterable, Identifiable {
     }
 }
 
-/// Streams the gyroscope and the accelerometer and turns them into HID pointer
+/// Streams CoreMotion's fused device motion and turns it into HID pointer
 /// reports.
 ///
 /// Movement comes from the gyroscope only, read along the world's own axes: the
@@ -22,6 +22,11 @@ enum PointerSurface: String, CaseIterable, Identifiable {
 /// screen faces, so translation of the phone never reaches the host and the
 /// pointer does not care what angle the phone is cradled at. Nothing is sent
 /// while the activation hold absorbs the lift into pointing position.
+///
+/// One `CMDeviceMotion` stream is used on purpose: its `gravity` is already
+/// fused from the accelerometer and the gyroscope by the system, and it arrives
+/// with the same timestamp as the rotation rate, so the axis pair and the spin
+/// being measured belong to one instant instead of two streams drifting apart.
 @MainActor
 final class AirMousePointer: ObservableObject {
     enum Status: Equatable {
@@ -29,7 +34,7 @@ final class AirMousePointer: ObservableObject {
         /// Streaming, waiting for the first gyro sample.
         case waiting
         case tracking
-        /// This device has no gyroscope.
+        /// This device has no fused motion (gyroscope plus accelerometer).
         case unavailable
         /// Streaming was started but no sample arrived, which is what a refused
         /// Motion & Fitness permission looks like.
@@ -38,16 +43,11 @@ final class AirMousePointer: ObservableObject {
 
     @Published private(set) var status: Status = .off
 
-    private static let gyroInterval: TimeInterval = 1.0 / 60.0
-    /// Gravity changes slowly, so the accelerometer is sampled far below the
-    /// gyroscope rate and still tracks a deliberate turn.
-    private static let accelerometerInterval: TimeInterval = 1.0 / 20.0
+    private static let motionInterval: TimeInterval = 1.0 / 60.0
 
     private let manager = CMMotionManager()
     private let engine = AirMouseEngine()
-    private var gravity = AirMouseGravityEstimator()
     private var frame = AirMousePointerFrame.flatOnTable
-    private var lastAccelerometerAt: TimeInterval?
     private var isStreaming = false
     /// Invalidated by every activation, so an older wait cannot overwrite a newer
     /// state or stop a stream that has already produced samples.
@@ -66,14 +66,13 @@ final class AirMousePointer: ObservableObject {
         engine.onPointerMove = { dx, dy in report(dx, dy) }
         engine.config = config
 
-        guard manager.isGyroAvailable else {
+        guard manager.isDeviceMotionAvailable else {
             stopStreaming()
             status = .unavailable
             return
         }
 
-        gravity.reset()
-        lastAccelerometerAt = nil
+        seedFrame()
         engine.begin(now: Self.now())
 
         if !isStreaming {
@@ -107,9 +106,18 @@ final class AirMousePointer: ObservableObject {
     /// nothing where the phone currently is.
     func recentre() {
         guard status == .tracking || status == .waiting else { return }
-        gravity.reset()
-        lastAccelerometerAt = nil
+        seedFrame()
         engine.begin(now: Self.now())
+    }
+
+    /// The frame the phone has before the first fused sample arrives: the
+    /// upright seed gravity, not the last known frame, so a fresh activation
+    /// cannot inherit an angle from a previous session.
+    private func seedFrame() {
+        frame = AirMouseEngine.pointerFrame(
+            fromGravity: AirMouseGravityEstimator.initialGravity,
+            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
+        )
     }
 
     func deactivate() {
@@ -121,28 +129,29 @@ final class AirMousePointer: ObservableObject {
 
     private func startStreaming() {
         isStreaming = true
-        manager.gyroUpdateInterval = Self.gyroInterval
-        manager.accelerometerUpdateInterval = Self.accelerometerInterval
-
-        manager.startGyroUpdates(to: .main) { [weak self] sample, _ in
-            Task { @MainActor in self?.receiveGyro(sample) }
-        }
-        manager.startAccelerometerUpdates(to: .main) { [weak self] sample, _ in
-            Task { @MainActor in self?.receiveAccelerometer(sample) }
+        manager.deviceMotionUpdateInterval = Self.motionInterval
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] sample, _ in
+            Task { @MainActor in self?.receiveMotion(sample) }
         }
     }
 
     private func stopStreaming() {
         guard isStreaming else { return }
         isStreaming = false
-        manager.stopGyroUpdates()
-        manager.stopAccelerometerUpdates()
+        manager.stopDeviceMotionUpdates()
     }
 
-    private func receiveGyro(_ sample: CMGyroData?) {
-        guard isStreaming else { return }
+    private func receiveMotion(_ sample: CMDeviceMotion?) {
+        guard isStreaming, let sample else { return }
+        frame = AirMouseEngine.pointerFrame(
+            fromGravity: AirMouseVector3(
+                x: sample.gravity.x,
+                y: sample.gravity.y,
+                z: sample.gravity.z
+            ),
+            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
+        )
         guard status == .waiting || status == .tracking else { return }
-        guard let sample else { return }
         if status == .waiting {
             status = .tracking
             waitingToken += 1
@@ -155,25 +164,6 @@ final class AirMousePointer: ObservableObject {
             ),
             frame: frame,
             at: Self.now()
-        )
-    }
-
-    private func receiveAccelerometer(_ sample: CMAccelerometerData?) {
-        guard isStreaming, let sample else { return }
-        let now = Self.now()
-        // The first sample of a stream has no previous one to measure against;
-        // assume the configured rate rather than zero, which the estimator would
-        // simply drop.
-        let dt = lastAccelerometerAt.map { now - $0 } ?? Self.accelerometerInterval
-        lastAccelerometerAt = now
-
-        let estimate = gravity.addSample(
-            AirMouseVector3(x: sample.acceleration.x, y: sample.acceleration.y, z: sample.acceleration.z),
-            dt: dt
-        )
-        frame = AirMouseEngine.pointerFrame(
-            fromGravity: estimate,
-            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
         )
     }
 

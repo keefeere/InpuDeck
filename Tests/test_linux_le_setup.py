@@ -97,6 +97,34 @@ class SetupTests(unittest.TestCase):
             self.manager.plan("enable", False)
         self.assertFalse(self.manager.persistent.exists())
 
+    def test_local_unpatched_daemon_override_is_kept(self):
+        local = "/usr/local/libexec/bluetooth/bluetoothd"
+        self.exec_start = f"{{ argv[]={local} --experimental ; }}"
+        self.enable()
+        self.assertEqual(self.manager.persistent.read_text(), setup.content(local))
+        self.assertIn(f"ExecStart={local} --experimental", self.manager.persistent.read_text())
+
+    def test_local_daemon_path_with_short_flag_is_accepted(self):
+        local = "/usr/local/libexec/bluetooth/bluetoothd"
+        self.exec_start = f"{{ argv[]={local} -E ; }}"
+        self.assertEqual(
+            setup.daemon_from_exec(self.exec_start),
+            local,
+        )
+
+    def test_owned_dropin_for_local_daemon_is_not_refused(self):
+        local = "/usr/local/libexec/bluetooth/bluetoothd"
+        setup.write_file(self.manager.persistent, setup.content(local))
+        self.exec_start = f"{{ argv[]={local} --experimental ; }}"
+        self.assertEqual(self.manager.plan("enable", False), [])
+        self.manager.apply(self.manager.plan("disable", False))
+        self.assertFalse(self.manager.persistent.exists())
+
+    def test_non_daemon_exec_start_is_refused(self):
+        self.exec_start = "{ argv=/usr/local/bin/my-bt-daemon --experimental ; }"
+        with self.assertRaisesRegex(RuntimeError, "Customized"):
+            self.manager.plan("enable", False)
+
     def test_reload_failure_restores_runtime_override(self):
         original = setup.content(DAEMON).removeprefix(setup.MARKER)
         setup.write_file(self.manager.legacy, original)

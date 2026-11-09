@@ -853,7 +853,7 @@ struct ContentView: View {
                                 Text("\(Int(airMouseHorizontalSensitivityPercent.rounded()))%")
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $airMouseHorizontalSensitivityPercent, in: 40...500, step: 10)
+                            Slider(value: $airMouseHorizontalSensitivityPercent, in: 40...900, step: 10)
                                 .accessibilityIdentifier("settingsAirMouseSensitivityX")
                         }
 
@@ -862,7 +862,7 @@ struct ContentView: View {
                                 Text("\(Int(airMouseVerticalSensitivityPercent.rounded()))%")
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $airMouseVerticalSensitivityPercent, in: 40...500, step: 10)
+                            Slider(value: $airMouseVerticalSensitivityPercent, in: 40...900, step: 10)
                                 .accessibilityIdentifier("settingsAirMouseSensitivityY")
                         }
 

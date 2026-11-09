@@ -16,7 +16,10 @@ and the same three mouse buttons keep working.
 | Click buttons | The same HID buttons as the trackpad, on either transport |
 
 Settings → **Air mouse** has separate sensitivity for the two axes, a dead zone
-and per-axis inversion. **Inversion is on out of the box**: pushing the top edge
+and per-axis inversion; the sensitivity sliders run from 40 % to 900 % of the
+base gain, and “Where the numbers come from” states what a percentage is worth in
+pointer units per degree, so the slider can be picked from a number rather than
+by feel. **Inversion is on out of the box**: pushing the top edge
 of the phone away moves the cursor that way, and the two toggles switch it off
 for a hand that prefers the other convention. The feature is off by default and
 the trackpad stays available while it is on; in expert mode the pad hides its
@@ -66,10 +69,15 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   quarter of its full size the horizontal component of the normal is discarded
   and the top edge of the phone steers instead. The threshold is applied before
   normalising, or it could only ever catch a phone lying perfectly flat.
-- **Gravity is estimated, not read.** The accelerometer is sampled at 20 Hz,
-  seeded with gravity for a phone held upright so the first frame is sensible,
-  and blended with a time constant of 0.5 s. A wrist bump does not re-aim the
-  pointer; settling into a new holding angle does.
+- **Gravity is fused by iOS, not estimated here.** One `CMDeviceMotion` stream
+  at 60 Hz carries the fused `gravity` vector and the rotation rate with the
+  same timestamp, so the axis pair and the spin belong to one instant. Before
+  the first sample the frame is seeded from `AirMouseGravityEstimator
+  .initialGravity` (gravity for a phone held upright), so a fresh activation
+  starts from a sensible frame instead of inheriting an angle from the previous
+  session. Linear acceleration never reaches the host: carrying the phone across
+  the room produces no pointer reports. `AirMouseGravityEstimator` stays for the
+  seed and the offline tests of a filtered gravity path.
 - **Two thresholds, not one.** A dead zone alone turned the cursor into a crawl
   or let tremor through, and the shipped default is now nothing at all — a held
   hand is quieter than any dead zone needs. The threshold that does the work is
@@ -84,6 +92,27 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
 - **Each axis has its own gain** because a forearm swing and a wrist tip are
   not the same movement, and one slider would make the comfortable gesture
   twitchy or the wide one useless.
+- **Movement is per radian, so sensitivity is a number, not a feel.** The engine
+  integrates rotation rate over time, so the cursor travel of a deliberate turn
+  is `units per radian × turn angle`. The slider shows a percentage of
+  `basePointerUnitsPerRadianPerSecond = 360`, which is 360 units per radian,
+  about 6.3 units per degree, at 100 %. On a host that maps one pointer unit to
+  one pixel, crossing a 2560 px screen width costs this much phone rotation:
+
+  | Sensitivity | Units per radian | Units per degree | Rotation to cross 2560 px |
+  | --- | --- | --- | --- |
+  | 100 % | 360 | 6.3 | 408° |
+  | 220 % (default) | 792 | 13.8 | 185° |
+  | 400 % | 1 440 | 25.1 | 102° |
+  | 600 % | 2 160 | 37.7 | 68° |
+  | 900 % (slider top) | 3 240 | 56.7 | 45° |
+
+  The host's own pointer acceleration multiplies this: KDE/Plasma profiles and
+  per-device `kcminputrc` entries are outside the app, so measure one known
+  rotation on the real screen before trusting the table. A fast swing also gets
+  the acceleration gain — up to `1 + acceleration` = 1.8× once the turn reaches
+  `accelerationReference` = 2 rad/s — which is what is meant to cross a screen
+  with a flick instead of a walk.
 - **Reports are split.** A report descriptor carries one signed byte per axis,
   so a fast flick leaves as several reports in the same sample and the host's
   own pointer acceleration cannot be used as an escape hatch.

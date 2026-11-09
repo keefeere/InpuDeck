@@ -1193,3 +1193,56 @@ Device checks for this build:
 Regression tests cover exhausting recovery without an automatic manager reset
 and restarting its bounded schedule on explicit progress. Existing tests still
 cover physical-disconnect invalidation, helper-failure isolation and wake input.
+
+## Protocol Mode needs a Write Request, not only a write command (3.5.2)
+
+On 2026-11-09 pairing on KeeFRogBz completed (`Paired: yes`, `Bonded: yes`,
+`Trusted: yes`, `Bearer.LE1` connected, GATT services and the GATT battery
+characteristic resolved), yet BlueZ never exposed `org.bluez.HIDDevice1` and
+logged once:
+
+```
+profiles/input/hog-lib.c:output_written_cb() Write output report failed: Request attribute has encountered an unlikely error
+```
+
+BlueZ sets the Report Protocol Mode to Report mode right after the HOGP client
+is ready, and it does that with `bt_gatt_client_write_value()` in
+`src/shared/hog.c` (`hog->setrep_att`), which is an ATT **Write Request**
+(`0x12`) expecting a Write Response. CoreBluetooth answers a Write Request in
+its own ATT layer when the characteristic advertises only `.writeWithoutResponse`
+without `CBCharacteristicPropertyWrite`, so the app's `protocolMode` write handler
+never runs for that request. This is not proof of Boot mode:
+`HIDHostSession` starts and resets in Report mode (`bootProtocol = false`,
+`Shared/HIDReports.swift:260`) and the read side keeps answering Report mode, so
+the observable effect is an unanswered host write. The app declared `2A4E` as
+`[.read, .writeWithoutResponse]`, so the handler at
+`DirectHIDTransport.swift` (`case .protocolMode:`) was unreachable for this
+request.
+
+The fix is one property: Report Protocol Mode now advertises
+`[.read, .write, .writeWithoutResponse]` with
+`[.readEncryptionRequired, .writeEncryptionRequired]`. HOGP v1.1 requires Read
+and Write on Report Protocol Mode, and the write form a host uses is a Write
+Request; keeping `.writeWithoutResponse` preserves hosts that send a Write
+Command.
+
+`Tests/test_linux_hid_gatt_contract.py` checks this ATT contract offline by
+parsing the characteristic declarations, including the Report Reference
+descriptors BlueZ needs to classify reports. It is the gate for this class of
+bug; a simulator compile alone does not prove it.
+
+**Not verified on hardware:** the app-side effect of this change. On 2026-11-09
+the same host reached working HID with the 3.5.1 app: after the watcher connected
+LE, the kernel exposed `InpuDeck Keyboard` and `InpuDeck Mouse` with
+`Uniq=10:a2:d3:01:47:A1` and `Phys=44:f7:9f:ac:cd:9c` (uhid
+`0005:004C:761E.0087`), and `/dev/input/event261` carried relative-axis events.
+So the `output_written_cb` failure seen at 11:09 did not block attach in that
+session, and `org.bluez.HIDDevice1` was not present on the device object even
+with kernel HID devices and live events. HID readiness therefore needs the kernel
+devices plus live events, not one D-Bus property.
+
+The next check on 3.5.2 is the same pair of observations plus the app journal
+recording `Protocol: report` when the host writes Report Protocol Mode. Until
+that trace exists, treat Protocol Mode behaviour as unproven, and
+note that the BlueZ daemon on this host is the replaced unpatched build described
+in `docs/linux-direct-hid.md`.

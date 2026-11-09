@@ -106,8 +106,11 @@ final class AirMouseEngine {
     // toggles can produce.
     struct Config: Equatable {
         /// Pointer units per radian per second of steady turn at the sensitivity
-        /// the interface shows as 100 %.
-        static let basePointerUnitsPerRadianPerSecond = 90.0
+        /// the interface shows as 100 %. Movement integrates rotation rate over
+        /// time, so this is also the cursor travel per radian of a deliberate
+        /// turn: 360 units per radian is about 6.3 units per degree, which on a
+        /// 1:1 host mapping is a little over half of a 1080 px screen.
+        static let basePointerUnitsPerRadianPerSecond = 360.0
         /// The widest dead zone the interface can ask for.
         static let maximumDeadZone = 0.3
 
@@ -128,8 +131,11 @@ final class AirMouseEngine {
         /// Rotation rate a moving axis has to stay above to keep moving.
         var reengage = 0.2
         var smoothing = 0.45
-        var acceleration = 0.4
-        var accelerationReference = 3.0
+        /// Extra travel for a fast swing, on top of the axis gain. A turn at
+        /// `accelerationReference` rad/s already carries the full bonus, so a
+        /// deliberate flick crosses a screen instead of walking across it.
+        var acceleration = 0.8
+        var accelerationReference = 2.0
         var invertX = false
         var invertY = false
         var maximumStep: Int = 60

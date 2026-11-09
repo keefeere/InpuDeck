@@ -576,7 +576,13 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         hid.characteristics = [
             characteristic("2A4A", .information, properties: .read, permissions: .readable),
             characteristic("2A4B", .reportMap, properties: .read, permissions: .readEncryptionRequired),
-            characteristic("2A4E", .protocolMode, properties: [.read, .writeWithoutResponse],
+            // HOGP Report Protocol Mode is written with an ATT Write Request
+            // (BlueZ bt_gatt_client_write_value), so `.write` must be advertised
+            // next to `.writeWithoutResponse`; CoreBluetooth rejects a Write
+            // Request before didReceiveWrite when only the command form exists,
+            // and BlueZ then logs "Write output report failed" without HID attach.
+            characteristic("2A4E", .protocolMode,
+                           properties: [.read, .write, .writeWithoutResponse],
                            permissions: [.readEncryptionRequired, .writeEncryptionRequired]),
             characteristic("2A4C", .controlPoint, properties: .writeWithoutResponse, permissions: .writeEncryptionRequired),
             report(.keyboard, channel: .keyboard), output,

@@ -19,6 +19,7 @@ LEGACY_NAME = "90-inpudeck-le-test.conf"
 OLD_NAME = "90-esp-remote-le.conf"
 OLD_LEGACY_NAME = "90-esp-remote-le-test.conf"
 DAEMONS = ("/usr/libexec/bluetooth/bluetoothd", "/usr/lib/bluetooth/bluetoothd")
+EXPERIMENTAL_FLAGS = {"-E", "--experimental"}
 MARKER = "# Managed by InpuDeck: inpudeck-le-setup.py\n"
 OLD_MARKER = "# Managed by ESP Remote: linux-le-setup.py\n"
 
@@ -27,13 +28,32 @@ def command(*args):
     return subprocess.run(args, check=True, text=True, capture_output=True).stdout.strip()
 
 
+def bluetoothd_path(argv):
+    """Return the daemon path when argv is bluetoothd with only experimental flags.
+
+    Distro packages are not the only supported location: a local unpatched
+    bluetoothd under /usr/local keeps working, so accept any absolute
+    bluetoothd path and preserve it in the drop-in.
+    """
+    parts = argv.split()
+    if not parts:
+        return None
+    daemon = Path(parts[0])
+    if daemon.name != "bluetoothd" or not daemon.is_absolute():
+        return None
+    if set(parts[1:]) - EXPERIMENTAL_FLAGS:
+        return None
+    return str(daemon)
+
+
 def daemon_from_exec(value):
     match = re.search(r"argv\[\]=(.*?) ;", value)
-    if match:
-        for daemon in DAEMONS:
-            if match[1] in (daemon, daemon + " --experimental"):
-                return daemon
-    raise RuntimeError("Customized Bluetooth ExecStart; inspect it before adding --experimental.")
+    daemon = bluetoothd_path(match[1] if match else value)
+    if daemon:
+        return daemon
+    raise RuntimeError(
+        f"Customized Bluetooth ExecStart ({value}); inspect it before adding --experimental."
+    )
 
 
 def content(daemon):
@@ -46,11 +66,17 @@ def read_owned(path, legacy=False, old_brand=False):
     if not path.exists():
         return None
     text = path.read_text()
-    allowed = {content(daemon) for daemon in DAEMONS}
+    known = set(DAEMONS)
+    for line in text.splitlines():
+        if line.startswith("ExecStart="):
+            daemon = bluetoothd_path(line.split("=", 1)[1].lstrip("-"))
+            if daemon:
+                known.add(daemon)
+    allowed = {content(daemon) for daemon in known}
     if old_brand:
         allowed = {value.replace(MARKER, OLD_MARKER, 1) for value in allowed}
     if legacy:
-        allowed.update(content(daemon).removeprefix(MARKER) for daemon in DAEMONS)
+        allowed.update(content(daemon).removeprefix(MARKER) for daemon in known)
     if text not in allowed:
         raise RuntimeError(f"File has local changes or belongs to another setup: {path}")
     return text
