@@ -193,8 +193,11 @@ struct AirMouseEngineTests {
         expect(AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond == 360,
                "the base gain is 360 units per radian")
         let defaults = AirMouseEngine.Config()
-        expect(defaults.horizontalUnitsPerRadianPerSecond == 792
-                && defaults.verticalUnitsPerRadianPerSecond == 792,
+        // The gain is Float arithmetic on a percentage, and 220 % is not a binary
+        // exact multiplier (360 * 2.2 lands at 792.00002), so compare with a
+        // tolerance instead of ==; the release build caught that as a precondition.
+        expect(near(Double(defaults.horizontalUnitsPerRadianPerSecond), 792, 0.01)
+                && near(Double(defaults.verticalUnitsPerRadianPerSecond), 792, 0.01),
                "the default 220 % sensitivity is 792 units per radian on both axes")
         expect(defaults.acceleration == 0.8 && defaults.accelerationReference == 2.0,
                "the acceleration bonus is 1.8x from 2 rad/s")
