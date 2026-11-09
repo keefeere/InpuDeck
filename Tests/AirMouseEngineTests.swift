@@ -23,6 +23,7 @@ struct AirMouseEngineTests {
         headingIsGivenUpWhenThePhoneLiesFlat()
         restAbsorbsTremorAndHoldsStillness()
         axesHaveSeparateSensitivity()
+        defaultSensitivityMatchesTheDocumentedTravel()
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
@@ -182,6 +183,41 @@ struct AirMouseEngineTests {
 
         expect(sideways > lifted * 3, "the horizontal slider moves the cursor further than the vertical one")
         expect(lifted > 0, "and the vertical axis still moves on its own")
+    }
+
+    private static func defaultSensitivityMatchesTheDocumentedTravel() {
+        // The settings sliders are a percentage of one documented base gain, so the
+        // shipped defaults must keep the numbers docs/air-mouse.md prints: 360
+        // units per radian at 100 %, the 220 % default at 792, and the acceleration
+        // bonus reaching 1.8x at its reference speed.
+        expect(AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond == 360,
+               "the base gain is 360 units per radian")
+        let defaults = AirMouseEngine.Config()
+        expect(defaults.horizontalUnitsPerRadianPerSecond == 792
+                && defaults.verticalUnitsPerRadianPerSecond == 792,
+               "the default 220 % sensitivity is 792 units per radian on both axes")
+        expect(defaults.acceleration == 0.8 && defaults.accelerationReference == 2.0,
+               "the acceleration bonus is 1.8x from 2 rad/s")
+
+        // A steady 1 rad/s turn is one radian a second, so at the default gain it
+        // must walk 792 units in one second of samples, units and no more. The
+        // first sample only sets the clock, so 60 samples carry 59 steps.
+        let steady = Sink { config in
+            config.smoothing = 0
+            config.acceleration = 0
+        }
+        steady.begin()
+        steady.feedHorizontal(1.0, samples: 60)
+        expect(steady.totals.x >= 777 && steady.totals.x <= 779,
+               "a one radian per second turn at the default sensitivity is 792 units per second")
+
+        // The same turn at the reference speed carries the full bonus, which is
+        // what lets a flick cross a screen without the host accelerating for it.
+        let flick = Sink { config in config.smoothing = 0 }
+        flick.begin()
+        flick.feedHorizontal(2.0, samples: 60)
+        expect(flick.totals.x >= 2801 && flick.totals.x <= 2805,
+               "a 2 rad/s turn gets the 1.8x bonus on the default gain")
     }
 
     private static func movementSurvivesTheFractionalRemainder() {
