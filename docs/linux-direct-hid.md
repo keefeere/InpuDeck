@@ -360,6 +360,7 @@ contain that symbol, so the crash is a distro patch, not upstream BlueZ:
 
 ```bash
 rpm -q terra-bluez
+mkdir -p /tmp/blzchk && cd /tmp/blzchk
 curl -fSLO "$(dnf repoquery --location bluez | grep x86_64 | head -1)"
 rpm2cpio bluez-*.x86_64.rpm | cpio -idm
 grep -c wake_policy_device_resolved usr/libexec/bluetooth/bluetoothd   # 0 (distro build)
@@ -389,8 +390,7 @@ only the daemon binary with the unpatched distro build:
 
 ```bash
 sudo install -Dm755 /tmp/blzchk/usr/libexec/bluetooth/bluetoothd \
-  /usr/local/libexec/bluetooth/bluetoothd
-sudo chcon -t bluetooth_exec_t /usr/local/libexec/bluetooth/bluetoothd
+  /usr/local/libexec/bluetooth/bluetoothdsudo chcon -t bluetooth_exec_t /usr/local/libexec/bluetooth/bluetoothd
 printf '[Service]\nExecStart=\nExecStart=/usr/local/libexec/bluetooth/bluetoothd --experimental\n' \
   | sudo tee /etc/systemd/system/bluetooth.service.d/zz-inpudeck-unpatched-bluez.conf
 sudo systemctl daemon-reload && sudo systemctl restart bluetooth.service
@@ -447,10 +447,14 @@ profiles/input/hog-lib.c:output_written_cb() Write output report failed: Request
 BlueZ sets Report Protocol Mode to Report mode with an ATT Write Request
 (`bt_gatt_client_write_value`, `hog->setrep_att`) as soon as the HOGP client is
 ready. A phone that publishes Report Protocol Mode as
-`CBCharacteristicProperties = [.read, .writeWithoutResponse]` never receives that
-request in its write handler, so the mode stays Boot and the HID profile is not
-attached. `busctl introspect org.bluez /org/bluez/hci0/dev_<peer>` then shows
-`Bearer.LE1` and `Battery1` but no `HIDDevice1`:
+`CBCharacteristicProperties = [.read, .writeWithoutResponse]` gets that Write
+Request answered inside CoreBluetooth's ATT layer, so the app write handler never
+runs for it. That failed write is not proof of Boot mode: the app session starts
+and resets in Report mode (`bootProtocol = false`, `Shared/HIDReports.swift`), so
+the read side keeps answering Report mode while the host write goes unanswered.
+BlueZ then logs the failure and does not attach the HID profile, and
+`busctl introspect org.bluez /org/bluez/hci0/dev_<peer>` shows `Bearer.LE1` and
+`Battery1` with no kernel HID device behind it:
 
 ```bash
 bluetoothctl info AA:BB:CC:DD:EE:FF | sed -n '/Paired/,/CablePairing/p'
@@ -460,9 +464,13 @@ journalctl -u bluetooth.service --since "-30 min" --no-pager | grep -i "hog-lib\
 
 This is the phone side, not the host: InpuDeck publishes `.write` for `2A4E` from
 3.5.2, and `Tests/test_linux_hid_gatt_contract.py` guards that ATT contract
-offline. Do not diagnose it by restarting BlueZ or by `Cache=no`; the
-protocol-mode write is the first thing HOGP does after service discovery, so a
-GATT browse that ends in this log line has already passed discovery.
+offline. On 2026-11-09 the same host attached HID on 3.5.1 after the LE connect
+from the watcher, with kernel `InpuDeck Keyboard` and `InpuDeck Mouse` devices
+(`HID_UNIQ=10:a2:d3:01:47:A1`, `HID_PHYS=44:f7:9f:ac:cd:9c`) and relative-axis
+events on `/dev/input/event261`, so this log line alone does not prove HID cannot
+attach. Do not diagnose it by restarting BlueZ or by `Cache=no`; the protocol-mode
+write is the first thing HOGP does after service discovery, so a GATT browse that
+ends in this log line has already passed discovery.
 
 ## Explicit recovery and transport preference
 

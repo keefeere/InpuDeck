@@ -1208,11 +1208,13 @@ profiles/input/hog-lib.c:output_written_cb() Write output report failed: Request
 BlueZ sets the Report Protocol Mode to Report mode right after the HOGP client
 is ready, and it does that with `bt_gatt_client_write_value()` in
 `src/shared/hog.c` (`hog->setrep_att`), which is an ATT **Write Request**
-(`0x12`) expecting a Write Response. CoreBluetooth only delivers a Write Request
-to `peripheralManager(_:didReceiveWrite:)` when the characteristic advertises
-`CBCharacteristicPropertyWrite`; with only `.writeWithoutResponse` the ATT layer
-answers the request itself, so the app's `protocolMode` write handler never runs
-and the mode stays Boot. The app declared `2A4E` as
+(`0x12`) expecting a Write Response. CoreBluetooth answers a Write Request in
+its own ATT layer when the characteristic advertises only `.writeWithoutResponse`
+without `CBCharacteristicPropertyWrite`, so the app's `protocolMode` write handler
+never runs for that request. This is not proof of Boot mode:
+`HIDHostSession` starts and resets in Report mode (`bootProtocol = false`,
+`Shared/HIDReports.swift:260`) and the read side keeps answering Report mode, so
+the observable effect is an unanswered host write. The app declared `2A4E` as
 `[.read, .writeWithoutResponse]`, so the handler at
 `DirectHIDTransport.swift` (`case .protocolMode:`) was unreachable for this
 request.
@@ -1229,12 +1231,18 @@ parsing the characteristic declarations, including the Report Reference
 descriptors BlueZ needs to classify reports. It is the gate for this class of
 bug; a simulator compile alone does not prove it.
 
-**Not verified on hardware:** the app-side effect of this change. The next check
-is one phone-to-KeeFRogBz session on 3.5.2: `bluetoothctl info` showing the LE
-link, then `busctl introspect org.bluez
-/org/bluez/hci0/dev_10_A2_D3_01_47_A1` exposing `org.bluez.HIDDevice1`, no
-`output_written_cb` failure in `journalctl -u bluetooth.service`, and a
-`/proc/bus/input/devices` entry for this peer. The app journal should then record
-`Protocol: report`. Until that trace exists, treat HID attach as unproven, and
+**Not verified on hardware:** the app-side effect of this change. On 2026-11-09
+the same host reached working HID with the 3.5.1 app: after the watcher connected
+LE, the kernel exposed `InpuDeck Keyboard` and `InpuDeck Mouse` with
+`Uniq=10:a2:d3:01:47:A1` and `Phys=44:f7:9f:ac:cd:9c` (uhid
+`0005:004C:761E.0087`), and `/dev/input/event261` carried relative-axis events.
+So the `output_written_cb` failure seen at 11:09 did not block attach in that
+session, and `org.bluez.HIDDevice1` was not present on the device object even
+with kernel HID devices and live events. HID readiness therefore needs the kernel
+devices plus live events, not one D-Bus property.
+
+The next check on 3.5.2 is the same pair of observations plus the app journal
+recording `Protocol: report` when the host writes Report Protocol Mode. Until
+that trace exists, treat Protocol Mode behaviour as unproven, and
 note that the BlueZ daemon on this host is the replaced unpatched build described
 in `docs/linux-direct-hid.md`.
