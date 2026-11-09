@@ -1193,3 +1193,48 @@ Device checks for this build:
 Regression tests cover exhausting recovery without an automatic manager reset
 and restarting its bounded schedule on explicit progress. Existing tests still
 cover physical-disconnect invalidation, helper-failure isolation and wake input.
+
+## Protocol Mode needs a Write Request, not only a write command (3.5.2)
+
+On 2026-11-09 pairing on KeeFRogBz completed (`Paired: yes`, `Bonded: yes`,
+`Trusted: yes`, `Bearer.LE1` connected, GATT services and the GATT battery
+characteristic resolved), yet BlueZ never exposed `org.bluez.HIDDevice1` and
+logged once:
+
+```
+profiles/input/hog-lib.c:output_written_cb() Write output report failed: Request attribute has encountered an unlikely error
+```
+
+BlueZ sets the Report Protocol Mode to Report mode right after the HOGP client
+is ready, and it does that with `bt_gatt_client_write_value()` in
+`src/shared/hog.c` (`hog->setrep_att`), which is an ATT **Write Request**
+(`0x12`) expecting a Write Response. CoreBluetooth only delivers a Write Request
+to `peripheralManager(_:didReceiveWrite:)` when the characteristic advertises
+`CBCharacteristicPropertyWrite`; with only `.writeWithoutResponse` the ATT layer
+answers the request itself, so the app's `protocolMode` write handler never runs
+and the mode stays Boot. The app declared `2A4E` as
+`[.read, .writeWithoutResponse]`, so the handler at
+`DirectHIDTransport.swift` (`case .protocolMode:`) was unreachable for this
+request.
+
+The fix is one property: Report Protocol Mode now advertises
+`[.read, .write, .writeWithoutResponse]` with
+`[.readEncryptionRequired, .writeEncryptionRequired]`. HOGP v1.1 requires Read
+and Write on Report Protocol Mode, and the write form a host uses is a Write
+Request; keeping `.writeWithoutResponse` preserves hosts that send a Write
+Command.
+
+`Tests/test_linux_hid_gatt_contract.py` checks this ATT contract offline by
+parsing the characteristic declarations, including the Report Reference
+descriptors BlueZ needs to classify reports. It is the gate for this class of
+bug; a simulator compile alone does not prove it.
+
+**Not verified on hardware:** the app-side effect of this change. The next check
+is one phone-to-KeeFRogBz session on 3.5.2: `bluetoothctl info` showing the LE
+link, then `busctl introspect org.bluez
+/org/bluez/hci0/dev_10_A2_D3_01_47_A1` exposing `org.bluez.HIDDevice1`, no
+`output_written_cb` failure in `journalctl -u bluetooth.service`, and a
+`/proc/bus/input/devices` entry for this peer. The app journal should then record
+`Protocol: report`. Until that trace exists, treat HID attach as unproven, and
+note that the BlueZ daemon on this host is the replaced unpatched build described
+in `docs/linux-direct-hid.md`.

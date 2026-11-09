@@ -8,6 +8,7 @@ on:
       - "scripts/install-linux.sh"
       - "scripts/91-inpudeck-address-resolution.conf"
       - "Tests/test_linux_*.py"
+      - "InpuDeck/DirectHIDTransport.swift"
       - ".github/workflows/test-linux-helpers.yml"
   push:
     paths:
@@ -15,6 +16,7 @@ on:
       - "scripts/install-linux.sh"
       - "scripts/91-inpudeck-address-resolution.conf"
       - "Tests/test_linux_*.py"
+      - "InpuDeck/DirectHIDTransport.swift"
       - ".github/workflows/test-linux-helpers.yml"
 
 permissions:

@@ -97,8 +97,11 @@ are scoped to one phone on one adapter. This does **not** enable
 `KernelExperimental`, disable Classic globally, or alter headphone support.
 
 The setup supports the standard Fedora/Bazzite and Debian `bluetoothd` service
-paths. It refuses custom daemon arguments or locally modified files at its own
-paths instead of overwriting them. Because the drop-in overrides `ExecStart`,
+paths, and any absolute path ending in `bluetoothd` counts as the daemon, so a
+local unpatched build under `/usr/local/libexec/bluetooth/bluetoothd` is kept
+rather than rejected. It refuses custom daemon arguments other than
+`--experimental`/`-E`, and refuses locally modified files at its own paths
+instead of overwriting them. Because the drop-in overrides `ExecStart`,
 review it if a distribution later changes its daemon command or path.
 
 ## Manual setup and reference
@@ -168,14 +171,35 @@ your shell profile. Use the full path if `~/.local/bin` is not on `PATH`.
 Keep an existing working bond. If this computer is not paired yet:
 
 1. In InpuDeck choose **Direct Bluetooth**, then **Allow new pairing**.
-2. On Linux run `bluetoothctl`, then `scan le` and find the phone/InpuDeck.
-3. Run `pair AA:BB:CC:DD:EE:FF`, then `trust AA:BB:CC:DD:EE:FF` and `scan off`.
+2. In one interactive `bluetoothctl` session run `scan le` and find the phone/InpuDeck.
+3. In the same session run `pair AA:BB:CC:DD:EE:FF`, then `trust AA:BB:CC:DD:EE:FF` and `scan off`.
 4. Leave InpuDeck open with this computer selected, and run:
 
 ```bash
 ~/.local/bin/inpudeck-hid --device AA:BB:CC:DD:EE:FF
 ~/.local/bin/inpudeck-hid --device AA:BB:CC:DD:EE:FF --status
 ```
+
+Keep discovery and pairing inside one `bluetoothctl` process. Separate commands
+(`bluetoothctl scan on` in one call, `bluetoothctl pair …` in the next) end the
+discovery monitor when the first process exits, so the phone vanishes from the
+adapter view and `pair` answers `Failed to pair - org.bluez.Error.NoSuchDevice`.
+BlueZ has no global `bluetoothctl --timeout` option, so feed the commands to one
+live process instead:
+
+```bash
+ADDR=AA:BB:CC:DD:EE:FF
+{ printf 'power on\n'; sleep 1; printf 'scan on\n'; sleep 20
+  printf 'pair %s\n' "$ADDR"; sleep 30; printf 'trust %s\n' "$ADDR"
+  printf 'scan off\n'; } | bluetoothctl
+```
+
+Stop the optional watcher first (`systemctl --user stop inpudeck-hid.service`):
+its 12-second LE scan and connection attempts occupy the adapter and collide with
+pairing. Use the rotating address currently advertised by the phone, not an
+address from an old scan. Confirm the pairing request on the iPhone, then approve
+the host inside InpuDeck: both gates are required. HID characteristics require
+encryption, so a connection without a bond carries no reports.
 
 The optional `--trust` flag sets trust explicitly. Otherwise connecting does not
 change it. The helper can infer a single paired HID phone when `--device` is
@@ -324,6 +348,111 @@ sudo python3 scripts/inpudeck-gatt-cache.py disable --restart
 Omit `--restart` to apply the file at the next Bluetooth start. A restart
 briefly disconnects all Bluetooth devices, including headphones. The address
 resolution hook remains separate; `Cache=no` does not replace it.
+
+### Distro-patched BlueZ builds that crash on unbonded LE advertisements
+
+On Universal Blue/Bazzite the Bluetooth package is `terra-bluez`, a distribution
+fork of the Fedora BlueZ build. On 2026-11-08 its daemon repeatedly died with
+`SIGSEGV` inside `wake_policy_device_resolved` while discovering an unbonded
+iPhone LE advertisement, which aborted every pairing attempt mid-handshake. The
+Fedora `bluez` build of the identical commit (`5.87+1.git8750129efca8`) does not
+contain that symbol, so the crash is a distro patch, not upstream BlueZ:
+
+```bash
+rpm -q terra-bluez
+curl -fSLO "$(dnf repoquery --location bluez | grep x86_64 | head -1)"
+rpm2cpio bluez-*.x86_64.rpm | cpio -idm
+grep -c wake_policy_device_resolved usr/libexec/bluetooth/bluetoothd   # 0 (distro build)
+grep -c wake_policy_device_resolved /usr/libexec/bluetooth/bluetoothd   # 1 (fork)
+```
+
+The trace is `btd_device_get_storage_path(): Refusing storage path for private
+addressed device`, then `GLib: g_key_file_load_from_file: assertion 'file != NULL'
+failed`, then `Main process exited, code=dumped, status=11/SEGV`. A resolvable
+random LE address with no bond has no storage path, so the fork passes `NULL` to
+GLib. Bonded peers and Classic mice/keyboards resolve to an identity address,
+which is why audio devices and paired HID peers do not crash.
+
+`--experimental` is not the cause, and starting the daemon with `-P policy`
+(disable the policy plugin) did **not** stop the crash: the call site lives in
+`src/device.c` and the function is linked into the binary, so disabling the
+plugin removes the policy timers, not this call. Count crashes instead of
+guessing:
+
+```bash
+sudo coredumpctl list | tail -3
+journalctl -u bluetooth.service --since "-20 min" --no-pager | grep -c code=dumped
+```
+
+The durable host-side fix used here keeps the distribution packages and replaces
+only the daemon binary with the unpatched distro build:
+
+```bash
+sudo install -Dm755 /tmp/blzchk/usr/libexec/bluetooth/bluetoothd \
+  /usr/local/libexec/bluetooth/bluetoothd
+sudo chcon -t bluetooth_exec_t /usr/local/libexec/bluetooth/bluetoothd
+printf '[Service]\nExecStart=\nExecStart=/usr/local/libexec/bluetooth/bluetoothd --experimental\n' \
+  | sudo tee /etc/systemd/system/bluetooth.service.d/zz-inpudeck-unpatched-bluez.conf
+sudo systemctl daemon-reload && sudo systemctl restart bluetooth.service
+```
+
+`bluetooth_exec_t` is the SELinux type of the shipped daemon, so the replacement
+runs in the same domain; check with `getenforce` and `ausearch -m avc` (this host
+reported `avc_bluetooth_hits=0`). Name the drop-in after the InpuDeck ones
+(`zz-…`) so it wins over `90-inpudeck-le.conf` for `ExecStart`, and keep `-E`/
+`--experimental` in it: the LE bearer API needs it. `inpudeck-le-setup.py`
+accepts this daemon path, so `install-linux.sh` preserves it. Rollback is one
+removal:
+
+```bash
+sudo rm -f /etc/systemd/system/bluetooth.service.d/zz-inpudeck-unpatched-bluez.conf \
+  /usr/local/libexec/bluetooth/bluetoothd
+sudo systemctl daemon-reload && sudo systemctl restart bluetooth.service
+```
+
+After this replacement the daemon ran with `NRestarts=0` and no `code=dumped`
+entries, and pairing completed: `bluetoothctl info` reported `Paired: yes`,
+`Bonded: yes`, `Trusted: yes`, `Connected: yes` with `Bearer.LE1` connected.
+Verify each of those statements on your host; a green build is not device
+evidence. A whole-package swap (`rpm-ostree override replace` with the distro
+`bluez`, `bluez-libs` x86_64+i686, `bluez-obexd`, `bluez-cups`) also works, needs
+a reboot, and is reverted with `rpm-ostree override reset --all`.
+
+Report this to Universal Blue, not to upstream BlueZ: the crashing symbol does not
+exist in upstream at 5.87, at the forked commit, or on `master`, and Fedora's
+BlueZ spec carries no `Patch:` entries. Report the crash to BlueZ upstream as
+well: `btd_device_get_storage_path()` returning `NULL` for a private address
+needs the guard the upstream tree already has in `plugins/policy.c`.
+
+### `Write output report failed` means HID never attaches
+
+A connected, paired, trusted LE phone can still expose no
+`org.bluez.HIDDevice1` and produce no input. The signature in
+`journalctl -u bluetooth.service` is:
+
+```
+profiles/input/hog-lib.c:output_written_cb() Write output report failed: Request attribute has encountered an unlikely error
+```
+
+BlueZ sets Report Protocol Mode to Report mode with an ATT Write Request
+(`bt_gatt_client_write_value`, `hog->setrep_att`) as soon as the HOGP client is
+ready. A phone that publishes Report Protocol Mode as
+`CBCharacteristicProperties = [.read, .writeWithoutResponse]` never receives that
+request in its write handler, so the mode stays Boot and the HID profile is not
+attached. `busctl introspect org.bluez /org/bluez/hci0/dev_<peer>` then shows
+`Bearer.LE1` and `Battery1` but no `HIDDevice1`:
+
+```bash
+bluetoothctl info AA:BB:CC:DD:EE:FF | sed -n '/Paired/,/CablePairing/p'
+busctl introspect org.bluez /org/bluez/hci0/dev_10_A2_D3_01_47_A1 | grep -E "HIDDevice1|ProtocolMode"
+journalctl -u bluetooth.service --since "-30 min" --no-pager | grep -i "hog-lib\|output report"
+```
+
+This is the phone side, not the host: InpuDeck publishes `.write` for `2A4E` from
+3.5.2, and `Tests/test_linux_hid_gatt_contract.py` guards that ATT contract
+offline. Do not diagnose it by restarting BlueZ or by `Cache=no`; the
+protocol-mode write is the first thing HOGP does after service discovery, so a
+GATT browse that ends in this log line has already passed discovery.
 
 ## Explicit recovery and transport preference
 
