@@ -33,6 +33,7 @@ struct AirMouseEngineTests {
         steadyTurnBackArrivesOnceTheWindowIsBehindIt()
         aTurnBuiltUpOutOfNothingIsNotATail()
         sidewaysTravelDoesNotKeepAVerticalTurnBackBlocked()
+        aPhoneThatHasNotMovedYetKeepsItsFilters()
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
@@ -470,6 +471,24 @@ struct AirMouseEngineTests {
         sink.feedVertical(-0.2, samples: 10)
         expect(sink.totals.y > 40,
                "sideways travel must not keep a vertical turn back blocked: \(sink.totals.y)")
+    }
+
+    private static func aPhoneThatHasNotMovedYetKeepsItsFilters() {
+        // The point of the gravity channel is a tip the hand leads evenly, and it
+        // only works if the smoother is allowed to ramp up out of a resting start.
+        // Clearing the filters on every resting sample, before the phone has ever
+        // moved, wiped that ramp, so a 20 degree tip in two seconds sent nothing.
+        let sink = Sink()
+        sink.begin()
+        sink.feedVertical(0.0, samples: 120)
+        expect(!sink.isSettled,
+               "a phone that has never moved has no residue to clear, so the slow tip keeps its ramp")
+        sink.clear()
+        sink.feedVertical(1.0, samples: 30)
+        expect(sink.totals.y != 0, "and the next deliberate turn still moves")
+        sink.clear()
+        sink.feedVertical(0.0, samples: 120)
+        expect(sink.isSettled, "while a phone that moved and then rests does clean up")
     }
 
     private static func movementSurvivesTheFractionalRemainder() {

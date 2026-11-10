@@ -123,11 +123,14 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   builds up out of nothing grows from sample to sample, so it is never taken for a
   tail; a turn that holds one steady speed gives up the quarter second the window
   covers and walks the pointer from there.
-- **A still phone cleans up after itself.** Movement comes from rotation rate,
-  so a tilt that is merely being held has never contributed anything; what a
-  still phone can leave behind is residue in the smoother and a fraction of a
-  unit the last report could not carry. After 0.8 s of stillness both are
-  dropped, and `isSettled` says so.
+- **A still phone cleans up after itself, once it has moved.** Movement comes
+  from rotation rate, so a tilt that is merely being held has never contributed
+  anything; what a still phone can leave behind is residue in the smoother and a
+  fraction of a unit the last report could not carry. After 0.8 s of stillness
+  both are dropped, and `isSettled` says so. Clearing on a phone that has not
+  moved since it started wipes the ramp a slow tip builds up, which is how the
+  gravity channel reaches the start threshold at all, so the clean-up waits for
+  a movement to have happened.
 - **Each axis has its own gain** because a forearm swing and a wrist tip are
   not the same movement, and one slider would make the comfortable gesture
   twitchy or the wide one useless.

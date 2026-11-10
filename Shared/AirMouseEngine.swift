@@ -424,7 +424,13 @@ final class AirMouseEngine {
     /// merely being held has never contributed anything.
     private func reanchorIfIdle(now: TimeInterval) {
         guard config.idleReanchor > 0 else { return }
-        if let lastMotionAt, now - lastMotionAt < config.idleReanchor { return }
+        // Only a phone that moved and then came to rest has residue to clear. A
+        // phone that has not moved since it started has nothing in the filters,
+        // and clearing them on every resting sample also wiped the ramp a slow
+        // tip builds up sample by sample, so that tip never reached the start
+        // threshold and the gravity channel never moved the pointer at all.
+        guard let lastMotionAt else { return }
+        guard now - lastMotionAt >= config.idleReanchor else { return }
         smoothedX = 0
         smoothedY = 0
         pendingX = 0
