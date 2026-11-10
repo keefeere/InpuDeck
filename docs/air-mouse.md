@@ -11,15 +11,19 @@ and the same three mouse buttons keep working.
 | Turn the phone to the side | The cursor travels the same way, at the same speed whatever angle the phone is held at |
 | Tip the phone over its heading | The cursor moves up and down |
 | Hold still | The cursor stops, and a moment later the filters clear themselves |
-| Phone lying flat on a table | The direction the top edge points at steers, instead of a heading the screen cannot have |
+| Tip the phone slowly, without a swing | The cursor still travels: the angle the screen has risen to is read from gravity |
+| Phone lying flat on a table | The direction the screen faces steers, which is the downhill side of it, the bottom edge |
 | **Скинути нахил** | Tracking restarts from nothing where the phone currently is (an icon alone in expert mode) |
-| Click buttons | The same HID buttons as the trackpad, on either transport |
+| Click buttons | The same HID buttons as the trackpad, on either transport, filling the Air mouse field so they sit under the thumb |
 
-Settings → **Air mouse** has separate sensitivity for the two axes, a dead zone
-and per-axis inversion; the sensitivity sliders run from 40 % to 900 % of the
-base gain, and “Where the numbers come from” states what a percentage is worth in
-pointer units per degree, so the slider can be picked from a number rather than
-by feel. **Inversion is on out of the box**: pushing the top edge
+Settings → **Air mouse** has separate sensitivity for the two axes, a slow-movement
+gain, an acceleration gain, a movement threshold, a dead zone and per-axis
+inversion. The sensitivity sliders run from 0 % to 100 % of the base gain, where
+50 % is the gain a hand steers by, and “Where the numbers come from” states what a
+percentage is worth in pointer units per degree, so the slider can be picked from a
+number rather than by feel. A stored setting from the old 40…900 % scale is carried
+across once: 750 % there is 50 % here.
+**Inversion is on out of the box**: pushing the top edge
 of the phone away moves the cursor that way, and the two toggles switch it off
 for a hand that prefers the other convention. The feature is off by default and
 the trackpad stays available while it is on; in expert mode the pad hides its
@@ -67,8 +71,25 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   screen normal points almost straight up, so which way it faces is defined but
   unmeasurable, and noise in the heading is noise in the cursor. Below a
   quarter of its full size the horizontal component of the normal is discarded
-  and the top edge of the phone steers instead. The threshold is applied before
-  normalising, or it could only ever catch a phone lying perfectly flat.
+  and the screen's downhill side steers instead — the edge the screen is tipped
+  toward, so the top edge when the screen faces the ground and the bottom edge
+  when it faces the sky. That is the direction the trusting heading arrives at as
+  the phone comes down to flat, at every roll angle, so the tip axis does not move
+  at the threshold. Taking the top edge in one pose and the screen normal in the
+  other pointed the heading the other way round, and the tip axis turned 180°
+  there, so a phone held almost flat started answering a tip up with a tip down.
+  The threshold is applied before normalising, or it could only ever catch a phone
+  lying perfectly flat.
+- **A slow tip is worth movement, and gravity is what sees it.** The gyroscope
+  reports how fast the phone is turning, so a tip led evenly at 0.17 rad/s is
+  worth as much cursor travel as a fast one, and a start threshold above it
+  reads that tip as rest — the maintainer's report was that leading the phone
+  up slowly moved nothing at all. The angle the screen faces upward is
+  `-gravity.z`, so the change of `asin` of it is the tip in radians, on the
+  same sign the gyroscope axis gives for it. The engine takes whichever of the
+  two sensors saw the larger rate, so a fast tip is not counted twice and a
+  slow one still travels. **“Плавний рух”** scales that channel; at 0 % the
+  axis is gyroscope-only.
 - **Gravity is fused by iOS, not estimated here.** One `CMDeviceMotion` stream
   at 60 Hz carries the fused `gravity` vector and the rotation rate with the
   same timestamp, so the axis pair and the spin belong to one instant. Before
@@ -77,13 +98,31 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   starts from a sensible frame instead of inheriting an angle from the previous
   session. Linear acceleration never reaches the host: carrying the phone across
   the room produces no pointer reports. `AirMouseGravityEstimator` stays for the
-  seed and the offline tests of a filtered gravity path.
+  seed and the offline tests of a filtered gravity path. A gap in the stream
+  longer than one sample is treated as a fresh start, and the angle the tip is
+  measured against is cleared with the rest of the filters, so a pause the phone
+  spent changing hands cannot arrive as one enormous step.
 - **Two thresholds, not one.** A dead zone alone turned the cursor into a crawl
   or let tremor through, and the shipped default is now nothing at all — a held
   hand is quieter than any dead zone needs. The threshold that does the work is
-  the one an axis at rest must exceed to start (`0.3` rad/s); an axis already
-  moving only has to stay above `0.2`, which is what lets a slow deliberate
-  turn stay slow instead of breaking into start/stop steps.
+  the one an axis at rest must exceed to start (`0.12` rad/s); an axis already
+  moving only has to stay above `0.08`. A hand that leads the phone evenly sits
+  around 0.15 rad/s, so it is admitted, while the tremor of a held hand, near
+  0.05 rad/s, is not. **“Поріг руху”** moves that start threshold over
+  0…0.5 rad/s, and the keep threshold follows it at two thirds.
+- **A movement leaves the pointer where the hand left it.** Fused rotation does
+  not stop dead at zero when the hand stops: it tails off through zero and keeps
+  a small opposite reading for a few tenths of a second. Integrating that tail
+  was the maintainer's report that a 30° tip, held, walked the cursor back on its
+  own without the phone moving. A reading counts as that tail, and sends nothing,
+  only when it is opposite in sign to the axis's last movement, under
+  `undershootLimit` = 0.35 rad/s, under `undershootShareOfTurn` = 35 % of how wide
+  that turn was, shrinking rather than growing on the raw sensor, and inside
+  `stopDamping` = 0.25 s of the last movement **of that axis** — a hand still
+  travelling sideways cannot keep a vertical turn back blocked. A turn the hand
+  builds up out of nothing grows from sample to sample, so it is never taken for a
+  tail; a turn that holds one steady speed gives up the quarter second the window
+  covers and walks the pointer from there.
 - **A still phone cleans up after itself.** Movement comes from rotation rate,
   so a tilt that is merely being held has never contributed anything; what a
   still phone can leave behind is residue in the smoother and a fraction of a
@@ -95,24 +134,26 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
 - **Movement is per radian, so sensitivity is a number, not a feel.** The engine
   integrates rotation rate over time, so the cursor travel of a deliberate turn
   is `units per radian × turn angle`. The slider shows a percentage of
-  `basePointerUnitsPerRadianPerSecond = 360`, which is 360 units per radian,
-  about 6.3 units per degree, at 100 %. On a host that maps one pointer unit to
+  `basePointerUnitsPerRadianPerSecond = 5400`, which is 5400 units per radian,
+  about 94 units per degree, at 100 %. On a host that maps one pointer unit to
   one pixel, crossing a 2560 px screen width costs this much phone rotation:
 
   | Sensitivity | Units per radian | Units per degree | Rotation to cross 2560 px |
   | --- | --- | --- | --- |
-  | 100 % | 360 | 6.3 | 408° |
-  | 220 % (default) | 792 | 13.8 | 185° |
-  | 400 % | 1 440 | 25.1 | 102° |
-  | 600 % | 2 160 | 37.7 | 68° |
-  | 900 % (slider top) | 3 240 | 56.7 | 45° |
+  | 100 % (slider top) | 5 400 | 94.3 | 27° |
+  | 50 % (default) | 2 700 | 47.1 | 54° |
+  | 25 % | 1 350 | 23.6 | 109° |
+  | 10 % | 540 | 9.4 | 272° |
 
-  The host's own pointer acceleration multiplies this: KDE/Plasma profiles and
-  per-device `kcminputrc` entries are outside the app, so measure one known
-  rotation on the real screen before trusting the table. A fast swing also gets
-  the acceleration gain — up to `1 + acceleration` = 1.8× once the turn reaches
-  `accelerationReference` = 2 rad/s — which is what is meant to cross a screen
-  with a flick instead of a walk.
+  The maintainer's 750 % on the old scale is this 50 %: the base gain grew
+  fifteenfold so the setting a hand actually steers by sits in the middle of
+  the slider. The host's own pointer acceleration multiplies this: KDE/Plasma
+  profiles and per-device `kcminputrc` entries are outside the app, so measure
+  one known rotation on the real screen before trusting the table. A fast swing
+  also gets the acceleration gain — up to `1 + acceleration` = 1.8× once the
+  turn reaches `accelerationReference` = 2 rad/s, **“Прискорення”** over
+  0…100 % of `maximumAcceleration` = 2.0 — which is what is meant to cross a
+  screen with a flick instead of a walk.
 - **Reports are split.** A report descriptor carries one signed byte per axis,
   so a fast flick leaves as several reports in the same sample and the host's
   own pointer acceleration cannot be used as an escape hatch.
@@ -126,10 +167,19 @@ kept "running" in the background would be a lie.
 Unit coverage for the engine is in `Tests/AirMouseEngineTests.swift`: the
 pointer frame following gravity rather than the phone, a sideways turn being
 worth the same at every roll angle, a tip staying a tip, the flat-table
-fallback and the threshold that triggers it, tremor rejection and the
-start/reengage pair, the fractional carry, report splitting and the signed-byte
-clamp, smoothing convergence, acceleration gain, separate axis sensitivity,
-the idle re-anchor, the activation hold, re-centring and gravity estimation.
+fallback and the tip axis staying the same across the threshold that triggers it
+for both signs of `gravity.y` and both sides of the screen, tremor rejection and
+the start/reengage pair, the fractional
+carry, report splitting and the signed-byte clamp, smoothing convergence,
+acceleration gain, separate axis sensitivity, the shipped gains the table above
+prints, an even tip moving the pointer through gravity while the gyroscope
+alone sends nothing, the gravity tip arriving on the same sign as the gyroscope
+tip, the settling tail after a stop staying out of the pointer and walking it
+back when the damping is off, a deliberate turn back moving inside that window, a
+steady slow turn back arriving once the window is behind it, a turn built up out
+of nothing moving at once, and sideways travel not keeping a vertical turn back
+blocked, the idle re-anchor, the activation hold, re-centring and gravity
+estimation.
 
 Physical-device behaviour — the permission prompt, real hand tremor, the feel
 of the two gains, a phone in a pocket, Bluetooth latency — is not covered by

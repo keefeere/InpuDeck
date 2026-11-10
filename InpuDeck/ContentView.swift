@@ -23,11 +23,23 @@ struct ContentView: View {
     @AppStorage("keyboardPointerSwipe") private var keyboardPointerSwipe = false
     @AppStorage("airMouseEnabled") private var airMouseEnabled = false
     @AppStorage("pointerSurface") private var pointerSurfaceRawValue = PointerSurface.trackpad.rawValue
+    // The sensitivity sliders read 0…100 % of the pointer gain, where 100 % is
+    // `basePointerUnitsPerRadianPerSecond`. The scale used to run 40…900 % of a
+    // gain fifteen times smaller, so this flag carries stored values across once
+    // and 750 % on the old scale lands on the 50 % the hand steers by.
+    @AppStorage("airMouseSensitivityScaleV2") private var airMouseSensitivityScaleV2 = false
     // Two sensitivities, because the sideways turn and the tip are not the same
     // movement of the same limb: the forearm swings wide, the wrist does not.
-    @AppStorage("airMouseHorizontalSensitivityPercent") private var airMouseHorizontalSensitivityPercent = 220.0
-    @AppStorage("airMouseVerticalSensitivityPercent") private var airMouseVerticalSensitivityPercent = 220.0
+    @AppStorage("airMouseHorizontalSensitivityPercent") private var airMouseHorizontalSensitivityPercent = 50.0
+    @AppStorage("airMouseVerticalSensitivityPercent") private var airMouseVerticalSensitivityPercent = 50.0
     @AppStorage("airMouseDeadZonePercent") private var airMouseDeadZonePercent = 0.0
+    /// How much of a tip that gravity can see, but the gyroscope only sees while
+    /// it is moving fast, counts as movement — as a share of the axis gain.
+    @AppStorage("airMouseSlowMotionPercent") private var airMouseSlowMotionPercent = 100.0
+    /// The extra travel a fast swing gets, as a share of the widest bonus.
+    @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
+    /// Rotation rate a still axis has to exceed before the pointer moves at all.
+    @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
     // Inverted out of the box: pushing the top edge of the phone away is what
     // most people mean by "look over there", and it is easier to switch off than
     // to find.
@@ -76,6 +88,9 @@ struct ContentView: View {
         }
         .onChange(of: airMouseConfig) { _, config in
             airMouse.updateConfig(config)
+        }
+        .onAppear {
+            migrateAirMouseSensitivityScale()
         }
         .onChange(of: ble.isReady) { _, isReady in
             if isReady {
@@ -145,7 +160,11 @@ struct ContentView: View {
                 VStack(spacing: 12) {
                     typingCard
                     trackpadCard
-                    mouseButtons
+                    // The Air mouse carries its own click buttons inside the
+                    // pointing surface, so the shared row is only for the trackpad.
+                    if pointerSurface != .airMouse {
+                        mouseButtons
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -462,7 +481,15 @@ struct ContentView: View {
             }
 
             if pointerSurface == .airMouse {
-                AirMousePadView(pointer: airMouse, isReady: ble.isReady, expertMode: expertMode)
+                AirMousePadView(
+                    pointer: airMouse,
+                    isReady: ble.isReady,
+                    expertMode: expertMode,
+                    onPressLeft: { ble.sendMouseButtonDown(button: 1) },
+                    onReleaseLeft: { ble.sendMouseButtonUp(button: 1) },
+                    onPressRight: { ble.sendMouseButtonDown(button: 2) },
+                    onReleaseRight: { ble.sendMouseButtonUp(button: 2) }
+                )
                     .frame(height: 250)
                     .background(
                         LinearGradient(
@@ -510,7 +537,7 @@ struct ContentView: View {
 
             if !expertMode {
                 Text(pointerSurface == .airMouse
-                    ? localized("Курсор іде за обертанням телефона відносно світу: повертаєш вправо — вправо, нахиляєш вгору — вгору. Кнопки кліка — під цим полем.")
+                    ? localized("Курсор іде за обертанням телефона відносно світу: повертаєш вправо — вправо, нахиляєш вгору — вгору. Кнопки кліка — у цьому ж полі, під великим пальцем.")
                     : localized("Подвійний тап + утримання другого дотику — drag. Вертикальний рух уздовж правої грані — edge scroll."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -853,7 +880,7 @@ struct ContentView: View {
                                 Text("\(Int(airMouseHorizontalSensitivityPercent.rounded()))%")
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $airMouseHorizontalSensitivityPercent, in: 40...900, step: 10)
+                            Slider(value: $airMouseHorizontalSensitivityPercent, in: 0...100, step: 1)
                                 .accessibilityIdentifier("settingsAirMouseSensitivityX")
                         }
 
@@ -862,8 +889,35 @@ struct ContentView: View {
                                 Text("\(Int(airMouseVerticalSensitivityPercent.rounded()))%")
                                     .foregroundStyle(.secondary)
                             }
-                            Slider(value: $airMouseVerticalSensitivityPercent, in: 40...900, step: 10)
+                            Slider(value: $airMouseVerticalSensitivityPercent, in: 0...100, step: 1)
                                 .accessibilityIdentifier("settingsAirMouseSensitivityY")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Плавний рух") {
+                                Text("\(Int(airMouseSlowMotionPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseSlowMotionPercent, in: 0...100, step: 5)
+                                .accessibilityIdentifier("settingsAirMouseSlowMotion")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Прискорення") {
+                                Text("\(Int(airMouseAccelerationPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseAccelerationPercent, in: 0...100, step: 5)
+                                .accessibilityIdentifier("settingsAirMouseAcceleration")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            LabeledContent("Поріг руху") {
+                                Text("\(Int(airMouseMovementThresholdPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $airMouseMovementThresholdPercent, in: 0...100, step: 5)
+                                .accessibilityIdentifier("settingsAirMouseMovementThreshold")
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -880,7 +934,7 @@ struct ContentView: View {
                     }
 
                     if !expertMode {
-                        Text("Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
+                        Text("Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Повільний, рівний нахил рахується з напрямку сили тяжіння, бо гіроскоп бачить лише швидкість нахилу; «Плавний рух» керує тим каналом, «Прискорення» додає ходу різким змахуванням, а «Поріг руху» визначає, наскільки бодрим має бути рух, щоб курсор взагалі зрушився. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -990,10 +1044,39 @@ struct ContentView: View {
         config.horizontalUnitsPerRadianPerSecond = base * (airMouseHorizontalSensitivityPercent / 100)
         config.verticalUnitsPerRadianPerSecond = base * (airMouseVerticalSensitivityPercent / 100)
         config.deadZone = AirMouseEngine.Config.maximumDeadZone * (airMouseDeadZonePercent / 100)
+        config.gravityElevation = airMouseSlowMotionPercent / 100
+        config.acceleration = AirMouseEngine.Config.maximumAcceleration * (airMouseAccelerationPercent / 100)
+        config.minimumTurn = AirMouseEngine.Config.maximumStartThreshold * (airMouseMovementThresholdPercent / 100)
+        config.reengage = config.minimumTurn * 2 / 3
         config.invertX = airMouseInvertX
         config.invertY = airMouseInvertY
         return config
     }
+
+    /// Carry the old 40…900 % sensitivity scale over to the 0…100 % one. The gain
+    /// behind 100 % grew fifteenfold, so a stored 750 % becomes the 50 % the hand
+    /// steers by and a stored 220 % becomes 15 %. A key that was never written is
+    /// left alone: on a fresh install the stored value is the new default, and
+    /// dividing that would ship the pointer at a thirtieth of the documented gain.
+    private func migrateAirMouseSensitivityScale() {
+        guard !airMouseSensitivityScaleV2 else { return }
+        for key in Self.legacySensitivityKeys {
+            guard UserDefaults.standard.object(forKey: key) != nil else { continue }
+            let carried = min(max(UserDefaults.standard.double(forKey: key) / 15, 0), 100)
+            UserDefaults.standard.set(carried, forKey: key)
+            if key == Self.legacySensitivityKeys[0] {
+                airMouseHorizontalSensitivityPercent = carried
+            } else {
+                airMouseVerticalSensitivityPercent = carried
+            }
+        }
+        airMouseSensitivityScaleV2 = true
+    }
+
+    private static let legacySensitivityKeys = [
+        "airMouseHorizontalSensitivityPercent",
+        "airMouseVerticalSensitivityPercent",
+    ]
 
     /// Run the gyroscope exactly while the Air mouse is the surface on screen.
     /// Leaving the surface also drops held buttons: the surface the user lands on
