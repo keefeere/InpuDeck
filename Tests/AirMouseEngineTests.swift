@@ -27,6 +27,9 @@ struct AirMouseEngineTests {
         documentedHalfGainWalksTheScreen()
         evenTipMovesThePointerThroughGravity()
         gravityTipCarriesTheGyroSign()
+        settlingTailAfterAStopDoesNotWalkThePointerBack()
+        withoutDampingTheSettlingTailWalksBack()
+        deliberateReverseTurnIsNotTreatedAsTheTail()
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
@@ -325,6 +328,61 @@ struct AirMouseEngineTests {
 
     private static func elevationAngle(of frame: AirMousePointerFrame) -> Double {
         asin(min(max(-frame.horizontalAxis.normalized.z, -1), 1))
+    }
+
+    /// A tip the hand stops: the pointer has to stay where the gesture left it.
+    private static func settlingTailSink() -> Sink {
+        let sink = Sink { config in
+            config.acceleration = 0
+            config.gravityElevation = 0
+        }
+        sink.begin()
+        // Half a second of tip at 1 rad/s: 29 samples of 45 units at the default
+        // half gain.
+        sink.feedVertical(1.0, samples: 30)
+        return sink
+    }
+
+    private static func settlingTailAfterAStopDoesNotWalkThePointerBack() {
+        // The field report: tip the phone up, hold it there, and the pointer
+        // walked back on its own, without the phone moving. Fused rotation does
+        // not stop dead at zero; it tails off through zero and keeps a negative
+        // reading for a third of a second, and integrating that tail is what
+        // walked the pointer back.
+        let sink = settlingTailSink()
+        let travelled = sink.totals.y
+        expect(travelled < -1000, "half a second of tip has to walk the pointer: \(travelled)")
+        sink.clear()
+        sink.feedVertical(-0.3, samples: 20)
+        expect(Double(abs(sink.totals.y)) <= Double(abs(travelled)) * 0.05,
+               "the settling tail walked the pointer back: \(sink.totals.y) of \(travelled)")
+    }
+
+    private static func withoutDampingTheSettlingTailWalksBack() {
+        // The same feed with the damping off is the behaviour that was reported,
+        // so the guard has to be what changes it.
+        let sink = Sink { config in
+            config.acceleration = 0
+            config.gravityElevation = 0
+            config.stopDamping = 0
+        }
+        sink.begin()
+        sink.feedVertical(1.0, samples: 30)
+        let travelled = sink.totals.y
+        sink.clear()
+        sink.feedVertical(-0.3, samples: 20)
+        expect(sink.totals.y > 100,
+               "with the damping off the same tail walks the pointer back: \(sink.totals.y) of \(travelled)")
+    }
+
+    private static func deliberateReverseTurnIsNotTreatedAsTheTail() {
+        let sink = settlingTailSink()
+        sink.clear()
+        sink.feedVertical(-1.2, samples: 12)
+        // The tip walked the pointer up (negative HID y), so a turn back has to
+        // arrive as a large positive movement on the very next samples.
+        expect(sink.totals.y > 300,
+               "a turn back at 1.2 rad/s has to move the pointer, not be damped: \(sink.totals.y)")
     }
 
     private static func movementSurvivesTheFractionalRemainder() {

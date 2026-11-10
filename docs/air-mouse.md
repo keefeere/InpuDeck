@@ -105,6 +105,15 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   around 0.15 rad/s, so it is admitted, while the tremor of a held hand, near
   0.05 rad/s, is not. **“Поріг руху”** moves that start threshold over
   0…0.5 rad/s, and the keep threshold follows it at two thirds.
+- **A movement leaves the pointer where the hand left it.** Fused rotation does
+  not stop dead at zero when the hand stops: it tails off through zero and keeps
+  a small opposite reading for a few tenths of a second. Integrating that tail
+  was the maintainer's report that a 30° tip, held, walked the cursor back on its
+  own without the phone moving. For `stopDamping` = 0.35 s after a movement, an
+  opposite-sign reading under `undershootLimit` = 0.35 rad/s is treated as the
+  sensor settling on the attitude the hand already put there, not as a turn, so
+  it sends nothing. A turn that really goes back is far above that and moves the
+  pointer on the sample after it.
 - **A still phone cleans up after itself.** Movement comes from rotation rate,
   so a tilt that is merely being held has never contributed anything; what a
   still phone can leave behind is residue in the smoother and a fraction of a
@@ -155,7 +164,9 @@ carry, report splitting and the signed-byte clamp, smoothing convergence,
 acceleration gain, separate axis sensitivity, the shipped gains the table above
 prints, an even tip moving the pointer through gravity while the gyroscope
 alone sends nothing, the gravity tip arriving on the same sign as the gyroscope
-tip, the idle re-anchor, the activation hold, re-centring and gravity
+tip, the settling tail after a stop staying out of the pointer and walking it
+back when the damping is off, a deliberate turn back moving inside that window,
+the idle re-anchor, the activation hold, re-centring and gravity
 estimation.
 
 Physical-device behaviour — the permission prompt, real hand tremor, the feel

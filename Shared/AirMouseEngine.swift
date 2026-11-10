@@ -159,6 +159,17 @@ final class AirMouseEngine {
         /// How long the phone may sit still before the filters are quietly
         /// cleared, so the next deliberate turn starts from nothing.
         var idleReanchor: TimeInterval = 0.8
+        /// How long a movement's undershoot is absorbed after it stops. Fused
+        /// motion reports a movement, and when the hand stops the report tails off
+        /// through zero, often past it: that negative tail is the sensor settling,
+        /// not the hand going back, and integrating it walked the cursor back to
+        /// where it started without the phone moving. A turn that deliberately
+        /// reverses is far above `undershootLimit`, so it moves right away.
+        var stopDamping: TimeInterval = 0.35
+        /// Rotation rate an opposite-sign reading has to stay under to count as
+        /// that settling tail rather than a reverse turn. A deliberate turn back
+        /// is far above it and moves the pointer on the next sample.
+        var undershootLimit = 0.35
         /// Horizontal size of the screen normal below which the heading the phone
         /// points at is not knowable, for example with the phone lying flat on a
         /// table. Near vertical the direction is defined but noisy, and noise in
@@ -192,6 +203,10 @@ final class AirMouseEngine {
     /// The screen-facing component of gravity on the previous sample, which is
     /// what turns a tip into the angle it has reached.
     private var lastElevation: Double?
+    /// The direction of each axis's last movement, so the tail a stopped
+    /// movement leaves behind can be told from a hand that turns back.
+    private var lastSignX = 0.0
+    private var lastSignY = 0.0
 
     init(config: Config = Config()) {
         self.config = config
@@ -209,6 +224,8 @@ final class AirMouseEngine {
         lastSampleAt = nil
         lastMotionAt = nil
         lastElevation = nil
+        lastSignX = 0
+        lastSignY = 0
         let hold = max(0, config.activationHold)
         holdUntil = hold > 0 ? now + hold : nil
         isHolding = hold > 0
@@ -229,6 +246,8 @@ final class AirMouseEngine {
         lastSampleAt = nil
         lastMotionAt = nil
         lastElevation = nil
+        lastSignX = 0
+        lastSignY = 0
         holdUntil = nil
     }
 
@@ -283,17 +302,27 @@ final class AirMouseEngine {
             wasMoving: isMovingX,
             deadZone: config.deadZone,
             minimumTurn: config.minimumTurn,
-            reengage: config.reengage
+            reengage: config.reengage,
+            lastSign: lastSignX,
+            secondsSinceMotion: lastMotionAt.map { now - $0 } ?? .infinity,
+            stopDamping: config.stopDamping,
+            undershootLimit: config.undershootLimit
         )
         let (thresholdY, nextY) = Self.absorbed(
             smoothedY,
             wasMoving: isMovingY,
             deadZone: config.deadZone,
             minimumTurn: config.minimumTurn,
-            reengage: config.reengage
+            reengage: config.reengage,
+            lastSign: lastSignY,
+            secondsSinceMotion: lastMotionAt.map { now - $0 } ?? .infinity,
+            stopDamping: config.stopDamping,
+            undershootLimit: config.undershootLimit
         )
         isMovingX = nextX
         isMovingY = nextY
+        if thresholdX != 0 { lastSignX = thresholdX }
+        if thresholdY != 0 { lastSignY = thresholdY }
 
         if thresholdX == 0, thresholdY == 0 {
             reanchorIfIdle(now: now)
@@ -415,9 +444,22 @@ final class AirMouseEngine {
         wasMoving: Bool,
         deadZone: Double,
         minimumTurn: Double,
-        reengage: Double
+        reengage: Double,
+        lastSign: Double,
+        secondsSinceMotion: TimeInterval,
+        stopDamping: TimeInterval,
+        undershootLimit: Double
     ) -> (movement: Double, isMoving: Bool) {
         let magnitude = abs(value)
+        // A movement's own undershoot: opposite in sign, small, and arriving
+        // right after the movement. Fused rotation does not stop dead at zero, it
+        // tails off through it and often past it, and integrating that tail walked
+        // the pointer back to where it started with the phone held still. A turn
+        // that really goes back is far above the limit, so it is not caught here.
+        if stopDamping > 0, lastSign != 0, value * lastSign < 0,
+            magnitude <= undershootLimit, secondsSinceMotion < stopDamping {
+            return (0, false)
+        }
         let reengageThreshold = max(reengage, deadZone)
         let turnThreshold = max(minimumTurn, reengageThreshold)
         if wasMoving {
