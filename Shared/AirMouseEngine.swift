@@ -200,6 +200,16 @@ final class AirMouseEngine {
     private var lastMotionAt: TimeInterval?
     private var holdUntil: TimeInterval?
     private var isRunning = false
+    /// Which device edge points downhill, the side the screen is tipped toward.
+    /// `-gravity.y * sign(gravity.z)` is the limit the trusting heading lands on
+    /// as the phone comes down to flat, so the axis is continuous across the
+    /// threshold for every roll angle. Exactly screen-up and exactly screen-down
+    /// have no downhill edge to speak of, and take the flat-table convention.
+    static func downhillEdgeSign(of gravity: AirMouseVector3) -> Double {
+        if abs(gravity.y) < 1e-9 { return gravity.z < 0 ? -1 : 1 }
+        return gravity.y * gravity.z < 0 ? 1 : -1
+    }
+
     /// The screen-facing component of gravity on the previous sample, which is
     /// what turns a tip into the angle it has reached.
     private var lastElevation: Double?
@@ -260,6 +270,7 @@ final class AirMouseEngine {
 
         if let holdUntil, now < holdUntil {
             lastSampleAt = nil
+            lastElevation = nil
             return
         }
         holdUntil = nil
@@ -273,10 +284,18 @@ final class AirMouseEngine {
         // suspended; treat it as a fresh start rather than one huge step.
         let dt = now - previous
         lastSampleAt = now
-        guard dt > 0 else { return }
+        guard dt > 0 else {
+            lastElevation = nil
+            return
+        }
         guard dt <= Self.maximumSampleInterval else {
             pendingX = 0
             pendingY = 0
+            // A pause is not a step, so the angle the tip is measured against has
+            // to be the one from the resumed stream. Leaving it behind would divide
+            // every degree the phone moved while suspended by one sample interval
+            // and throw the cursor across the screen at the first sample back.
+            lastElevation = nil
             return
         }
 
@@ -414,18 +433,20 @@ final class AirMouseEngine {
         // either one or zero and the guard could only ever catch a phone lying
         // perfectly flat.
         let horizontalNormal = normal - down * normal.dot(down)
-        let deviceUp = AirMouseVector3(x: 0, y: 1, z: 0)
         let heading: AirMouseVector3
         if horizontalNormal.length >= max(0, minimumHorizontalNormal) {
             heading = horizontalNormal.normalized
         } else {
-            // Near flat the screen faces the sky, and the direction it faces is
-            // the ground side of the screen, which is the *bottom* edge: taking
-            // the top edge instead pointed the heading the other way and flipped
-            // the vertical axis at the threshold, so a tip up began arriving as a
-            // tip down for a phone held almost flat.
-            let deviceDown = AirMouseVector3(x: 0, y: -1, z: 0)
-            heading = (deviceDown - down * deviceDown.dot(down)).normalized
+            // Near flat the screen faces the sky or the ground, and the direction
+            // it faces is the edge it is tipped toward: the top edge when the
+            // screen is facing the ground, the bottom edge when it faces the sky.
+            // That is the edge the trusting branch arrives at as the phone comes
+            // down to flat, so the tip axis does not move at the threshold; taking
+            // the bottom edge in both poses pointed the heading the other way for
+            // a phone tipped over its top edge, and a tip up began arriving as a
+            // tip down there.
+            let downhill = AirMouseVector3(x: 0, y: Self.downhillEdgeSign(of: down), z: 0)
+            heading = (downhill - down * downhill.dot(down)).normalized
         }
         guard heading.length > 1e-9 else { return .flatOnTable }
 

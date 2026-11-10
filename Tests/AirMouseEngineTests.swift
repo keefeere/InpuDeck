@@ -136,26 +136,64 @@ struct AirMouseEngineTests {
         // matters is that giving it up does not move the tip axis: when the
         // heading came from the top edge, the axis jumped 180 degrees at the
         // threshold and the same gesture started arriving as its own opposite.
-        var axis: AirMouseVector3? = nil
-        for degrees in stride(from: 0.0, through: 40.0, by: 1.0) {
-            let flatness = degrees * Double.pi / 180
-            let gravity = AirMouseVector3(y: -sin(flatness), z: -cos(flatness))
-            let frame = AirMouseEngine.pointerFrame(fromGravity: gravity)
-            if let axis, (frame.verticalAxis - axis).length > 0.02 {
-                preconditionFailure(
-                    "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} of flatness"
+        // Both ways round the phone are swept, because the edge the screen is
+        // tipped toward is the other one on the far side of the roll.
+        for family in [-1.0, 1.0] {
+            var axis: AirMouseVector3? = nil
+            for degrees in stride(from: 1.0, through: 40.0, by: 1.0) {
+                let flatness = degrees * Double.pi / 180
+                let gravity = AirMouseVector3(
+                    y: family * sin(flatness),
+                    z: -cos(flatness)
                 )
+                let frame = AirMouseEngine.pointerFrame(fromGravity: gravity)
+                if let axis, (frame.verticalAxis - axis).length > 0.02 {
+                    preconditionFailure(
+                        "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} of flatness with gravity.y at \(family >= 0 ? "plus" : "minus")"
+                    )
+                }
+                axis = frame.verticalAxis
             }
-            axis = frame.verticalAxis
+            // Trusting the heading right through the flat range lands on the same
+            // axis, which is the claim the guard exists to keep.
+            let flatness = 10 * Double.pi / 180
+            let gravity = AirMouseVector3(y: family * sin(flatness), z: -cos(flatness))
+            let guarded = AirMouseEngine.pointerFrame(fromGravity: gravity)
+            let trusting = AirMouseEngine.pointerFrame(fromGravity: gravity, minimumHorizontalNormal: 0.05)
+            expect((guarded.verticalAxis - trusting.verticalAxis).length < 0.02,
+                   "and the guarded answer is the steady answer, not a flipped one")
+            // Exactly screen-up has no downhill edge to speak of, so it takes the
+            // screen-facing-the-sky side, the one a hand holding the phone upright
+            // comes down through.
+            if family < 0 {
+                let flat = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: -1))
+                expect((flat.verticalAxis - axis!).length < 0.02,
+                       "and the exactly flat frame continues the upright-hold side")
+            }
         }
-        // Trusting the heading right through the flat range lands on the same
-        // axis, which is the claim the guard exists to keep.
-        let flatness = 10 * Double.pi / 180
-        let gravity = AirMouseVector3(y: -sin(flatness), z: -cos(flatness))
-        let guarded = AirMouseEngine.pointerFrame(fromGravity: gravity)
-        let trusting = AirMouseEngine.pointerFrame(fromGravity: gravity, minimumHorizontalNormal: 0.05)
-        expect((guarded.verticalAxis - trusting.verticalAxis).length < 0.02,
-               "and the guarded answer is the steady answer, not a flipped one")
+        // The screen facing the ground, tipped over the top edge and over the
+        // bottom edge, keeps its own axis across the same threshold.
+        for family in [-1.0, 1.0] {
+            var axis: AirMouseVector3? = nil
+            for degrees in stride(from: 1.0, through: 40.0, by: 1.0) {
+                let flatness = degrees * Double.pi / 180
+                let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+                    y: family * sin(flatness),
+                    z: cos(flatness)
+                ))
+                if let axis, (frame.verticalAxis - axis).length > 0.02 {
+                    preconditionFailure(
+                        "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} off a screen facing the ground with gravity.y at \(family >= 0 ? "plus" : "minus")"
+                    )
+                }
+                axis = frame.verticalAxis
+            }
+            if family < 0 {
+                let flat = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: 1))
+                expect((flat.verticalAxis - axis!).length < 0.02,
+                       "and the exactly screen-down frame continues the side it is tipped toward")
+            }
+        }
     }
 
     // MARK: - Rate to deltas
@@ -182,6 +220,12 @@ struct AirMouseEngineTests {
         sink.clear()
         sink.feedVertical(0.25, samples: 40)
         expect(!sink.reports.isEmpty, "a moving axis keeps moving below the start threshold")
+        sink.clear()
+        sink.feedVertical(0.04, samples: 4)
+        // The smoother is still carrying the turn for a sample or two, so the axis
+        // stops with a short, bounded tail rather than crawling on.
+        let stopping = sink.totals.y
+        expect(abs(stopping) <= 20, "the stopping tail is bounded: \(stopping)")
         sink.clear()
         sink.feedVertical(0.04, samples: 60)
         expect(sink.reports.isEmpty, "and it stops when the phone truly rests")
@@ -295,7 +339,8 @@ struct AirMouseEngineTests {
 
         var quiet: [(dx: Int8, dy: Int8)] = []
         var gyroscopeOnly = AirMouseEngine.Config()
-        gyroscopeOnly.gravityElevation = 0        let control = AirMouseEngine(config: gyroscopeOnly)
+        gyroscopeOnly.gravityElevation = 0
+        let control = AirMouseEngine(config: gyroscopeOnly)
         control.onPointerMove = { dx, dy in quiet.append((dx, dy)) }
         control.begin(now: 0)
         tip(control)

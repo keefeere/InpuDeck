@@ -1055,13 +1055,28 @@ struct ContentView: View {
 
     /// Carry the old 40…900 % sensitivity scale over to the 0…100 % one. The gain
     /// behind 100 % grew fifteenfold, so a stored 750 % becomes the 50 % the hand
-    /// steers by, and a stored 220 % becomes 15 %.
+    /// steers by and a stored 220 % becomes 15 %. A key that was never written is
+    /// left alone: on a fresh install the stored value is the new default, and
+    /// dividing that would ship the pointer at a thirtieth of the documented gain.
     private func migrateAirMouseSensitivityScale() {
         guard !airMouseSensitivityScaleV2 else { return }
-        airMouseHorizontalSensitivityPercent = min(max(airMouseHorizontalSensitivityPercent / 15, 0), 100)
-        airMouseVerticalSensitivityPercent = min(max(airMouseVerticalSensitivityPercent / 15, 0), 100)
+        for key in Self.legacySensitivityKeys {
+            guard UserDefaults.standard.object(forKey: key) != nil else { continue }
+            let carried = min(max(UserDefaults.standard.double(forKey: key) / 15, 0), 100)
+            UserDefaults.standard.set(carried, forKey: key)
+            if key == Self.legacySensitivityKeys[0] {
+                airMouseHorizontalSensitivityPercent = carried
+            } else {
+                airMouseVerticalSensitivityPercent = carried
+            }
+        }
         airMouseSensitivityScaleV2 = true
     }
+
+    private static let legacySensitivityKeys = [
+        "airMouseHorizontalSensitivityPercent",
+        "airMouseVerticalSensitivityPercent",
+    ]
 
     /// Run the gyroscope exactly while the Air mouse is the surface on screen.
     /// Leaving the surface also drops held buttons: the surface the user lands on

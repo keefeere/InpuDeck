@@ -71,13 +71,15 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   screen normal points almost straight up, so which way it faces is defined but
   unmeasurable, and noise in the heading is noise in the cursor. Below a
   quarter of its full size the horizontal component of the normal is discarded
-  and the screen's downhill side steers instead — the direction the bottom edge
-  points, which is the same direction a screen facing slightly upward faces.
-  Taking the *top* edge there pointed the heading the other way round, and the
-  tip axis turned 180° at the threshold, so a phone held almost flat started
-  answering a tip up with a tip down. The threshold is applied before
-  normalising, or it could only ever catch a phone lying perfectly flat, and
-  the axis is the same on both sides of it.
+  and the screen's downhill side steers instead — the edge the screen is tipped
+  toward, so the top edge when the screen faces the ground and the bottom edge
+  when it faces the sky. That is the direction the trusting heading arrives at as
+  the phone comes down to flat, at every roll angle, so the tip axis does not move
+  at the threshold. Taking the top edge in one pose and the screen normal in the
+  other pointed the heading the other way round, and the tip axis turned 180°
+  there, so a phone held almost flat started answering a tip up with a tip down.
+  The threshold is applied before normalising, or it could only ever catch a phone
+  lying perfectly flat.
 - **A slow tip is worth movement, and gravity is what sees it.** The gyroscope
   reports how fast the phone is turning, so a tip led evenly at 0.17 rad/s is
   worth as much cursor travel as a fast one, and a start threshold above it
@@ -96,7 +98,10 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   starts from a sensible frame instead of inheriting an angle from the previous
   session. Linear acceleration never reaches the host: carrying the phone across
   the room produces no pointer reports. `AirMouseGravityEstimator` stays for the
-  seed and the offline tests of a filtered gravity path.
+  seed and the offline tests of a filtered gravity path. A gap in the stream
+  longer than one sample is treated as a fresh start, and the angle the tip is
+  measured against is cleared with the rest of the filters, so a pause the phone
+  spent changing hands cannot arrive as one enormous step.
 - **Two thresholds, not one.** A dead zone alone turned the cursor into a crawl
   or let tremor through, and the shipped default is now nothing at all — a held
   hand is quieter than any dead zone needs. The threshold that does the work is
@@ -158,8 +163,9 @@ kept "running" in the background would be a lie.
 Unit coverage for the engine is in `Tests/AirMouseEngineTests.swift`: the
 pointer frame following gravity rather than the phone, a sideways turn being
 worth the same at every roll angle, a tip staying a tip, the flat-table
-fallback and the tip axis staying the same sign across the threshold that
-triggers it, tremor rejection and the start/reengage pair, the fractional
+fallback and the tip axis staying the same across the threshold that triggers it
+for both signs of `gravity.y` and both sides of the screen, tremor rejection and
+the start/reengage pair, the fractional
 carry, report splitting and the signed-byte clamp, smoothing convergence,
 acceleration gain, separate axis sensitivity, the shipped gains the table above
 prints, an even tip moving the pointer through gravity while the gyroscope
