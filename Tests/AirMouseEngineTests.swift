@@ -19,11 +19,14 @@ struct AirMouseEngineTests {
         pointerFrameFollowsTheWorld()
         turningSidewaysIsPureHorizontalAtEveryRoll()
         tippingOverTheHeadingLiftsThePointer()
-        flatPhonePointsWhereTheTopEdgePoints()
-        headingIsGivenUpWhenThePhoneLiesFlat()
+        flatPhonePointsWhereTheScreenFacesDownhill()
+        tipAxisStaysAcrossTheFlatThreshold()
         restAbsorbsTremorAndHoldsStillness()
         axesHaveSeparateSensitivity()
-        defaultSensitivityMatchesTheDocumentedTravel()
+        defaultsMatchTheVirtualHalfGain()
+        documentedHalfGainWalksTheScreen()
+        evenTipMovesThePointerThroughGravity()
+        gravityTipCarriesTheGyroSign()
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
@@ -110,32 +113,46 @@ struct AirMouseEngineTests {
         }
     }
 
-    private static func flatPhonePointsWhereTheTopEdgePoints() {
-        // Screen up on a table: the heading the screen faces is undefined, so the
-        // direction the top edge points at stands in for it.
+    private static func flatPhonePointsWhereTheScreenFacesDownhill() {
+        // Screen up on a table: the screen faces the sky, so the direction it
+        // faces is the ground side of the screen, the bottom edge. The tip axis
+        // is then the axis across that, which is the screen's own right edge.
         let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: -1))
         expect(near(frame.horizontalAxis.z, -1) && near(frame.horizontalAxis.y, 0),
                "the horizontal axis is still the world's vertical")
-        expect(near(frame.verticalAxis.x, -1) && near(frame.verticalAxis.dot(deviceUp), 0, 1e-9),
-               "the vertical axis tips over the top edge, not over a noise-driven heading")
+        expect(near(frame.verticalAxis.x, 1) && near(frame.verticalAxis.dot(deviceUp), 0, 1e-9),
+               "the vertical axis tips over the downhill side, not over the top edge")
         expect(near(frame.verticalAxis.length, 1) && near(frame.horizontalAxis.length, 1),
                "the fallback frame stays a unit basis")
     }
 
-    private static func headingIsGivenUpWhenThePhoneLiesFlat() {
+    private static func tipAxisStaysAcrossTheFlatThreshold() {
         // A phone lying almost flat: the screen normal is almost the world's
-        // vertical, so which way it faces is mathematically defined and practically
-        // noise, and noise in the heading is noise in the cursor. The threshold
-        // gives the heading up early and takes the top edge instead.
+        // vertical, so which way it faces is mathematically defined and
+        // practically noise, and the frame gives the heading up there. What
+        // matters is that giving it up does not move the tip axis: when the
+        // heading came from the top edge, the axis jumped 180 degrees at the
+        // threshold and the same gesture started arriving as its own opposite.
+        var axis: AirMouseVector3? = nil
+        for degrees in stride(from: 0.0, through: 40.0, by: 1.0) {
+            let flatness = degrees * Double.pi / 180
+            let gravity = AirMouseVector3(y: -sin(flatness), z: -cos(flatness))
+            let frame = AirMouseEngine.pointerFrame(fromGravity: gravity)
+            if let axis, (frame.verticalAxis - axis).length > 0.02 {
+                preconditionFailure(
+                    "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} of flatness"
+                )
+            }
+            axis = frame.verticalAxis
+        }
+        // Trusting the heading right through the flat range lands on the same
+        // axis, which is the claim the guard exists to keep.
         let flatness = 10 * Double.pi / 180
         let gravity = AirMouseVector3(y: -sin(flatness), z: -cos(flatness))
         let guarded = AirMouseEngine.pointerFrame(fromGravity: gravity)
         let trusting = AirMouseEngine.pointerFrame(fromGravity: gravity, minimumHorizontalNormal: 0.05)
-
-        expect(guarded.verticalAxis.dot(deviceUp).magnitude < 0.15,
-               "almost flat on a table the tip axis stays across the top edge")
-        expect((guarded.verticalAxis - trusting.verticalAxis).length > 0.5,
-               "and that is a different, steadier answer than trusting the normal")
+        expect((guarded.verticalAxis - trusting.verticalAxis).length < 0.02,
+               "and the guarded answer is the steady answer, not a flipped one")
     }
 
     // MARK: - Rate to deltas
@@ -148,7 +165,7 @@ struct AirMouseEngineTests {
             expect(near(config.deadZone, 0), "the shipped default absorbs nothing by itself")
         }
         sink.begin()
-        for rate in [0.05, 0.12, 0.25] {
+        for rate in [0.02, 0.06, 0.11] {
             sink.feedVertical(rate, samples: 40)
         }
         expect(sink.reports.isEmpty, "tremor below the start threshold never reaches the host")
@@ -163,7 +180,7 @@ struct AirMouseEngineTests {
         sink.feedVertical(0.25, samples: 40)
         expect(!sink.reports.isEmpty, "a moving axis keeps moving below the start threshold")
         sink.clear()
-        sink.feedVertical(0.05, samples: 60)
+        sink.feedVertical(0.04, samples: 60)
         expect(sink.reports.isEmpty, "and it stops when the phone truly rests")
     }
 
@@ -185,42 +202,129 @@ struct AirMouseEngineTests {
         expect(lifted > 0, "and the vertical axis still moves on its own")
     }
 
-    private static func defaultSensitivityMatchesTheDocumentedTravel() {
-        // The settings sliders are a percentage of one documented base gain, so the
-        // shipped defaults must keep the numbers docs/air-mouse.md prints: 360
-        // units per radian at 100 %, the 220 % default at 792, and the acceleration
-        // bonus reaching 1.8x at its reference speed.
-        expect(AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond == 360,
-               "the base gain is 360 units per radian")
+    private static func defaultsMatchTheVirtualHalfGain() {
+        // The interface shows 0…100 % of one documented base gain, and the shipped
+        // default is the 50 % a hand steers by: 2700 pointer units per radian, the
+        // travel the maintainer measured as the usable base.
+        expect(AirMouseEngine.Config.basePointerUnitsPerRadianPerSecond == 5400,
+               "the base gain is 5400 units per radian at 100 %")
         let defaults = AirMouseEngine.Config()
-        // The gain is Float arithmetic on a percentage, and 220 % is not a binary
-        // exact multiplier (360 * 2.2 lands at 792.00002), so compare with a
-        // tolerance instead of ==; the release build caught that as a precondition.
-        expect(near(Double(defaults.horizontalUnitsPerRadianPerSecond), 792, 0.01)
-                && near(Double(defaults.verticalUnitsPerRadianPerSecond), 792, 0.01),
-               "the default 220 % sensitivity is 792 units per radian on both axes")
+        expect(near(Double(defaults.horizontalUnitsPerRadianPerSecond), 2700, 0.01)
+                && near(Double(defaults.verticalUnitsPerRadianPerSecond), 2700, 0.01),
+               "the default 50 % sensitivity is 2700 units per radian on both axes")
         expect(defaults.acceleration == 0.8 && defaults.accelerationReference == 2.0,
                "the acceleration bonus is 1.8x from 2 rad/s")
+        expect(defaults.minimumTurn == 0.12 && defaults.reengage == 0.08,
+               "a hand leading the phone evenly clears the start threshold")
+        expect(defaults.gravityElevation == 1.0,
+               "a tip gravity can see counts as movement out of the box")
+    }
 
+    private static func documentedHalfGainWalksTheScreen() {
+        // The settings sliders are a percentage of one documented base gain, so the
+        // shipped defaults must keep the numbers docs/air-mouse.md prints.
         // A steady 1 rad/s turn is one radian a second, so at the default gain it
-        // must walk 792 units in one second of samples, units and no more. The
-        // first sample only sets the clock, so 60 samples carry 59 steps.
+        // must walk 2700 units in one second of samples. The first sample only sets
+        // the clock, so 60 samples carry 59 steps.
         let steady = Sink { config in
             config.smoothing = 0
             config.acceleration = 0
         }
         steady.begin()
         steady.feedHorizontal(1.0, samples: 60)
-        expect(steady.totals.x >= 777 && steady.totals.x <= 779,
-               "a one radian per second turn at the default sensitivity is 792 units per second")
+        expect(steady.totals.x >= 2654 && steady.totals.x <= 2656,
+               "a one radian per second turn at the default sensitivity is 2700 units per second")
 
         // The same turn at the reference speed carries the full bonus, which is
         // what lets a flick cross a screen without the host accelerating for it.
         let flick = Sink { config in config.smoothing = 0 }
         flick.begin()
         flick.feedHorizontal(2.0, samples: 60)
-        expect(flick.totals.x >= 2801 && flick.totals.x <= 2805,
+        expect(flick.totals.x >= 9500 && flick.totals.x <= 9560,
                "a 2 rad/s turn gets the 1.8x bonus on the default gain")
+    }
+
+    private static func evenTipMovesThePointerThroughGravity() {
+        // A hand that leads the phone evenly: 20 degrees of tip in two seconds is
+        // 0.17 rad/s, which clears the start threshold on the gravity reading of
+        // the angle it has arrived at. The gyroscope, told the same tip travels at
+        // the gentle rate a hand at rest reads as, reports nothing at all: with
+        // the gravity channel off that same tip must send no reports.
+        let tip = {
+            (engine: AirMouseEngine) in
+            var clock = live
+            let start = 5.0 * Double.pi / 180
+            let end = 25.0 * Double.pi / 180
+            let samples = 120
+            for index in 0..<samples {
+                let fraction = samples == 1 ? 1.0 : Double(index) / Double(samples - 1)
+                let tilt = start + (end - start) * fraction
+                let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+                    x: 0,
+                    y: -sin(tilt),
+                    z: -cos(tilt)
+                ))
+                // The speed of the same tip, at the quiet end of what a wrist
+                // reports: 20 degrees over two seconds, eased in and out.
+                let progress = Double(index) / Double(max(1, samples - 1))
+                let rate = sin(progress * Double.pi) * 0.1
+                engine.update(
+                    rotationRate: AirMouseAngularVelocity(x: rate, y: 0, z: 0),
+                    frame: frame,
+                    at: clock
+                )
+                clock += step
+            }
+        }
+
+        var moving: [(dx: Int8, dy: Int8)] = []
+        let engine = AirMouseEngine()
+        engine.onPointerMove = { dx, dy in moving.append((dx, dy)) }
+        engine.begin(now: 0)
+        tip(engine)
+        let totals = moving.reduce((x: 0, y: 0)) { ($0.x + Int($1.dx), $0.y + Int($1.dy)) }
+
+        // 20 degrees is 0.35 rad, which at the default 2700 units per radian is
+        // about 950 units of travel, plus a small bonus for the middle of the tip.
+        expect(totals.y >= 800 && totals.y <= 1250,
+               "an even 20 degree tip walks about 950 units on the default gain")
+        expect(totals.x == 0, "and a tip leaves the sideways axis alone")
+
+        var quiet: [(dx: Int8, dy: Int8)] = []
+        var gyroscopeOnly = AirMouseEngine.Config()
+        gyroscopeOnly.gravityElevation = 0        let control = AirMouseEngine(config: gyroscopeOnly)
+        control.onPointerMove = { dx, dy in quiet.append((dx, dy)) }
+        control.begin(now: 0)
+        tip(control)
+        expect(quiet.isEmpty,
+               "the same tip sends nothing at all when only the gyroscope is allowed to speak")
+    }
+
+    private static func gravityTipCarriesTheGyroSign() {
+        // The gravity reading of a tip has to arrive on the same side as the
+        // gyroscope reading of it, or taking whichever sensor saw more would put
+        // one of them backwards.
+        for degrees in stride(from: 5.0, through: 60.0, by: 5.0) {
+            let tilt = degrees * Double.pi / 180
+            let lift = 1.0 * Double.pi / 180
+            let from = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+                x: 0, y: -sin(tilt), z: -cos(tilt)
+            ))
+            let to = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+                x: 0, y: -sin(tilt + lift), z: -cos(tilt + lift)
+            ))
+            let gravity = AirMouseEngine.elevationRate(frame: to, previous: elevationAngle(of: from),
+                                                       seconds: 1.0, gain: 1)
+            // Lifting the top edge of a phone lying screen-up is rotation about
+            // the screen's right edge.
+            let gyro = AirMouseEngine.pointerRates(of: spin(deviceRight), frame: to)
+            expect(gravity.rate * gyro.y > 0,
+                   "a tip at \(Int(degrees))\u{00B0} of tilt arrives on the same side from both sensors")
+        }
+    }
+
+    private static func elevationAngle(of frame: AirMousePointerFrame) -> Double {
+        asin(min(max(-frame.horizontalAxis.normalized.z, -1), 1))
     }
 
     private static func movementSurvivesTheFractionalRemainder() {

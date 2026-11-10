@@ -108,34 +108,47 @@ final class AirMouseEngine {
         /// Pointer units per radian per second of steady turn at the sensitivity
         /// the interface shows as 100 %. Movement integrates rotation rate over
         /// time, so this is also the cursor travel per radian of a deliberate
-        /// turn: 360 units per radian is about 6.3 units per degree, which on a
-        /// 1:1 host mapping is a little over half of a 1080 px screen.
-        static let basePointerUnitsPerRadianPerSecond = 360.0
+        /// turn: 5400 units per radian is about 94 units per degree, so the 50 %
+        /// default (2700 units per radian, about 47 per degree) crosses a 2560 px
+        /// screen with a little over half a turn of the wrist.
+        static let basePointerUnitsPerRadianPerSecond = 5400.0
         /// The widest dead zone the interface can ask for.
         static let maximumDeadZone = 0.3
+        /// The widest acceleration bonus the interface can ask for.
+        static let maximumAcceleration = 2.0
+        /// The widest start threshold the interface can ask for, in rad/s.
+        static let maximumStartThreshold = 0.5
 
         /// The two axes are separate because the gestures that drive them are not
         /// the same movement: a sideways turn comes from the wrist and the whole
         /// forearm, a tip comes from the wrist alone, and a hand does one of them
         /// far more generously than the other.
-        var horizontalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 2.2
-        var verticalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 2.2
+        var horizontalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 0.5
+        var verticalUnitsPerRadianPerSecond = Config.basePointerUnitsPerRadianPerSecond * 0.5
         /// Rotation rate absorbed before the pointer moves at all. A held hand
         /// turned out to be quieter than a single threshold needs, so this starts
         /// at nothing and is there for a hand that says otherwise.
         var deadZone = 0.0
         /// Rotation rate a still axis has to exceed to start moving. This is the
         /// threshold that does the tremor work, and it is deliberately above the
-        /// dead zone rather than merged into it.
-        var minimumTurn = 0.3
+        /// dead zone rather than merged into it. A hand leading the phone slowly
+        /// sits around 0.15 rad/s, so this sits below it and lets that movement
+        /// through; what stays out is the tremor of a held hand, near 0.05 rad/s.
+        var minimumTurn = 0.12
         /// Rotation rate a moving axis has to stay above to keep moving.
-        var reengage = 0.2
+        var reengage = 0.08
         var smoothing = 0.45
         /// Extra travel for a fast swing, on top of the axis gain. A turn at
         /// `accelerationReference` rad/s already carries the full bonus, so a
         /// deliberate flick crosses a screen instead of walking across it.
         var acceleration = 0.8
         var accelerationReference = 2.0
+        /// How much of the tip measured from the gravity direction counts as
+        /// movement. The gyroscope only reports the *speed* of a tip, so a slow,
+        /// even tip under the start threshold travels nothing at all; the angle
+        /// the screen has risen to is visible in gravity, so it carries the tip
+        /// that the gyroscope cannot see. At 0 the axis is gyroscope-only.
+        var gravityElevation = 1.0
         var invertX = false
         var invertY = false
         var maximumStep: Int = 60
@@ -176,6 +189,9 @@ final class AirMouseEngine {
     private var lastMotionAt: TimeInterval?
     private var holdUntil: TimeInterval?
     private var isRunning = false
+    /// The screen-facing component of gravity on the previous sample, which is
+    /// what turns a tip into the angle it has reached.
+    private var lastElevation: Double?
 
     init(config: Config = Config()) {
         self.config = config
@@ -192,6 +208,7 @@ final class AirMouseEngine {
         isMovingY = false
         lastSampleAt = nil
         lastMotionAt = nil
+        lastElevation = nil
         let hold = max(0, config.activationHold)
         holdUntil = hold > 0 ? now + hold : nil
         isHolding = hold > 0
@@ -211,6 +228,7 @@ final class AirMouseEngine {
         isMovingY = false
         lastSampleAt = nil
         lastMotionAt = nil
+        lastElevation = nil
         holdUntil = nil
     }
 
@@ -243,7 +261,19 @@ final class AirMouseEngine {
             return
         }
 
-        let (rawX, rawY) = Self.pointerRates(of: rate, frame: frame)
+        let (rawX, gyroY) = Self.pointerRates(of: rate, frame: frame)
+        let elevation = Self.elevationRate(
+            frame: frame,
+            previous: lastElevation,
+            seconds: dt,
+            gain: max(0, config.gravityElevation)
+        )
+        lastElevation = elevation.angle
+        // A tip reaches both sensors: the gyroscope sees its speed, gravity sees
+        // the angle it has arrived at. Whichever of the two saw more is the one
+        // that steers the axis, so a fast tip is not counted twice and a slow,
+        // even tip still moves the cursor.
+        let rawY = abs(elevation.rate) > abs(gyroY) ? elevation.rate : gyroY
         let alpha = 1 - min(max(config.smoothing, 0), 0.95)
         smoothedX += alpha * (rawX - smoothedX)
         smoothedY += alpha * (rawY - smoothedY)
@@ -306,6 +336,24 @@ final class AirMouseEngine {
         isSettled = true
     }
 
+    /// The rate a tip is moving at, in the same sign the gyroscope axis gives for
+    /// it. `-horizontalAxis.z` is how much the screen faces upward, and that angle
+    /// *falling* is the pointer dropping on the HID axis, which is exactly the
+    /// sign `pointerRates` returns for `spin.dot(verticalAxis)`. Gravity is the
+    /// one sensor that sees a tip the hand leads evenly, below the rate the
+    /// gyroscope reports.
+    static func elevationRate(
+        frame: AirMousePointerFrame,
+        previous angle: Double?,
+        seconds dt: TimeInterval,
+        gain: Double
+    ) -> (angle: Double, rate: Double) {
+        let facing = min(max(-frame.horizontalAxis.normalized.z, -1), 1)
+        let current = asin(facing)
+        guard let angle, dt > 0 else { return (current, 0) }
+        return (current, (angle - current) / dt * gain)
+    }
+
     /// Read the rotation rate along the two directions the pointer travels in.
     /// The HID y axis points downwards, and the vertical axis is defined so that
     /// tipping the phone over the heading upwards already comes out negative.
@@ -338,12 +386,17 @@ final class AirMouseEngine {
         // perfectly flat.
         let horizontalNormal = normal - down * normal.dot(down)
         let deviceUp = AirMouseVector3(x: 0, y: 1, z: 0)
-
         let heading: AirMouseVector3
         if horizontalNormal.length >= max(0, minimumHorizontalNormal) {
             heading = horizontalNormal.normalized
         } else {
-            heading = (deviceUp - down * deviceUp.dot(down)).normalized
+            // Near flat the screen faces the sky, and the direction it faces is
+            // the ground side of the screen, which is the *bottom* edge: taking
+            // the top edge instead pointed the heading the other way and flipped
+            // the vertical axis at the threshold, so a tip up began arriving as a
+            // tip down for a phone held almost flat.
+            let deviceDown = AirMouseVector3(x: 0, y: -1, z: 0)
+            heading = (deviceDown - down * deviceDown.dot(down)).normalized
         }
         guard heading.length > 1e-9 else { return .flatOnTable }
 

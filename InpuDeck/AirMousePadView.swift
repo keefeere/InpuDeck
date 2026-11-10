@@ -11,20 +11,37 @@ struct AirMousePadView: View {
     /// nothing because the gyroscope is missing or the permission was refused is a
     /// surface that looks broken.
     var expertMode: Bool = false
+    /// The two click buttons live *in* this surface, tall enough to be found by
+    /// feel: pointing with the phone at arm's length means the screen is not what
+    /// the eye is on, so a 48 pt row under the field is a target the thumb has to
+    /// hunt for.
+    var onPressLeft: () -> Void
+    var onReleaseLeft: () -> Void
+    var onPressRight: () -> Void
+    var onReleaseRight: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .strokeBorder(
-                        Color.primary.opacity(pointer.isTracking ? 0.25 : 0.12),
-                        style: StrokeStyle(lineWidth: 1, dash: [5, 5])
-                    )
-                Image(systemName: "scope")
-                    .font(.system(size: 34, weight: .light))
-                    .foregroundStyle(pointer.isTracking ? Color.accentColor : Color.secondary)
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                PressableKeyButton(
+                    title: expertMode ? "" : localized("Ліва кнопка"),
+                    minHeight: 96,
+                    onPress: onPressLeft,
+                    onRelease: onReleaseLeft
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Ліва кнопка")
+
+                PressableKeyButton(
+                    title: expertMode ? "" : localized("Права кнопка"),
+                    minHeight: 96,
+                    onPress: onPressRight,
+                    onRelease: onReleaseRight
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Права кнопка")
             }
-            .frame(width: 96, height: 96)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if let caption = caption {
                 Text(caption)
@@ -53,7 +70,7 @@ struct AirMousePadView: View {
 
     private var caption: String? {
         guard isReady else {
-            return localized("Спочатку під’єднай комп’ютер: нахил рухатиме курсор, щойно з’явиться зв’язок.")
+            return localized("Спочатку під’єднай комп’ютер: нахил рухатиме курсор, щойно з’явиться зв’язок, а кнопки кліка вже тут.")
         }
         switch pointer.status {
         case .off:
@@ -63,7 +80,7 @@ struct AirMousePadView: View {
         case .tracking:
             return expertMode
                 ? nil
-                : localized("Крути телефон — курсор іде за ним. Кнопки кліка — під цим полем.")
+                : localized("Крути телефон — курсор іде за ним. Кнопки кліка — тут, під великим пальцем.")
         case .unavailable:
             return localized("На цьому пристрої немає гіроскопа")
         case .blocked:
