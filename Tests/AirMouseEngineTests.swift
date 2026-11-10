@@ -481,14 +481,14 @@ struct AirMouseEngineTests {
         let sink = Sink()
         sink.begin()
         sink.feedVertical(0.0, samples: 120)
-        expect(!sink.isSettled,
+        expect(!sink.engine.isSettled,
                "a phone that has never moved has no residue to clear, so the slow tip keeps its ramp")
         sink.clear()
         sink.feedVertical(1.0, samples: 30)
         expect(sink.totals.y != 0, "and the next deliberate turn still moves")
         sink.clear()
         sink.feedVertical(0.0, samples: 120)
-        expect(sink.isSettled, "while a phone that moved and then rests does clean up")
+        expect(sink.engine.isSettled, "while a phone that moved and then rests does clean up")
     }
 
     private static func movementSurvivesTheFractionalRemainder() {
