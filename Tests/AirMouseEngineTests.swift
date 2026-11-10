@@ -30,6 +30,9 @@ struct AirMouseEngineTests {
         settlingTailAfterAStopDoesNotWalkThePointerBack()
         withoutDampingTheSettlingTailWalksBack()
         deliberateReverseTurnIsNotTreatedAsTheTail()
+        steadyTurnBackArrivesOnceTheWindowIsBehindIt()
+        aTurnBuiltUpOutOfNothingIsNotATail()
+        sidewaysTravelDoesNotKeepAVerticalTurnBackBlocked()
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
@@ -391,14 +394,16 @@ struct AirMouseEngineTests {
     private static func settlingTailAfterAStopDoesNotWalkThePointerBack() {
         // The field report: tip the phone up, hold it there, and the pointer
         // walked back on its own, without the phone moving. Fused rotation does
-        // not stop dead at zero; it tails off through zero and keeps a negative
-        // reading for a third of a second, and integrating that tail is what
-        // walked the pointer back.
+        // not stop dead at zero; it tails off through zero and keeps a shrinking
+        // opposite reading for a few tenths of a second, and integrating that tail
+        // is what walked the pointer back.
         let sink = settlingTailSink()
         let travelled = sink.totals.y
         expect(travelled < -1000, "half a second of tip has to walk the pointer: \(travelled)")
         sink.clear()
-        sink.feedVertical(-0.3, samples: 20)
+        for index in 0 ..< 24 {
+            sink.feedVertical(-0.3 * pow(0.85, Double(index)), samples: 1)
+        }
         expect(Double(abs(sink.totals.y)) <= Double(abs(travelled)) * 0.05,
                "the settling tail walked the pointer back: \(sink.totals.y) of \(travelled)")
     }
@@ -415,8 +420,10 @@ struct AirMouseEngineTests {
         sink.feedVertical(1.0, samples: 30)
         let travelled = sink.totals.y
         sink.clear()
-        sink.feedVertical(-0.3, samples: 20)
-        expect(sink.totals.y > 100,
+        for index in 0 ..< 24 {
+            sink.feedVertical(-0.3 * pow(0.85, Double(index)), samples: 1)
+        }
+        expect(sink.totals.y > 20,
                "with the damping off the same tail walks the pointer back: \(sink.totals.y) of \(travelled)")
     }
 
@@ -428,6 +435,41 @@ struct AirMouseEngineTests {
         // arrive as a large positive movement on the very next samples.
         expect(sink.totals.y > 300,
                "a turn back at 1.2 rad/s has to move the pointer, not be damped: \(sink.totals.y)")
+    }
+
+    private static func steadyTurnBackArrivesOnceTheWindowIsBehindIt() {
+        // A hand that turns back at one steady speed reads like a tail while the
+        // window covers it, so it arrives late rather than never: a quarter second
+        // of the turn is given up, and the rest walks the pointer.
+        let sink = settlingTailSink()
+        sink.clear()
+        sink.feedVertical(-0.2, samples: 30)
+        expect(sink.totals.y > 80,
+               "a slow steady turn back walks the pointer once the window is behind it: \(sink.totals.y)")
+    }
+
+    private static func aTurnBuiltUpOutOfNothingIsNotATail() {
+        // A hand builds a turn up out of nothing, so the reading grows sample by
+        // sample and the guard has to let it through from the start.
+        let sink = settlingTailSink()
+        sink.clear()
+        for index in 0 ..< 12 {
+            sink.feedVertical(-0.05 * Double(index + 1), samples: 1)
+        }
+        expect(sink.totals.y > 100,
+               "a turn the hand builds up moves out of the gate: \(sink.totals.y)")
+    }
+
+    private static func sidewaysTravelDoesNotKeepAVerticalTurnBackBlocked() {
+        // The damping window belongs to the axis that turned, so a hand that keeps
+        // travelling sideways cannot hold a vertical turn back down.
+        let sink = settlingTailSink()
+        sink.clear()
+        sink.feedHorizontal(1.0, samples: 30)
+        sink.clear()
+        sink.feedVertical(-0.2, samples: 10)
+        expect(sink.totals.y > 40,
+               "sideways travel must not keep a vertical turn back blocked: \(sink.totals.y)")
     }
 
     private static func movementSurvivesTheFractionalRemainder() {

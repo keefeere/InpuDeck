@@ -163,13 +163,19 @@ final class AirMouseEngine {
         /// motion reports a movement, and when the hand stops the report tails off
         /// through zero, often past it: that negative tail is the sensor settling,
         /// not the hand going back, and integrating it walked the cursor back to
-        /// where it started without the phone moving. A turn that deliberately
-        /// reverses is far above `undershootLimit`, so it moves right away.
-        var stopDamping: TimeInterval = 0.35
+        /// where it started without the phone moving. A turn the hand is building
+        /// up reports a reading that grows from sample to sample, so it is never
+        /// taken for a tail; a turn that holds one steady speed arrives as soon as
+        /// this window is behind it.
+        var stopDamping: TimeInterval = 0.25
         /// Rotation rate an opposite-sign reading has to stay under to count as
         /// that settling tail rather than a reverse turn. A deliberate turn back
         /// is far above it and moves the pointer on the next sample.
         var undershootLimit = 0.35
+        /// How much of the turn it follows an opposite-sign reading also has to
+        /// stay under, so a tail left by a wide turn cannot swallow a correction
+        /// that is wide compared with a small one.
+        var undershootShareOfTurn = 0.35
         /// Horizontal size of the screen normal below which the heading the phone
         /// points at is not knowable, for example with the phone lying flat on a
         /// table. Near vertical the direction is defined but noisy, and noise in
@@ -217,6 +223,18 @@ final class AirMouseEngine {
     /// movement leaves behind can be told from a hand that turns back.
     private var lastSignX = 0.0
     private var lastSignY = 0.0
+    /// When each axis last moved, and how wide that turn was. The damping window
+    /// belongs to the axis that moved, so a hand still travelling sideways cannot
+    /// keep a vertical turn-back blocked, and the size of the turn is what says how
+    /// big a settling tail that axis may be.
+    private var axisMotionAtX: TimeInterval?
+    private var axisMotionAtY: TimeInterval?
+    private var turnPeakX = 0.0
+    private var turnPeakY = 0.0
+    /// The raw reading each axis reported on the previous sample. A hand builds a
+    /// turn up out of nothing; a sensor settling out of a movement only shrinks.
+    private var lastRawMagnitudeX = 0.0
+    private var lastRawMagnitudeY = 0.0
 
     init(config: Config = Config()) {
         self.config = config
@@ -236,6 +254,12 @@ final class AirMouseEngine {
         lastElevation = nil
         lastSignX = 0
         lastSignY = 0
+        axisMotionAtX = nil
+        axisMotionAtY = nil
+        turnPeakX = 0
+        turnPeakY = 0
+        lastRawMagnitudeX = 0
+        lastRawMagnitudeY = 0
         let hold = max(0, config.activationHold)
         holdUntil = hold > 0 ? now + hold : nil
         isHolding = hold > 0
@@ -258,6 +282,12 @@ final class AirMouseEngine {
         lastElevation = nil
         lastSignX = 0
         lastSignY = 0
+        axisMotionAtX = nil
+        axisMotionAtY = nil
+        turnPeakX = 0
+        turnPeakY = 0
+        lastRawMagnitudeX = 0
+        lastRawMagnitudeY = 0
         holdUntil = nil
     }
 
@@ -323,9 +353,13 @@ final class AirMouseEngine {
             minimumTurn: config.minimumTurn,
             reengage: config.reengage,
             lastSign: lastSignX,
-            secondsSinceMotion: lastMotionAt.map { now - $0 } ?? .infinity,
+            secondsSinceAxisMotion: axisMotionAtX.map { now - $0 } ?? .infinity,
+            turnPeak: turnPeakX,
+            rawMagnitude: abs(rawX),
+            previousRawMagnitude: lastRawMagnitudeX,
             stopDamping: config.stopDamping,
-            undershootLimit: config.undershootLimit
+            undershootLimit: config.undershootLimit,
+            undershootShareOfTurn: config.undershootShareOfTurn
         )
         let (thresholdY, nextY) = Self.absorbed(
             smoothedY,
@@ -334,14 +368,28 @@ final class AirMouseEngine {
             minimumTurn: config.minimumTurn,
             reengage: config.reengage,
             lastSign: lastSignY,
-            secondsSinceMotion: lastMotionAt.map { now - $0 } ?? .infinity,
+            secondsSinceAxisMotion: axisMotionAtY.map { now - $0 } ?? .infinity,
+            turnPeak: turnPeakY,
+            rawMagnitude: abs(rawY),
+            previousRawMagnitude: lastRawMagnitudeY,
             stopDamping: config.stopDamping,
-            undershootLimit: config.undershootLimit
+            undershootLimit: config.undershootLimit,
+            undershootShareOfTurn: config.undershootShareOfTurn
         )
         isMovingX = nextX
         isMovingY = nextY
-        if thresholdX != 0 { lastSignX = thresholdX }
-        if thresholdY != 0 { lastSignY = thresholdY }
+        lastRawMagnitudeX = abs(rawX)
+        lastRawMagnitudeY = abs(rawY)
+        if thresholdX != 0 {
+            lastSignX = thresholdX
+            axisMotionAtX = now
+            turnPeakX = max(turnPeakX, abs(thresholdX))
+        }
+        if thresholdY != 0 {
+            lastSignY = thresholdY
+            axisMotionAtY = now
+            turnPeakY = max(turnPeakY, abs(thresholdY))
+        }
 
         if thresholdX == 0, thresholdY == 0 {
             reanchorIfIdle(now: now)
@@ -467,18 +515,28 @@ final class AirMouseEngine {
         minimumTurn: Double,
         reengage: Double,
         lastSign: Double,
-        secondsSinceMotion: TimeInterval,
+        secondsSinceAxisMotion: TimeInterval,
+        turnPeak: Double,
+        rawMagnitude: Double,
+        previousRawMagnitude: Double,
         stopDamping: TimeInterval,
-        undershootLimit: Double
+        undershootLimit: Double,
+        undershootShareOfTurn: Double
     ) -> (movement: Double, isMoving: Bool) {
         let magnitude = abs(value)
-        // A movement's own undershoot: opposite in sign, small, and arriving
-        // right after the movement. Fused rotation does not stop dead at zero, it
-        // tails off through it and often past it, and integrating that tail walked
-        // the pointer back to where it started with the phone held still. A turn
-        // that really goes back is far above the limit, so it is not caught here.
+        // A movement's own undershoot: opposite in sign, small next to the turn it
+        // follows, and shrinking rather than building up. Fused rotation does not
+        // stop dead at zero, it tails off through it and often past it, and
+        // integrating that tail walked the pointer back to where it started with
+        // the phone held still. A hand's turn arrives as a reading that grows out
+        // of nothing, so it is not caught here; a turn that holds one steady speed
+        // is taken for a tail only inside the window, and moves as soon as the
+        // window is behind it.
         if stopDamping > 0, lastSign != 0, value * lastSign < 0,
-            magnitude <= undershootLimit, secondsSinceMotion < stopDamping {
+            magnitude <= undershootLimit,
+            magnitude <= max(0, undershootShareOfTurn) * turnPeak,
+            rawMagnitude <= previousRawMagnitude * 1.05,
+            secondsSinceAxisMotion < stopDamping {
             return (0, false)
         }
         let reengageThreshold = max(reengage, deadZone)
