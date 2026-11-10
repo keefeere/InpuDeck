@@ -462,6 +462,13 @@ busctl introspect org.bluez /org/bluez/hci0/dev_10_A2_D3_01_47_A1 | grep -E "HID
 journalctl -u bluetooth.service --since "-30 min" --no-pager | grep -i "hog-lib\|output report"
 ```
 
+The app side of the same exchange is visible in **Share log** from the pairing
+panel: each accepted Report Protocol Mode write records
+`Protocol: report; host <peer>` (`InpuDeck/DirectHIDTransport.swift`). That line
+is the proof the Write Request reached the app handler; `Protocol: boot` means
+the host asked for Boot protocol mode (value `0x00`). A session that never logs
+either line never had the write answered.
+
 This is the phone side, not the host: InpuDeck publishes `.write` for `2A4E` from
 3.5.2, and `Tests/test_linux_hid_gatt_contract.py` guards that ATT contract
 offline. On 2026-11-09 the same host attached HID on 3.5.1 after the LE connect
