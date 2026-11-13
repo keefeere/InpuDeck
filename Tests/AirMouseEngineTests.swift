@@ -584,29 +584,28 @@ struct AirMouseEngineTests {
     private static func smoothingLagsTheSameTimeAtAnySampleRate() {
         // The stream is sampled faster than it used to be, and the smoothing slider
         // is a promise about time, not about samples: the same turn of the wrist,
-        // lasting the same quarter of a second at the same speed, has to land the
+        // lasting the same length of time at the same speed, has to land the
         // pointer in the same place whatever rate the phone reported it at. A
-        // slider that damps per sample breaks that as soon as the rate moves, and
-        // measured eight fold apart it lands the pointer 15% of the tip away;
-        // measured as time it is under 4%.
+        // slider that damps per sample breaks that as soon as the rate moves:
+        // measured a second of the same turn eight fold apart in rate, it parks
+        // the pointer 6% of the travel away, where the time reading is under 2%.
         var slow: [(dx: Int8, dy: Int8)] = []
         var fast: [(dx: Int8, dy: Int8)] = []
-        for (interval, bucket) in [(1.0 / 30.0, "slow"), (1.0 / 240.0, "fast")] {
+        for (hz, bucket) in [(32.0, "slow"), (256.0, "fast")] {
+            let interval = 1.0 / hz
             let sink = Sink()
             sink.begin()
             var clock = live
-            let samples = Int(0.25 / interval)
-            for index in 0..<samples {
-                // A tip eased in and out over a quarter of a second, worth the same
-                // degrees either way round.
-                let progress = Double(index) / Double(max(1, samples - 1))
-                let rate = sin(progress * Double.pi) * 0.8
-                let axis = sink.frame.verticalAxis
+            // One second of the same steady turn, and a sample count that divides
+            // it exactly, so the only thing that differs is how finely the same
+            // second is cut up.
+            let samples = Int((1.0 / interval).rounded())
+            for _ in 0..<samples {
                 sink.engine.update(
                     rotationRate: AirMouseAngularVelocity(
-                        x: -axis.x * rate,
-                        y: -axis.y * rate,
-                        z: -axis.z * rate
+                        x: -sink.frame.verticalAxis.x * 0.8,
+                        y: -sink.frame.verticalAxis.y * 0.8,
+                        z: -sink.frame.verticalAxis.z * 0.8
                     ),
                     frame: sink.frame,
                     at: clock
@@ -618,10 +617,10 @@ struct AirMouseEngineTests {
         let travelled = { (reports: [(dx: Int8, dy: Int8)]) in
             Double(reports.reduce(0) { $0 + Int($1.dy) })
         }
-        let atThirty = travelled(slow), atTwoHundredAndForty = travelled(fast)
-        expect(atThirty < 0 && atTwoHundredAndForty < 0, "the quarter second tip moves the pointer up at either rate")
-        expect(abs(atThirty - atTwoHundredAndForty) < abs(atThirty) * 0.10,
-               "and the same tip travels the same distance whatever the sample rate: \(atThirty) against \(atTwoHundredAndForty)")
+        let atThirtyTwo = travelled(slow), atTwoHundredAndFiftySix = travelled(fast)
+        expect(atThirtyTwo < 0 && atTwoHundredAndFiftySix < 0, "the steady turn moves the pointer up at either rate")
+        expect(abs(atThirtyTwo - atTwoHundredAndFiftySix) < abs(atThirtyTwo) * 0.03,
+               "and the same second of turn travels the same distance whatever the sample rate: \(atThirtyTwo) against \(atTwoHundredAndFiftySix)")
     }
 
     private static func fastTurnsGetExtraGain() {
