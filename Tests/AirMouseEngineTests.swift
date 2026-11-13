@@ -19,8 +19,9 @@ struct AirMouseEngineTests {
         pointerFrameFollowsTheWorld()
         turningSidewaysIsPureHorizontalAtEveryRoll()
         tippingOverTheHeadingLiftsThePointer()
-        flatPhonePointsWhereTheScreenFacesDownhill()
-        tipAxisStaysAcrossTheFlatThreshold()
+        theTipAxisLiesInsideTheScreensPlane()
+        aRolledPhoneNearFlatCarriesTheWholeTip()
+        aPhoneLyingPerfectlyFlatGivesNoTipAxis()
         restAbsorbsTremorAndHoldsStillness()
         axesHaveSeparateSensitivity()
         defaultsMatchTheVirtualHalfGain()
@@ -37,6 +38,7 @@ struct AirMouseEngineTests {
         movementSurvivesTheFractionalRemainder()
         aDemandLargerThanOneReportIsSplit()
         smoothingDampsTheFirstStepAndConverges()
+        smoothingLagsTheSameTimeAtAnySampleRate()
         fastTurnsGetExtraGain()
         inversionMirrorsBothAxes()
         stillPhoneReanchorsItsFilters()
@@ -49,7 +51,7 @@ struct AirMouseEngineTests {
     // MARK: - The pointer frame
 
     private static func pointerFrameFollowsTheWorld() {
-        let frame = AirMouseEngine.pointerFrame(fromGravity: uprightGravity)
+        let frame = frame(for: uprightGravity)
 
         // Horizontal pointer motion is rotation about the world's vertical, which
         // is the gravity direction itself: no screen plane, no device axis.
@@ -81,7 +83,7 @@ struct AirMouseEngineTests {
                 y: -cos(tiltAngle) * cos(roll),
                 z: -sin(tiltAngle)
             )
-            let frame = AirMouseEngine.pointerFrame(fromGravity: gravity)
+            let frame = frame(for: gravity)
             let rates = AirMouseEngine.pointerRates(of: AirMouseAngularVelocity(
                 x: frame.horizontalAxis.x,
                 y: frame.horizontalAxis.y,
@@ -93,7 +95,7 @@ struct AirMouseEngineTests {
     }
 
     private static func tippingOverTheHeadingLiftsThePointer() {
-        let frame = AirMouseEngine.pointerFrame(fromGravity: uprightGravity)
+        let frame = frame(for: uprightGravity)
         // The HID y axis grows downwards, so a tip that raises the pointer must
         // come out negative.
         let up = AirMouseEngine.pointerRates(of: spin(-frame.verticalAxis), frame: frame)
@@ -113,91 +115,111 @@ struct AirMouseEngineTests {
                 y: -cos(tiltAngle) * cos(roll),
                 z: -sin(tiltAngle)
             )
-            let rolled = AirMouseEngine.pointerFrame(fromGravity: gravity)
+            let rolled = frame(for: gravity)
             let rates = AirMouseEngine.pointerRates(of: spin(-rolled.verticalAxis), frame: rolled)
             expect(near(rates.y, -1, 1e-9) && near(rates.x, 0, 1e-9),
                    "a tip at \(Int(degrees))° of roll stays a tip")
         }
     }
 
-    private static func flatPhonePointsWhereTheScreenFacesDownhill() {
-        // Screen up on a table: the screen faces the sky, so the direction it
-        // faces is the ground side of the screen, the bottom edge. The tip axis
-        // is then the axis across that, which is the screen's own right edge.
-        let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: -1))
-        expect(near(frame.horizontalAxis.z, -1) && near(frame.horizontalAxis.y, 0),
-               "the horizontal axis is still the world's vertical")
-        expect(near(frame.verticalAxis.x, 1) && near(frame.verticalAxis.dot(deviceUp), 0, 1e-9),
-               "the vertical axis tips over the downhill side, not over the top edge")
-        expect(near(frame.verticalAxis.length, 1) && near(frame.horizontalAxis.length, 1),
-               "the fallback frame stays a unit basis")
+    private static func theTipAxisLiesInsideTheScreensPlane() {
+        // The pointer's vertical axis is the world-horizontal direction that lies
+        // inside the plane of the screen, because a tip over the heading is a turn
+        // about exactly that. Both halves of that claim are checked at every roll
+        // and every flatness: square to gravity, so the pointer moves along the
+        // world's horizontal; square to the screen normal, so the turn the axis
+        // measures is the tip the hand actually made.
+        let screenNormal = AirMouseVector3(z: 1)
+        for degrees in stride(from: 0.0, through: 330.0, by: 30.0) {
+            let roll = degrees * Double.pi / 180
+            for flatness in stride(from: 3.0, through: 80.0, by: 7.0) {
+                let flat = flatness * Double.pi / 180
+                let gravity = rolled(AirMouseVector3(y: -sin(flat), z: -cos(flat)), by: roll)
+                let frame = frame(for: gravity)
+                expect(near(frame.verticalAxis.dot(gravity.normalized), 0, 1e-9)
+                        && near(frame.verticalAxis.dot(screenNormal), 0, 1e-9),
+                       "the tip axis at \(Int(degrees))\u{00B0} of roll and \(Int(flatness))\u{00B0} off a table is world-horizontal and inside the screen")
+                expect(near(frame.verticalAxis.length, 1) && near(frame.horizontalAxis.length, 1),
+                       "and the frame stays a unit basis there")
+            }
+        }
     }
 
-    private static func tipAxisStaysAcrossTheFlatThreshold() {
-        // A phone lying almost flat: the screen normal is almost the world's
-        // vertical, so which way it faces is mathematically defined and
-        // practically noise, and the frame gives the heading up there. What
-        // matters is that giving it up does not move the tip axis: when the
-        // heading came from the top edge, the axis jumped 180 degrees at the
-        // threshold and the same gesture started arriving as its own opposite.
-        // Both ways round the phone are swept, because the edge the screen is
-        // tipped toward is the other one on the far side of the roll.
-        for family in [-1.0, 1.0] {
-            var axis: AirMouseVector3? = nil
-            for degrees in stride(from: 1.0, through: 40.0, by: 1.0) {
-                let flatness = degrees * Double.pi / 180
-                let gravity = AirMouseVector3(
-                    y: family * sin(flatness),
-                    z: -cos(flatness)
-                )
-                let frame = AirMouseEngine.pointerFrame(fromGravity: gravity)
-                if let axis, (frame.verticalAxis - axis).length > 0.02 {
-                    preconditionFailure(
-                        "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} of flatness with gravity.y at \(family >= 0 ? "plus" : "minus")"
-                    )
-                }
-                axis = frame.verticalAxis
-            }
-            // Trusting the heading right through the flat range lands on the same
-            // axis, which is the claim the guard exists to keep.
-            let flatness = 10 * Double.pi / 180
-            let gravity = AirMouseVector3(y: family * sin(flatness), z: -cos(flatness))
-            let guarded = AirMouseEngine.pointerFrame(fromGravity: gravity)
-            let trusting = AirMouseEngine.pointerFrame(fromGravity: gravity, minimumHorizontalNormal: 0.05)
-            expect((guarded.verticalAxis - trusting.verticalAxis).length < 0.02,
-                   "and the guarded answer is the steady answer, not a flipped one")
-            // Exactly screen-up has no downhill edge to speak of, so it takes the
-            // screen-facing-the-sky side, the one a hand holding the phone upright
-            // comes down through.
-            if family < 0 {
-                let flat = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: -1))
-                expect((flat.verticalAxis - axis!).length < 0.02,
-                       "and the exactly flat frame continues the upright-hold side")
+    private static func aRolledPhoneNearFlatCarriesTheWholeTip() {
+        // The claim the shape of the axis exists to keep: a turn that changes the
+        // screen's elevation moves the pointer at full rate, whatever way the phone
+        // is rolled. Near flat this is where the old frame, which built the axis
+        // out of which way the screen faces, threw the gesture away — a phone
+        // cradled at 30\u{00B0} lost 13% of the tip, at 60\u{00B0} half of it, and
+        // held in landscape it lost all of it: the cursor sat still while the
+        // screen swung through twenty degrees.
+        for degrees in stride(from: 0.0, through: 330.0, by: 30.0) {
+            let roll = degrees * Double.pi / 180
+            for flatness in stride(from: 3.0, through: 40.0, by: 3.0) {
+                let flat = flatness * Double.pi / 180
+                let gravity = rolled(AirMouseVector3(y: -sin(flat), z: -cos(flat)), by: roll)
+                // The turn that raises or lowers the screen, carried round into the
+                // same rolled pose gravity was carried into.
+                let turn = rolled(deviceRight, by: roll)
+                let rates = AirMouseEngine.pointerRates(of: AirMouseAngularVelocity(
+                    x: turn.x,
+                    y: turn.y,
+                    z: turn.z
+                ), frame: frame(for: gravity))
+                expect(near(abs(rates.y), 1, 1e-6) && near(rates.x, 0, 1e-6),
+                       "a tip \(Int(flatness))\u{00B0} off a table at \(Int(degrees))\u{00B0} of roll arrives whole and sideways-free")
             }
         }
-        // The screen facing the ground, tipped over the top edge and over the
-        // bottom edge, keeps its own axis across the same threshold.
-        for family in [-1.0, 1.0] {
-            var axis: AirMouseVector3? = nil
-            for degrees in stride(from: 1.0, through: 40.0, by: 1.0) {
-                let flatness = degrees * Double.pi / 180
-                let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
-                    y: family * sin(flatness),
-                    z: cos(flatness)
-                ))
-                if let axis, (frame.verticalAxis - axis).length > 0.02 {
-                    preconditionFailure(
-                        "air mouse engine test failed: the tip axis jumps at \(Int(degrees))\u{00B0} off a screen facing the ground with gravity.y at \(family >= 0 ? "plus" : "minus")"
-                    )
-                }
-                axis = frame.verticalAxis
-            }
-            if family < 0 {
-                let flat = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: 1))
-                expect((flat.verticalAxis - axis!).length < 0.02,
-                       "and the exactly screen-down frame continues the side it is tipped toward")
-            }
+
+        // The landscape case on its own, spelled out: a phone 10 degrees off a
+        // table with its top edge pointing right, swung up over the edge it rests
+        // on. This is the pose that used to report nothing at all.
+        let flat = 10 * Double.pi / 180
+        let gravity = AirMouseVector3(
+            x: sin(flat),
+            y: 0,
+            z: -cos(flat)
+        )
+        let rates = AirMouseEngine.pointerRates(of: AirMouseAngularVelocity(y: -1),
+                                               frame: frame(for: gravity))
+        expect(near(rates.y, -1, 1e-6) && near(rates.x, 0, 1e-6),
+               "a phone lying in landscape still sends the whole tip, and it lifts the pointer")
+    }
+
+    private static func aPhoneLyingPerfectlyFlatGivesNoTipAxis() {
+        // Exactly on a table there is no horizontal direction inside the screen to
+        // prefer over any other, so the frame says so rather than inventing one.
+        expect(AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: -1)) == nil,
+               "a phone lying screen-up has no tip axis to be found")
+        expect(AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(z: 1)) == nil,
+               "nor does one lying screen-down")
+        // The sideways axis is unaffected: rotation about the world's vertical is
+        // still readable with the phone flat, so a table phone still steers left
+        // and right while it waits to be lifted.
+        let edge = frame(for: AirMouseVector3(x: 0.2, y: 0, z: -sqrt(1 - 0.04)))
+        expect(near(edge!.horizontalAxis.length, 1) && near(edge!.verticalAxis.length, 1),
+               "and one just off flat has both axes")
+        expect(near(frame(for: uprightGravity).verticalAxis.dot(deviceRight), 1, 1e-9),
+               "the upright seed the adapter starts from is the screen's own right edge")
+    }
+
+    /// Gravity or an axis, carried round the screen normal by `roll` radians.
+    private static func rolled(_ value: AirMouseVector3, by roll: Double) -> AirMouseVector3 {
+        AirMouseVector3(
+            x: value.x * cos(roll) - value.y * sin(roll),
+            y: value.x * sin(roll) + value.y * cos(roll),
+            z: value.z
+        )
+    }
+
+    /// The frame for a pose, failing the test rather than unwrapping in place.
+    private static func frame(for gravity: AirMouseVector3) -> AirMousePointerFrame {
+        guard let frame = AirMouseEngine.pointerFrame(fromGravity: gravity) else {
+            preconditionFailure(
+                "air mouse engine test failed: no tip axis for gravity (\(gravity.x), \(gravity.y), \(gravity.z))"
+            )
         }
+        return frame
     }
 
     // MARK: - Rate to deltas
@@ -310,7 +332,7 @@ struct AirMouseEngineTests {
             for index in 0..<samples {
                 let fraction = samples == 1 ? 1.0 : Double(index) / Double(samples - 1)
                 let tilt = start + (end - start) * fraction
-                let frame = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+                let frame = frame(for: AirMouseVector3(
                     x: 0,
                     y: -sin(tilt),
                     z: -cos(tilt)
@@ -359,10 +381,10 @@ struct AirMouseEngineTests {
         for degrees in stride(from: 5.0, through: 60.0, by: 5.0) {
             let tilt = degrees * Double.pi / 180
             let lift = 1.0 * Double.pi / 180
-            let from = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+            let from = frame(for: AirMouseVector3(
                 x: 0, y: -sin(tilt), z: -cos(tilt)
             ))
-            let to = AirMouseEngine.pointerFrame(fromGravity: AirMouseVector3(
+            let to = frame(for: AirMouseVector3(
                 x: 0, y: -sin(tilt + lift), z: -cos(tilt + lift)
             ))
             let gravity = AirMouseEngine.elevationRate(frame: to, previous: elevationAngle(of: from),
@@ -559,6 +581,49 @@ struct AirMouseEngineTests {
         expect(later > Double(first) * 1.5, "and a steady turn reaches its full speed instead of snapping to it")
     }
 
+    private static func smoothingLagsTheSameTimeAtAnySampleRate() {
+        // The stream is sampled faster than it used to be, and the smoothing slider
+        // is a promise about time, not about samples: the same turn of the wrist,
+        // lasting the same quarter of a second at the same speed, has to land the
+        // pointer in the same place whatever rate the phone reported it at. A
+        // slider that damps per sample breaks that as soon as the rate moves, and
+        // measured eight fold apart it lands the pointer 15% of the tip away;
+        // measured as time it is under 4%.
+        var slow: [(dx: Int8, dy: Int8)] = []
+        var fast: [(dx: Int8, dy: Int8)] = []
+        for (interval, bucket) in [(1.0 / 30.0, "slow"), (1.0 / 240.0, "fast")] {
+            let sink = Sink()
+            sink.begin()
+            var clock = live
+            let samples = Int(0.25 / interval)
+            for index in 0..<samples {
+                // A tip eased in and out over a quarter of a second, worth the same
+                // degrees either way round.
+                let progress = Double(index) / Double(max(1, samples - 1))
+                let rate = sin(progress * Double.pi) * 0.8
+                let axis = sink.frame.verticalAxis
+                sink.engine.update(
+                    rotationRate: AirMouseAngularVelocity(
+                        x: -axis.x * rate,
+                        y: -axis.y * rate,
+                        z: -axis.z * rate
+                    ),
+                    frame: sink.frame,
+                    at: clock
+                )
+                clock += interval
+            }
+            if bucket == "slow" { slow = sink.reports } else { fast = sink.reports }
+        }
+        let travelled = { (reports: [(dx: Int8, dy: Int8)]) in
+            Double(reports.reduce(0) { $0 + Int($1.dy) })
+        }
+        let atThirty = travelled(slow), atTwoHundredAndForty = travelled(fast)
+        expect(atThirty < 0 && atTwoHundredAndForty < 0, "the quarter second tip moves the pointer up at either rate")
+        expect(abs(atThirty - atTwoHundredAndForty) < abs(atThirty) * 0.10,
+               "and the same tip travels the same distance whatever the sample rate: \(atThirty) against \(atTwoHundredAndForty)")
+    }
+
     private static func fastTurnsGetExtraGain() {
         let slow = Sink { config in config.smoothing = 0 }
         slow.begin()
@@ -661,7 +726,7 @@ struct AirMouseEngineTests {
         }
         expect(near(turned.x, -1, 0.05) && near(turned.y, 0, 0.05),
                "a slow change of how the phone is held is tracked")
-        expect(AirMouseEngine.pointerFrame(fromGravity: turned).horizontalAxis.x < -0.9,
+        expect(frame(for: turned).horizontalAxis.x < -0.9,
                "and the frame follows it")
 
         filter.reset()
@@ -699,7 +764,7 @@ struct AirMouseEngineTests {
             var config = AirMouseEngine.Config()
             configure(&config)
             engine = AirMouseEngine(config: config)
-            frame = AirMouseEngine.pointerFrame(fromGravity: uprightGravity)
+            frame = AirMouseEngineTests.frame(for: uprightGravity)
             engine.onPointerMove = { [weak self] dx, dy in
                 self?.reports.append((dx, dy))
             }
@@ -726,11 +791,13 @@ struct AirMouseEngineTests {
 
         /// Feed a tip over the heading; positive raises the pointer, which is the
         /// direction the HID y axis counts as negative.
-        func feedVertical(_ rate: Double, samples: Int, restartingAt start: TimeInterval? = nil) {
-            feed(-frame.verticalAxis, rate: rate, samples: samples, restartingAt: start)
+        func feedVertical(_ rate: Double, samples: Int, restartingAt start: TimeInterval? = nil,
+                          every interval: TimeInterval = step) {
+            feed(-frame.verticalAxis, rate: rate, samples: samples, restartingAt: start, every: interval)
         }
 
-        private func feed(_ axis: AirMouseVector3, rate: Double, samples: Int, restartingAt start: TimeInterval?) {
+        private func feed(_ axis: AirMouseVector3, rate: Double, samples: Int, restartingAt start: TimeInterval?,
+                          every interval: TimeInterval = step) {
             if let start { clock = start }
             for _ in 0..<samples {
                 engine.update(
@@ -742,7 +809,7 @@ struct AirMouseEngineTests {
                     frame: frame,
                     at: clock
                 )
-                clock += step
+                clock += interval
             }
         }
     }

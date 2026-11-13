@@ -43,7 +43,7 @@ final class AirMousePointer: ObservableObject {
 
     @Published private(set) var status: Status = .off
 
-    private static let motionInterval: TimeInterval = 1.0 / 60.0
+    private static let motionInterval: TimeInterval = 1.0 / 120.0
 
     private let manager = CMMotionManager()
     private let engine = AirMouseEngine()
@@ -115,9 +115,8 @@ final class AirMousePointer: ObservableObject {
     /// cannot inherit an angle from a previous session.
     private func seedFrame() {
         frame = AirMouseEngine.pointerFrame(
-            fromGravity: AirMouseGravityEstimator.initialGravity,
-            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
-        )
+            fromGravity: AirMouseGravityEstimator.initialGravity
+        ) ?? .flatOnTable
     }
 
     func deactivate() {
@@ -143,14 +142,19 @@ final class AirMousePointer: ObservableObject {
 
     private func receiveMotion(_ sample: CMDeviceMotion?) {
         guard isStreaming, let sample else { return }
-        frame = AirMouseEngine.pointerFrame(
+        // A phone passing through lying flat has no tip axis to be found in that
+        // one sample, and keeps the axis it last had rather than a fresh guess:
+        // the axis is only read when the phone is actually turning, and by the
+        // time it has turned enough to move the cursor it is off the table again.
+        if let found = AirMouseEngine.pointerFrame(
             fromGravity: AirMouseVector3(
                 x: sample.gravity.x,
                 y: sample.gravity.y,
                 z: sample.gravity.z
-            ),
-            minimumHorizontalNormal: engine.config.minimumHorizontalNormal
-        )
+            )
+        ) {
+            frame = found
+        }
         guard status == .waiting || status == .tracking else { return }
         if status == .waiting {
             status = .tracking

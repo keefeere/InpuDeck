@@ -9,10 +9,10 @@ and the same three mouse buttons keep working.
 | Gesture | Result |
 | --- | --- |
 | Turn the phone to the side | The cursor travels the same way, at the same speed whatever angle the phone is held at |
-| Tip the phone over its heading | The cursor moves up and down |
+| Tip the phone over the level line drawn across its screen | The cursor moves up and down, at full speed at any roll and any tilt |
 | Hold still | The cursor stops, and a moment later the filters clear themselves |
 | Tip the phone slowly, without a swing | The cursor still travels: the angle the screen has risen to is read from gravity |
-| Phone lying flat on a table | The direction the screen faces steers, which is the downhill side of it, the bottom edge |
+| Phone lying flat on a table | The cursor still travels sideways; there is no up-and-down axis to be found in a phone that faces the sky straight up |
 | **Скинути нахил** | Tracking restarts from nothing where the phone currently is (an icon alone in expert mode) |
 | Click buttons | The same HID buttons as the trackpad, on either transport, filling the Air mouse field so they sit under the thumb |
 
@@ -60,26 +60,34 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
 
 - **Rotation is read about the world's axes, not the phone's.** Gravity gives
   the world's vertical, which is the axis a sideways wrist turn spins about, so
-  `horizontalAxis` is the gravity direction itself; the screen normal gives the
-  heading the phone points at, and the axis at right angles to it, level with
-  the ground, is `verticalAxis`. Turning the phone right is therefore worth the
-  same cursor travel whether the phone is held upright, cradled against the
-  chest or laid back on a desk. Deriving the axes from the plane of the screen
-  instead makes that worth fall off with the hold, which is what felt sluggish
-  in 3.5.0: reaching the edge of the screen meant rotating the whole phone.
-- **The heading is given up when it is noise.** With the phone nearly flat the
-  screen normal points almost straight up, so which way it faces is defined but
-  unmeasurable, and noise in the heading is noise in the cursor. Below a
-  quarter of its full size the horizontal component of the normal is discarded
-  and the screen's downhill side steers instead — the edge the screen is tipped
-  toward, so the top edge when the screen faces the ground and the bottom edge
-  when it faces the sky. That is the direction the trusting heading arrives at as
-  the phone comes down to flat, at every roll angle, so the tip axis does not move
-  at the threshold. Taking the top edge in one pose and the screen normal in the
-  other pointed the heading the other way round, and the tip axis turned 180°
-  there, so a phone held almost flat started answering a tip up with a tip down.
-  The threshold is applied before normalising, or it could only ever catch a phone
-  lying perfectly flat.
+  `horizontalAxis` is the gravity direction itself; the tip axis is the one
+  direction that is level with the ground *and* lies inside the plane of the
+  screen, because turning the screen's elevation up or down is a turn about
+  exactly that, so `verticalAxis` is `(-gravity.y, gravity.x, 0)` normalised.
+  Turning the phone right is therefore worth the same cursor travel whether the
+  phone is held upright, cradled against the chest or laid back on a desk.
+  Deriving the axes from the plane of the screen instead makes that worth fall
+  off with the hold, which is what felt sluggish in 3.5.0: reaching the edge of
+  the screen meant rotating the whole phone.
+- **The tip axis is read from gravity alone, so nothing is lost near flat.** The
+  tempting way to find a level direction inside the screen is to take the
+  heading — which way the screen faces — and stand at right angles to it. That
+  works while the phone is upright-ish and collapses as the phone comes toward
+  flat, where the heading is defined but buried in noise, and the cure people
+  reach for is to invent a heading from the edge the screen is tipped toward.
+  Measured against the rate a screen elevation change really moves the pointer
+  at, an invented heading is what pointed the axis away from the tip: with the
+  phone cradled at 30° of roll, 13 % of the tip never reached the pointer, at
+  60° half of it, and held in landscape — the grip the tall click buttons
+  invite — none of it, so the cursor sat still while the screen swung through
+  twenty degrees. `(-gravity.y, gravity.x, 0)` is level because it is square to
+  gravity and inside the screen because it is square to the screen normal, so it
+  is exact at every pitch and every roll and asks for no heading at all. Only
+  gravity running exactly along the screen normal is given up, within 0.02 of
+  it, where no direction inside the screen is horizontal rather than another:
+  the adapter holds the axis it last had through that one sample, and the
+  sideways axis is unaffected, so a table phone still steers left and right
+  while it waits to be lifted.
 - **A slow tip is worth movement, and gravity is what sees it.** The gyroscope
   reports how fast the phone is turning, so a tip led evenly at 0.17 rad/s is
   worth as much cursor travel as a fast one, and a start threshold above it
@@ -91,7 +99,7 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   slow one still travels. **“Плавний рух”** scales that channel; at 0 % the
   axis is gyroscope-only.
 - **Gravity is fused by iOS, not estimated here.** One `CMDeviceMotion` stream
-  at 60 Hz carries the fused `gravity` vector and the rotation rate with the
+  at 120 Hz carries the fused `gravity` vector and the rotation rate with the
   same timestamp, so the axis pair and the spin belong to one instant. Before
   the first sample the frame is seeded from `AirMouseGravityEstimator
   .initialGravity` (gravity for a phone held upright), so a fresh activation
@@ -102,6 +110,24 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   longer than one sample is treated as a fresh start, and the angle the tip is
   measured against is cleared with the rest of the filters, so a pause the phone
   spent changing hands cannot arrive as one enormous step.
+- **The sample rate is the stream's, and the filters' lag is time.** The motion
+  stream runs at 120 Hz rather than 60, which is half the latency between the
+  wrist and the cursor on a screen that shows every report. That makes the
+  sample count meaningless as a unit, so the smoothing slider is read as a share
+  of the previous sample kept per sixtieth of a second and converted by the real
+  interval between samples: the same setting damps the same length of time at
+  any rate, and one test proves it by feeding an identical tip at 30 Hz and at
+  240 Hz and requiring the pointer to travel the same distance.
+- **What a slow link would look like, and where to look for it.** Pointer motion
+  reaches Bluetooth as one relative report per sample, so the report rate follows
+  how fast the cursor is actually travelling, not the sensor rate — crossing a
+  2560-pixel screen costs 2560 reports at any rate. Relative reports stack up in
+  `HIDReportQueue` faster than a reluctant link drains it, and because they are
+  relative, a deep queue does not drop motion, it plays it back late: the cursor
+  goes on walking after the hand has stopped. The transport's status line carries
+  `queued=` for exactly this; if it climbs while the cursor lags behind the hand,
+  the fix is to merge the un-sent pointer motion in the queue rather than to slow
+  the sensor down.
 - **Two thresholds, not one.** A dead zone alone turned the cursor into a crawl
   or let tremor through, and the shipped default is now nothing at all — a held
   hand is quieter than any dead zone needs. The threshold that does the work is
@@ -174,6 +200,10 @@ fallback and the tip axis staying the same across the threshold that triggers it
 for both signs of `gravity.y` and both sides of the screen, tremor rejection and
 the start/reengage pair, the fractional
 carry, report splitting and the signed-byte clamp, smoothing convergence,
+smoothing lagging the same length of time at thirty and at two hundred and
+forty samples a second, the tip axis being level and inside the screen at every
+roll and every tilt, a rolled phone near flat carrying the whole of a tip and a
+phone lying perfectly flat giving no tip axis at all, the
 acceleration gain, separate axis sensitivity, the shipped gains the table above
 prints, an even tip moving the pointer through gravity while the gyroscope
 alone sends nothing, the gravity tip arriving on the same sign as the gyroscope

@@ -67,21 +67,25 @@ struct AirMouseVector3: Equatable {
 
 /// The two directions the host pointer can travel in, as axes of the device
 /// frame: the pointer moves along the host screen, and the host screen is fixed
-/// to the world, not to the phone. Gravity gives the world's vertical, the
-/// screen normal gives the heading the phone points at, and from those two the
-/// pair follows.
+/// to the world, not to the phone. Gravity gives the world's vertical, and the
+/// plane of the screen gives the other: the one level direction the screen
+/// contains. From those two the pair follows, with no heading — which way the
+/// screen faces — needed anywhere.
 ///
 /// `horizontalAxis` is read as "how fast is the phone turning sideways" and
-/// `verticalAxis` as "how fast is it being tipped over the heading", so a
-/// deliberate wrist movement is worth the same amount of cursor whatever angle
-/// the phone happens to be held at. Deriving the pair from the plane of the
-/// screen instead makes that worth fall off with the hold, which is what makes a
-/// phone cradled against the chest feel sluggish on one axis.
+/// `verticalAxis` as "how fast is it being tipped over the level line drawn
+/// across it", so a deliberate wrist movement is worth the same amount of cursor
+/// whatever angle the phone happens to be held at. Deriving the pair from the
+/// plane of the screen alone makes that worth fall off with the hold, which is
+/// what makes a phone cradled against the chest feel sluggish on one axis.
 struct AirMousePointerFrame: Equatable {
     var horizontalAxis: AirMouseVector3
     var verticalAxis: AirMouseVector3
 
-    /// The phone lying flat: no heading, only the direction the top edge points.
+    /// The frame before gravity has been read at all: the upright seed, which is
+    /// also the frame a phone held upright is answered with, so the first real
+    /// sample only has to nudge it. A phone lying flat has no tip axis to be
+    /// found and the adapter keeps whatever axis it last had instead.
     static let flatOnTable = AirMousePointerFrame(
         horizontalAxis: AirMouseVector3(x: 0, y: -1, z: 0),
         verticalAxis: AirMouseVector3(x: 1, y: 0, z: 0)
@@ -176,15 +180,16 @@ final class AirMouseEngine {
         /// stay under, so a tail left by a wide turn cannot swallow a correction
         /// that is wide compared with a small one.
         var undershootShareOfTurn = 0.35
-        /// Horizontal size of the screen normal below which the heading the phone
-        /// points at is not knowable, for example with the phone lying flat on a
-        /// table. Near vertical the direction is defined but noisy, and noise in
-        /// the heading is noise in the cursor, so the plane is given up early.
-        var minimumHorizontalNormal = 0.25
     }
 
     /// Longest gap accepted as a real sample; a longer one resets the clock.
     static let maximumSampleInterval: TimeInterval = 0.1
+
+    /// How close to lying perfectly flat still gives a tip axis. Gravity carries
+    /// no word about which way the screen faces once it runs along the screen
+    /// normal, and within this much of that there is no horizontal direction in
+    /// the screen's plane to prefer over any other.
+    static let flatAxisLimit = 0.02
 
     var config: Config
     var onPointerMove: (Int8, Int8) -> Void = { _, _ in }
@@ -206,15 +211,6 @@ final class AirMouseEngine {
     private var lastMotionAt: TimeInterval?
     private var holdUntil: TimeInterval?
     private var isRunning = false
-    /// Which device edge points downhill, the side the screen is tipped toward.
-    /// `-gravity.y * sign(gravity.z)` is the limit the trusting heading lands on
-    /// as the phone comes down to flat, so the axis is continuous across the
-    /// threshold for every roll angle. Exactly screen-up and exactly screen-down
-    /// have no downhill edge to speak of, and take the flat-table convention.
-    static func downhillEdgeSign(of gravity: AirMouseVector3) -> Double {
-        if abs(gravity.y) < 1e-9 { return gravity.z < 0 ? -1 : 1 }
-        return gravity.y * gravity.z < 0 ? 1 : -1
-    }
 
     /// The screen-facing component of gravity on the previous sample, which is
     /// what turns a tip into the angle it has reached.
@@ -342,7 +338,11 @@ final class AirMouseEngine {
         // that steers the axis, so a fast tip is not counted twice and a slow,
         // even tip still moves the cursor.
         let rawY = abs(elevation.rate) > abs(gyroY) ? elevation.rate : gyroY
-        let alpha = 1 - min(max(config.smoothing, 0), 0.95)
+        // The slider is the share of the previous sample kept per sixtieth of a
+        // second, so the same setting lags the same length of time whatever rate
+        // the motion stream happens to run at.
+        let retention = pow(min(max(config.smoothing, 0), 0.95), max(dt, 0) * 60)
+        let alpha = 1 - retention
         smoothedX += alpha * (rawX - smoothedX)
         smoothedY += alpha * (rawY - smoothedY)
 
@@ -470,42 +470,29 @@ final class AirMouseEngine {
     /// Build the pointer frame from gravity. The horizontal axis is the gravity
     /// direction itself: turning the phone sideways is rotation about the
     /// world's vertical, whatever way the phone is held. The vertical axis is the
-    /// world-horizontal axis at right angles to the heading, which is where the
-    /// screen faces.
+    /// one world-horizontal direction that lies in the plane of the screen,
+    /// because a tip that changes the screen's elevation is a turn about exactly
+    /// that.
     ///
-    /// With the screen pointing up or down there is no heading to speak of, so the
-    /// direction the top edge points at stands in for it, and the frame is the one
-    /// a phone lying on a table has.
+    /// It is `(-gravity.y, gravity.x, 0)` normalised: square to gravity, so
+    /// world-horizontal, and square to the screen normal, so inside the screen.
+    /// It asks nothing of which way the screen faces, and that is the whole
+    /// point. A heading guessed from the facing is only knowable while the screen
+    /// is upright-ish, and near flat it has to be invented; an invented heading
+    /// points the tip axis away from the tip, and the further the phone is rolled
+    /// in the hand the more of the gesture is thrown away — `cos(roll)` of it
+    /// reaches the pointer, which is nothing at all with the phone held in
+    /// landscape. Measured against the true rate a screen elevation change moves
+    /// the pointer at, this axis is exact at every pitch and every roll. Only
+    /// gravity running exactly along the screen normal is given up, where no
+    /// direction inside the screen is horizontal rather than another.
     static func pointerFrame(
-        fromGravity gravity: AirMouseVector3,
-        minimumHorizontalNormal: Double = 0.25
-    ) -> AirMousePointerFrame {
+        fromGravity gravity: AirMouseVector3
+    ) -> AirMousePointerFrame? {
         let down = gravity.normalized
-        let normal = AirMouseVector3(x: 0, y: 0, z: 1)
-        // The threshold is applied to the component of the screen normal that is
-        // actually horizontal, before normalising: normalising first would make it
-        // either one or zero and the guard could only ever catch a phone lying
-        // perfectly flat.
-        let horizontalNormal = normal - down * normal.dot(down)
-        let heading: AirMouseVector3
-        if horizontalNormal.length >= max(0, minimumHorizontalNormal) {
-            heading = horizontalNormal.normalized
-        } else {
-            // Near flat the screen faces the sky or the ground, and the direction
-            // it faces is the edge it is tipped toward: the top edge when the
-            // screen is facing the ground, the bottom edge when it faces the sky.
-            // That is the edge the trusting branch arrives at as the phone comes
-            // down to flat, so the tip axis does not move at the threshold; taking
-            // the bottom edge in both poses pointed the heading the other way for
-            // a phone tipped over its top edge, and a tip up began arriving as a
-            // tip down there.
-            let downhill = AirMouseVector3(x: 0, y: Self.downhillEdgeSign(of: down), z: 0)
-            heading = (downhill - down * downhill.dot(down)).normalized
-        }
-        guard heading.length > 1e-9 else { return .flatOnTable }
-
-        let verticalAxis = (-down).cross(heading)
-        return AirMousePointerFrame(horizontalAxis: down, verticalAxis: verticalAxis)
+        let axis = AirMouseVector3(x: -down.y, y: down.x, z: 0)
+        guard axis.length >= flatAxisLimit else { return nil }
+        return AirMousePointerFrame(horizontalAxis: down, verticalAxis: axis.normalized)
     }
 
     /// Subtract the dead zone, or hold the axis at zero.
