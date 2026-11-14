@@ -307,8 +307,14 @@ struct AirMouseEngineTests {
         let edge = frameAt(AirMouseVector3(x: 0.2, y: 0, z: -sqrt(1 - 0.04)))
         expect(near(edge.horizontalAxis.length, 1) && near(edge.verticalAxis.length, 1),
                "and one just off flat has both axes")
-        expect(near(frameAt(uprightGravity).verticalAxis.dot(deviceRight), 1, 1e-9),
-               "the upright seed the adapter starts from is the screen's own right edge")
+        // For an upright phone the tip axis is the screen's cross-axis, and which
+        // end of it the frame points along is the pole the direction tests settled:
+        // it runs along the screen's own left edge, so that the tip which pushes the
+        // top edge away from the hand — the tip that sends the pointer down the
+        // screen — is a positive rotation about it.
+        let upright = frameAt(uprightGravity)
+        expect(near(upright.verticalAxis.dot(deviceRight), -1, 1e-9),
+               "the tip axis of an upright phone runs along its left edge, pointed that way")
     }
 
     /// Gravity or an axis, carried round the screen normal by `roll` radians.
