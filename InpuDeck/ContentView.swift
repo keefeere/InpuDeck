@@ -40,21 +40,21 @@ struct ContentView: View {
     @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
     /// Rotation rate a still axis has to exceed before the pointer moves at all.
     @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
-    // The sign of a wrist movement is settled in the engine, where it belongs:
-    // `AirMouseEngine.pointerFrame` builds its axes from the direction away from the
-    // ground, so a phone turned to the right sends the cursor right and one tipped
-    // with its top edge away sends it down, with neither switch touched. Both
-    // switches therefore mean "this hand wants the opposite", and both are off.
+    // The two switches mean one thing: "this hand wants the opposite". Both are
+    // off, because the directions themselves are the maths. `AirMouseEngine.tipSign`
+    // carries the platform's own vertical sign - the gyroscope and the gravity
+    // vector are the same on every iPhone, so the direction a tip has to arrive in
+    // is not a taste - and the horizontal runs on the axis the frame is built from,
+    // the way it has since the feature shipped.
     //
-    // Both keys are fresh names anyway, and that is not decoration: `@AppStorage`
-    // answers from a stored value before it looks at the default in code, so a phone
-    // that has answered a switch once goes on answering it whatever the source says.
-    // That is how one inverted default survived three releases of being switched off
-    // in code, and why a default that changes has to arrive as a new key. Dead behind
-    // this: `airMouseInvertX`, `airMouseInvertXV2`, `airMouseInvertY`,
-    // `airMouseInvertYV3`, `airMouseInvertYV4`, `airMouseInvertYV5`.
-    @AppStorage("airMouseInvertXV3") private var airMouseInvertX = false
-    @AppStorage("airMouseInvertYV6") private var airMouseInvertY = false
+    // `airMouseInvertX` is the original key and its original value. The vertical
+    // needs a new name, because a default that moves only reaches a phone that has
+    // already answered the switch as a new key: `@AppStorage` answers from the
+    // stored value before it looks at the default in code. Dead behind this:
+    // `airMouseInvertY`, `airMouseInvertYV3`, `airMouseInvertYV4`,
+    // `airMouseInvertYV5`, `airMouseInvertYV6`, `airMouseInvertXV2`.
+    @AppStorage("airMouseInvertX") private var airMouseInvertX = true
+    @AppStorage("airMouseInvertYV7") private var airMouseInvertY = false
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""

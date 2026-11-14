@@ -36,12 +36,6 @@ struct AirMouseVector3: Equatable {
         return AirMouseVector3(x: x / scale, y: y / scale, z: z / scale)
     }
 
-    /// Same length, other end. The pointer's frame is built from the direction
-    /// away from the ground, which is what gravity is not.
-    var reversed: AirMouseVector3 {
-        AirMouseVector3(x: -x, y: -y, z: -z)
-    }
-
     func dot(_ other: AirMouseVector3) -> Double {
         x * other.x + y * other.y + z * other.z
     }
@@ -92,16 +86,9 @@ struct AirMousePointerFrame: Equatable {
     /// also the frame a phone held upright is answered with, so the first real
     /// sample only has to nudge it. A phone lying flat has no tip axis to be
     /// found and the adapter keeps whatever axis it last had instead.
-    /// The frame before gravity has been read at all: the upright seed, which is
-    /// also the frame a phone held upright is answered with, so the first real
-    /// sample only has to nudge it. A phone lying flat has no tip axis to be
-    /// found and the adapter keeps whatever axis it last had instead.
-    ///
-    /// The signs are the pointer's own rather than gravity's: the horizontal axis
-    /// points away from the ground, matching `pointerFrame`.
     static let flatOnTable = AirMousePointerFrame(
-        horizontalAxis: AirMouseVector3(x: 0, y: 1, z: 0),
-        verticalAxis: AirMouseVector3(x: -1, y: 0, z: 0)
+        horizontalAxis: AirMouseVector3(x: 0, y: -1, z: 0),
+        verticalAxis: AirMouseVector3(x: 1, y: 0, z: 0)
     )
 }
 
@@ -218,6 +205,19 @@ final class AirMouseEngine {
     /// there: it does not exist. Past this share of gravity the axis is read again,
     /// provided it does not contradict the one the phone was steered by.
     static let axisScreenShare = 0.5
+
+    /// The sign a tip has to arrive in. Every iPhone reports the same gyroscope and
+    /// the same gravity vector, so this is a fact about the platform and not a
+    /// taste: the tip axis is read along `(-gravity.y, gravity.x, 0)`, which makes a
+    /// phone tipped with its top edge away from the hand report a negative rate
+    /// about it, while the HID y axis grows downwards. Without this the cursor
+    /// climbs when the hand tips down, and the only way to see that is to hold the
+    /// phone.
+    ///
+    /// It lives here rather than in a settings default because a default that has
+    /// to move has to arrive as a new key - the switch under Settings means only
+    /// "this hand wants the opposite", and it ships off.
+    static let tipSign: Double = -1
 
     var config: Config
     var onPointerMove: (Int8, Int8) -> Void = { _, _ in }
@@ -452,7 +452,7 @@ final class AirMouseEngine {
         )
 
         var unitsPerSecondX = thresholdX * config.horizontalUnitsPerRadianPerSecond * gain
-        var unitsPerSecondY = thresholdY * config.verticalUnitsPerRadianPerSecond * gain
+        var unitsPerSecondY = thresholdY * config.verticalUnitsPerRadianPerSecond * Self.tipSign
         if config.invertX { unitsPerSecondX = -unitsPerSecondX }
         if config.invertY { unitsPerSecondY = -unitsPerSecondY }
 
@@ -548,11 +548,9 @@ final class AirMouseEngine {
     }
 
     /// Read the rotation rate along the two directions the pointer travels in.
-    ///
-    /// Both axes point the way the pointer's own coordinates grow — right and
-    /// down — so a wrist movement that should send the cursor right or down arrives
-    /// positive, and nothing is inverted here or by default. What a gesture is worth
-    /// physically is pinned by the two direction tests in the engine suite.
+    /// The HID y axis points downwards. The axes on their own say nothing about
+    /// which way a hand is tipping the phone - `tipSign` is what settles that for
+    /// the vertical, and `Config.invertX` is what settles it for the sideways axis.
     static func pointerRates(
         of rate: AirMouseAngularVelocity,
         frame: AirMousePointerFrame
@@ -561,17 +559,15 @@ final class AirMouseEngine {
         return (spin.dot(frame.horizontalAxis), spin.dot(frame.verticalAxis))
     }
 
-    /// Build the pointer frame from gravity. The horizontal axis is the direction
-    /// away from the ground: turning the phone sideways is rotation about the
-    /// world's vertical, whatever way the phone is held, and the axis is pointed the
-    /// way the pointer travels for that turn. The vertical axis is the
+    /// Build the pointer frame from gravity. The horizontal axis is the gravity
+    /// direction itself: turning the phone sideways is rotation about the world's
+    /// vertical, whatever way the phone is held. The vertical axis is the
     /// one world-horizontal direction that lies in the plane of the screen,
     /// because a tip that changes the screen's elevation is a turn about exactly
     /// that.
     ///
-    /// It is `(-up.y, up.x, 0)` normalised, where `up` is the direction away from
-    /// the ground: square to gravity, so world-horizontal, and square to the screen
-    /// normal, so inside the screen.
+    /// It is `(-gravity.y, gravity.x, 0)` normalised: square to gravity, so
+    /// world-horizontal, and square to the screen normal, so inside the screen.
     /// It asks nothing of which way the screen faces, and that is the whole
     /// point. A heading guessed from the facing is only knowable while the screen
     /// is upright-ish, and near flat it has to be invented; an invented heading
@@ -586,20 +582,9 @@ final class AirMouseEngine {
         fromGravity gravity: AirMouseVector3
     ) -> AirMousePointerFrame? {
         let down = gravity.normalized
-        // Which end of the vertical this frame is built from is the whole question,
-        // and it took a device test to ask it. The pointer's coordinates grow to the
-        // right and *downwards*, and a hand that turns the phone to the right or
-        // pushes its top edge away wants the cursor to go that way. Measured against
-        // the world, `spin · axis` answers that way for both gestures only when the
-        // horizontal axis points *away from the ground*; built from gravity itself,
-        // both come out reversed — the reversal two inversion switches have been
-        // quietly paying for, release after release. The gyroscope and the gravity
-        // vector are the same on every iPhone, so this sign is a fact about the
-        // platform rather than a preference, and it belongs in the maths.
-        let up = down.reversed
-        let axis = AirMouseVector3(x: -up.y, y: up.x, z: 0)
+        let axis = AirMouseVector3(x: -down.y, y: down.x, z: 0)
         guard axis.length >= flatAxisLimit else { return nil }
-        return AirMousePointerFrame(horizontalAxis: up, verticalAxis: axis.normalized)
+        return AirMousePointerFrame(horizontalAxis: down, verticalAxis: axis.normalized)
     }
 
     /// Subtract the dead zone, or hold the axis at zero.
