@@ -40,11 +40,18 @@ struct ContentView: View {
     @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
     /// Rotation rate a still axis has to exceed before the pointer moves at all.
     @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
-    // Inverted out of the box: pushing the top edge of the phone away is what
-    // most people mean by "look over there", and it is easier to switch off than
-    // to find.
+    // Sideways is inverted out of the box: turning the phone to the right is what
+    // the maintainer means by "look over there", and it is easier to switch off
+    // than to find. Vertical is not: a tip that raises the screen lifts the
+    // pointer, which is the way the hand already reads it — the inverted default
+    // there fought the wrist for three releases.
+    //
+    // `airMouseInvertYV3`, not `airMouseInvertY`: `@AppStorage` reads the stored
+    // value before the default, so a phone that already switched this switch once
+    // would keep the old answer whatever the code said. A fresh key is the only
+    // way a flipped default actually reaches a device that has been in use.
     @AppStorage("airMouseInvertX") private var airMouseInvertX = true
-    @AppStorage("airMouseInvertY") private var airMouseInvertY = true
+    @AppStorage("airMouseInvertYV3") private var airMouseInvertY = false
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""
