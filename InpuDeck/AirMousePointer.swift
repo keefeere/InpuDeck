@@ -142,18 +142,24 @@ final class AirMousePointer: ObservableObject {
 
     private func receiveMotion(_ sample: CMDeviceMotion?) {
         guard isStreaming, let sample else { return }
-        // A phone passing through lying flat has no tip axis to be found in that
-        // one sample, and keeps the axis it last had rather than a fresh guess:
-        // the axis is only read when the phone is actually turning, and by the
-        // time it has turned enough to move the cursor it is off the table again.
-        if let found = AirMouseEngine.pointerFrame(
-            fromGravity: AirMouseVector3(
-                x: sample.gravity.x,
-                y: sample.gravity.y,
-                z: sample.gravity.z
-            )
-        ) {
+        let gravity = AirMouseVector3(
+            x: sample.gravity.x,
+            y: sample.gravity.y,
+            z: sample.gravity.z
+        )
+        // Gravity is handed on live even where it can name no axis. The engine
+        // measures a tip as the swing between one reading and the next, so stalling
+        // the reading for the samples a phone spends nearest to flat would hide the
+        // very turn being made there. Only the axis is kept: a phone passing through
+        // flat has no tip axis to be found in that one sample, and the pointer keeps
+        // the one it last had rather than a fresh guess.
+        if let found = AirMouseEngine.pointerFrame(fromGravity: gravity) {
             frame = found
+        } else {
+            frame = AirMousePointerFrame(
+                horizontalAxis: gravity.normalized,
+                verticalAxis: frame.verticalAxis
+            )
         }
         guard status == .waiting || status == .tracking else { return }
         if status == .waiting {

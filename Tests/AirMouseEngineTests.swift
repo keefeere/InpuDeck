@@ -28,6 +28,8 @@ struct AirMouseEngineTests {
         documentedHalfGainWalksTheScreen()
         evenTipMovesThePointerThroughGravity()
         gravityTipCarriesTheGyroSign()
+        bothReadingsOfATipAgreeEverywhere()
+        aTipAcrossTheHorizonKeepsThePointerGoingOneWay()
         settlingTailAfterAStopDoesNotWalkThePointerBack()
         withoutDampingTheSettlingTailWalksBack()
         deliberateReverseTurnIsNotTreatedAsTheTail()
@@ -381,24 +383,102 @@ struct AirMouseEngineTests {
         for degrees in stride(from: 5.0, through: 60.0, by: 5.0) {
             let tilt = degrees * Double.pi / 180
             let lift = 1.0 * Double.pi / 180
-            let from = frameAt(AirMouseVector3(
-                x: 0, y: -sin(tilt), z: -cos(tilt)
-            ))
-            let to = frameAt(AirMouseVector3(
-                x: 0, y: -sin(tilt + lift), z: -cos(tilt + lift)
-            ))
-            let gravity = AirMouseEngine.elevationRate(frame: to, previous: elevationAngle(of: from),
-                                                       seconds: 1.0, gain: 1)
+            let from = tippedBack(by: tilt)
+            let to = tippedBack(by: tilt + lift)
+            let frame = frameAt(to)
+            let gravity = AirMouseEngine.gravityTipRate(
+                from: from, to: to, about: frame.verticalAxis,
+                seconds: 1.0, gain: 1)
             // Lifting the top edge of a phone lying screen-up is rotation about
             // the screen's right edge.
-            let gyro = AirMouseEngine.pointerRates(of: spin(deviceRight), frame: to)
-            expect(gravity.rate * gyro.y > 0,
+            let gyro = AirMouseEngine.pointerRates(of: spin(deviceRight), frame: frame)
+            expect(gravity * gyro.y > 0,
                    "a tip at \(Int(degrees))\u{00B0} of tilt arrives on the same side from both sensors")
         }
     }
 
-    private static func elevationAngle(of frame: AirMousePointerFrame) -> Double {
-        asin(min(max(-frame.horizontalAxis.normalized.z, -1), 1))
+    /// The phone tipped back `tilt` radians from lying screen-up on the table, which
+    /// is the pose a hand leads the phone up out of. At small `tilt` almost all of
+    /// gravity runs along the screen normal, which is the pose the pointer's tip axis
+    /// cannot be read from.
+    private static func tippedBack(by tilt: Double) -> AirMouseVector3 {
+        AirMouseVector3(y: -sin(tilt), z: -cos(tilt))
+    }
+
+    /// One tip, read by both sensors, at every screen angle there is.
+    ///
+    /// The two readings have to agree about which way the hand was going, because
+    /// they are readings of one rotation; and the gravity reading has to be the rate
+    /// itself, not the rate multiplied by whatever that pose makes the angle over
+    /// the horizontal plane sensitive to.
+    private static func bothReadingsOfATipAgreeEverywhere() {
+        let seconds = 1.0 / 120.0
+        let tip = 0.5 * Double.pi / 180      // half a degree a sample is 1 radian a second
+        let rate = tip / seconds
+        for whole in stride(from: -89.0, through: 89.0, by: 0.5) {
+            guard let from = AirMouseEngine.pointerFrame(fromGravity: tippedBack(by: whole * .pi / 180)),
+                  let to = AirMouseEngine.pointerFrame(
+                    fromGravity: tippedBack(by: (whole + 0.5) * .pi / 180))
+            else { continue }        // within a degree of flat there is no axis to read
+            let gyro = AirMouseEngine.pointerRates(of: spin(AirMouseVector3(x: 1)), frame: to).y
+            let gravity = AirMouseEngine.gravityTipRate(
+                from: from.horizontalAxis, to: to.horizontalAxis, about: to.verticalAxis,
+                seconds: seconds, gain: 1)
+            expect(gravity * gyro > 0,
+                   "a tip with the screen at \(whole)\u{00B0} comes from both sensors on the same side")
+            expect(near(abs(gravity), abs(rate), abs(rate) * 0.01),
+                   "gravity reports the tip as \(gravity) at \(whole)\u{00B0}, a rate of \(rate)")
+        }
+    }
+
+    /// The maintainer's gesture, reproduced: the phone led from thirty degrees below
+    /// the horizon to thirty above, in one direction and without pausing. Below the
+    /// horizon the pointer rose, as it should; the moment the phone came up past
+    /// flat it walked back down.
+    ///
+    /// Both readings of the tip reverse sign exactly there. The axis is the in-screen
+    /// direction of gravity turned a quarter turn, and that direction flips when the
+    /// screen passes flat; the angle over the horizontal plane is `90 - |tip|`, which
+    /// reaches its ninety degrees and turns around in the same sample. Nothing in the
+    /// engine could tell that from a hand that had changed its mind, so it obeyed.
+    private static func aTipAcrossTheHorizonKeepsThePointerGoingOneWay() {
+        let gestures: [(from: Double, to: Double, seconds: Double)] = [
+            (-30, 30, 0.8), (-30, 30, 2), (-20, 20, 1), (-60, 60, 1.2),
+        ]
+        for gesture in gestures {
+            var moved: [Int] = []
+            let engine = AirMouseEngine()
+            engine.onPointerMove = { _, dy in if dy != 0 { moved.append(Int(dy)) } }
+            engine.begin(now: 0)
+            let samples = Int(gesture.seconds / step)
+            let rate = (gesture.to - gesture.from) * .pi / 180 / gesture.seconds
+            var clock = 0.0
+            for index in 0...samples {
+                let degrees = gesture.from
+                    + (gesture.to - gesture.from) * Double(index) / Double(samples)
+                // A phone passing through flat has no axis to be found in that one
+                // sample; the adapter keeps the one it had, exactly as it does on the
+                // table.
+                guard let frame = AirMouseEngine.pointerFrame(
+                    fromGravity: tippedBack(by: degrees * .pi / 180)
+                ) else {
+                    clock += step
+                    continue
+                }
+                engine.update(
+                    rotationRate: AirMouseAngularVelocity(x: rate, y: 0, z: 0),
+                    frame: frame,
+                    at: clock
+                )
+                clock += step
+            }
+            expect(!moved.isEmpty,
+                   "a tip from \(gesture.from)\u{00B0} to \(gesture.to)\u{00B0} never moved the pointer")
+            let sides = Set(moved.map { $0 > 0 ? 1 : -1 })
+            expect(sides.count == 1,
+                   "one continuous tip from \(gesture.from)\u{00B0} to \(gesture.to)\u{00B0} turned around "
+                   + "halfway through, over \(moved.count) reports: \(moved)")
+        }
     }
 
     /// A tip the hand stops: the pointer has to stay where the gesture left it.

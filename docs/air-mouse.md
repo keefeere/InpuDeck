@@ -23,10 +23,15 @@ inversion. The sensitivity sliders run from 0 % to 100 % of the base gain, where
 percentage is worth in pointer units per degree, so the slider can be picked from a
 number rather than by feel. A stored setting from the old 40…900 % scale is carried
 across once: 750 % there is 50 % here.
-**Inversion is on out of the box**: pushing the top edge
-of the phone away moves the cursor that way, and the two toggles switch it off
-for a hand that prefers the other convention. The feature is off by default and
-the trackpad stays available while it is on; in expert mode the pad hides its
+**Sideways is inverted out of the box** — turning the phone to the right moves the
+cursor right — and **vertical is not**: a tip that raises the screen lifts the
+cursor, which is how the wrist already reads it. The vertical toggle is read from
+`airMouseInvertYV3` rather than `airMouseInvertY`, because `@AppStorage` answers
+from a stored value before it looks at the default in code, so a phone that had
+answered `true` once went on answering `true` through three releases of changed
+defaults. A changed default only reaches a device in use as a new key. The feature
+is off by default and the trackpad stays available while it is on; in expert mode
+the pad hides its
 captions and the reset button's label, but keeps showing anything that is
 actually wrong. Scrolling stays with the trackpad: the air mouse moves the
 pointer and clicks, it does not turn a wheel.
@@ -88,16 +93,37 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
   the adapter holds the axis it last had through that one sample, and the
   sideways axis is unaffected, so a table phone still steers left and right
   while it waits to be lifted.
+- **One tip keeps going one way, through the horizon.** That axis is gravity's
+  in-screen direction turned a quarter turn, and a quarter turn of a direction
+  that is shrinking to nothing comes back pointing the other way: as the phone
+  passes from facing the user to facing the sky, the axis jumps half a turn in a
+  single sample. The maintainer's gesture is the one that walks straight through
+  it — the phone led from thirty degrees below the horizon to thirty above,
+  without pausing — and the pointer rose below the horizon, then walked back down
+  as soon as the phone came up past flat. It was not an inversion setting and no
+  gain fixed it, because the *other* reading of the tip reversed in the same
+  sample: the angle over the horizontal plane is `90 − |tip|`, which reaches its
+  ninety degrees and turns around. Both sensors of one rotation said the hand had
+  changed its mind. So the engine keeps the axis from the last sample that could
+  name one, and reads the slow channel along that same axis, until the phone has
+  been still long enough to have been put down and aimed again — see
+  `axisScreenShare` and `tipAxis(for:)`. A phone tipped end over end is not kept
+  on a stale axis: passing flat is recorded, and an axis named on the far side
+  that agrees with the phone's direction is adopted at once.
 - **A slow tip is worth movement, and gravity is what sees it.** The gyroscope
   reports how fast the phone is turning, so a tip led evenly at 0.17 rad/s is
   worth as much cursor travel as a fast one, and a start threshold above it
   reads that tip as rest — the maintainer's report was that leading the phone
-  up slowly moved nothing at all. The angle the screen faces upward is
-  `-gravity.z`, so the change of `asin` of it is the tip in radians, on the
-  same sign the gyroscope axis gives for it. The engine takes whichever of the
-  two sensors saw the larger rate, so a fast tip is not counted twice and a
-  slow one still travels. **“Плавний рух”** scales that channel; at 0 % the
-  axis is gyroscope-only.
+  up slowly moved nothing at all. Gravity is itself the record of the tip: it
+  swung from where it was to where it is, and the cross product of two readings
+  is the turn that took it there, with a magnitude of `sin` of the angle — which
+  for the fractions of a degree a sample is worth is the angle, so the gain of
+  the reading is one. Read along the pointer's axis it is the same quantity the
+  gyroscope reports, which is why the two can differ in size and never in
+  direction; an angle over the horizontal plane can, and did. The engine takes
+  whichever of the two sensors saw the larger rate, so a fast tip is not counted
+  twice and a slow one still travels. **“Плавний рух”** scales that channel; at
+  0 % the axis is gyroscope-only.
 - **Gravity is fused by iOS, not estimated here.** One `CMDeviceMotion` stream
   at 120 Hz carries the fused `gravity` vector and the rotation rate with the
   same timestamp, so the axis pair and the spin belong to one instant. Before
@@ -206,7 +232,9 @@ roll and every tilt, a rolled phone near flat carrying the whole of a tip and a
 phone lying perfectly flat giving no tip axis at all, the
 acceleration gain, separate axis sensitivity, the shipped gains the table above
 prints, an even tip moving the pointer through gravity while the gyroscope
-alone sends nothing, the gravity tip arriving on the same sign as the gyroscope
+alone sends nothing, both readings of a tip agreeing in direction and in rate at
+every screen angle from −89° to +89°, one continuous tip from below the horizon to
+above it never turning the pointer around, the gravity tip arriving on the same sign as the gyroscope
 tip, the settling tail after a stop staying out of the pointer and walking it
 back when the damping is off, a deliberate turn back moving inside that window, a
 steady slow turn back arriving once the window is behind it, a turn built up out

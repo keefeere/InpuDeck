@@ -191,6 +191,21 @@ final class AirMouseEngine {
     /// the screen's plane to prefer over any other.
     static let flatAxisLimit = 0.02
 
+    /// How far inside the screen gravity has to lie before the axis a tip is
+    /// measured about is read from it again.
+    ///
+    /// That axis is the in-screen direction of gravity turned a quarter turn. As the
+    /// screen passes flat that direction shrinks to nothing and comes back pointing
+    /// the other way, so in a single sample the axis jumps half a turn — at the very
+    /// moment the gesture is smoothest. A hand that leads the phone from thirty
+    /// degrees below the horizon to thirty above passes straight through it, and
+    /// until now the pointer walked back the way it had come as soon as the phone
+    /// came up past the horizon. Near flat no direction inside the screen is
+    /// horizontal rather than any other, so the axis is not merely badly conditioned
+    /// there: it does not exist. Past this share of gravity the axis is read again,
+    /// provided it does not contradict the one the phone was steered by.
+    static let axisScreenShare = 0.5
+
     var config: Config
     var onPointerMove: (Int8, Int8) -> Void = { _, _ in }
 
@@ -212,9 +227,16 @@ final class AirMouseEngine {
     private var holdUntil: TimeInterval?
     private var isRunning = false
 
-    /// The screen-facing component of gravity on the previous sample, which is
-    /// what turns a tip into the angle it has reached.
-    private var lastElevation: Double?
+    /// Gravity as the previous sample saw it. What a tip did to the phone is not
+    /// knowable from one reading, only from one reading to the next.
+    private var lastGravity: AirMouseVector3?
+    /// The axis a tip is measured about, kept from the last sample that could name
+    /// one. See `tipAxis(for:)`.
+    private var heldVerticalAxis: AirMouseVector3?
+    /// Whether the screen has passed through lying flat since the axis was last
+    /// read from gravity, which is what tells that reversal apart from a phone that
+    /// has genuinely been turned over in the hand.
+    private var hasPassedFlatSinceAdoption = false
     /// The direction of each axis's last movement, so the tail a stopped
     /// movement leaves behind can be told from a hand that turns back.
     private var lastSignX = 0.0
@@ -247,7 +269,9 @@ final class AirMouseEngine {
         isMovingY = false
         lastSampleAt = nil
         lastMotionAt = nil
-        lastElevation = nil
+        lastGravity = nil
+        heldVerticalAxis = nil
+        hasPassedFlatSinceAdoption = false
         lastSignX = 0
         lastSignY = 0
         axisMotionAtX = nil
@@ -275,7 +299,9 @@ final class AirMouseEngine {
         isMovingY = false
         lastSampleAt = nil
         lastMotionAt = nil
-        lastElevation = nil
+        lastGravity = nil
+        heldVerticalAxis = nil
+        hasPassedFlatSinceAdoption = false
         lastSignX = 0
         lastSignY = 0
         axisMotionAtX = nil
@@ -296,7 +322,7 @@ final class AirMouseEngine {
 
         if let holdUntil, now < holdUntil {
             lastSampleAt = nil
-            lastElevation = nil
+            lastGravity = nil
             return
         }
         holdUntil = nil
@@ -311,33 +337,42 @@ final class AirMouseEngine {
         let dt = now - previous
         lastSampleAt = now
         guard dt > 0 else {
-            lastElevation = nil
+            lastGravity = nil
             return
         }
         guard dt <= Self.maximumSampleInterval else {
             pendingX = 0
             pendingY = 0
-            // A pause is not a step, so the angle the tip is measured against has
+            // A pause is not a step, so the reading the tip is measured against has
             // to be the one from the resumed stream. Leaving it behind would divide
             // every degree the phone moved while suspended by one sample interval
             // and throw the cursor across the screen at the first sample back.
-            lastElevation = nil
+            lastGravity = nil
             return
         }
 
-        let (rawX, gyroY) = Self.pointerRates(of: rate, frame: frame)
-        let elevation = Self.elevationRate(
-            frame: frame,
-            previous: lastElevation,
+        let axis = tipAxis(for: frame)
+        let steer = AirMousePointerFrame(
+            horizontalAxis: frame.horizontalAxis,
+            verticalAxis: axis
+        )
+        let (rawX, gyroY) = Self.pointerRates(of: rate, frame: steer)
+        let tipFromGravity = Self.gravityTipRate(
+            from: lastGravity,
+            to: frame.horizontalAxis,
+            about: axis,
             seconds: dt,
             gain: max(0, config.gravityElevation)
         )
-        lastElevation = elevation.angle
-        // A tip reaches both sensors: the gyroscope sees its speed, gravity sees
-        // the angle it has arrived at. Whichever of the two saw more is the one
-        // that steers the axis, so a fast tip is not counted twice and a slow,
-        // even tip still moves the cursor.
-        let rawY = abs(elevation.rate) > abs(gyroY) ? elevation.rate : gyroY
+        lastGravity = frame.horizontalAxis
+        // A tip reaches both sensors: the gyroscope sees how fast the phone is
+        // turning, gravity sees how far it has got there. Whichever of the two saw
+        // more is the one that steers the axis, so a fast tip is not counted twice and
+        // a slow, even tip still moves the cursor. Both are read along the same axis,
+        // and that is the point: a tip is one rotation, so the two readings of it
+        // cannot disagree about which way the hand was going, however their magnitudes
+        // fall out.
+        let rawY = abs(tipFromGravity) > abs(gyroY) ? tipFromGravity : gyroY
         // The slider is the share of the previous sample kept per sixtieth of a
         // second, so the same setting lags the same length of time whatever rate
         // the motion stream happens to run at.
@@ -436,24 +471,67 @@ final class AirMouseEngine {
         pendingX = 0
         pendingY = 0
         isSettled = true
+        // A phone that has lain still long enough to be put down, picked up and
+        // pointed somewhere else has earned a fresh reading of the world. Until then
+        // the pointer keeps the axis the gesture began with, so one continuous tip
+        // cannot be made to turn around halfway through.
+        heldVerticalAxis = nil
+        hasPassedFlatSinceAdoption = false
     }
 
-    /// The rate a tip is moving at, in the same sign the gyroscope axis gives for
-    /// it. `-horizontalAxis.z` is how much the screen faces upward, and that angle
-    /// *falling* is the pointer dropping on the HID axis, which is exactly the
-    /// sign `pointerRates` returns for `spin.dot(verticalAxis)`. Gravity is the
-    /// one sensor that sees a tip the hand leads evenly, below the rate the
-    /// gyroscope reports.
-    static func elevationRate(
-        frame: AirMousePointerFrame,
-        previous angle: Double?,
+    /// The axis a tip is measured about: gravity's axis when gravity is far enough
+    /// inside the screen to name one and does not contradict the phone's own
+    /// direction, and otherwise the axis the phone was already steered by.
+    ///
+    /// The two cases are kept apart by whether the screen has passed through flat
+    /// since the axis was last read. A phone that was tipped end over end has
+    /// genuinely turned over, and the axis it names on the way back is the right
+    /// one. A phone that went down through flat and came up the other side is still
+    /// being turned the same way by the same hand, and the axis it names there is
+    /// the jump described on `axisScreenShare`, not a new direction.
+    private func tipAxis(for frame: AirMousePointerFrame) -> AirMouseVector3 {
+        let fresh = frame.verticalAxis
+        guard let held = heldVerticalAxis else {
+            heldVerticalAxis = fresh
+            hasPassedFlatSinceAdoption = false
+            return fresh
+        }
+        let share = (frame.horizontalAxis.x * frame.horizontalAxis.x
+            + frame.horizontalAxis.y * frame.horizontalAxis.y).squareRoot()
+        guard share >= Self.axisScreenShare else {
+            hasPassedFlatSinceAdoption = true
+            return held
+        }
+        guard hasPassedFlatSinceAdoption, fresh.dot(held) <= 0 else {
+            heldVerticalAxis = fresh
+            hasPassedFlatSinceAdoption = false
+            return fresh
+        }
+        return held
+    }
+
+    /// How far the screen has been tipped since the last sample, read along the axis
+    /// the gyroscope is read along, in radians per second.
+    ///
+    /// Gravity itself is the record: it swung from where it was to where it is, and
+    /// the cross product of the two readings is the turn that took it there — its
+    /// magnitude is the sine of the angle turned, which for the fractions of a
+    /// degree a sample is worth is the angle itself, so the gain of this reading is
+    /// one. Reading it along the pointer's axis is what makes it the same quantity
+    /// the gyroscope reports, so the two can differ in size and never in direction,
+    /// and `update` can take whichever saw more. Unlike an angle measured over the
+    /// horizontal plane, this one has no pole: the screen can pass through flat, and
+    /// over the top, and the reading keeps counting the way the hand is going.
+    static func gravityTipRate(
+        from previous: AirMouseVector3?,
+        to current: AirMouseVector3,
+        about axis: AirMouseVector3,
         seconds dt: TimeInterval,
         gain: Double
-    ) -> (angle: Double, rate: Double) {
-        let facing = min(max(-frame.horizontalAxis.normalized.z, -1), 1)
-        let current = asin(facing)
-        guard let angle, dt > 0 else { return (current, 0) }
-        return (current, (angle - current) / dt * gain)
+    ) -> Double {
+        guard let previous, dt > 0 else { return 0 }
+        let swing = previous.normalized.cross(current.normalized)
+        return -swing.dot(axis) / dt * max(0, gain)
     }
 
     /// Read the rotation rate along the two directions the pointer travels in.
