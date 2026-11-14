@@ -40,7 +40,12 @@ jobs:
           set -euo pipefail
           message="$(git log -1 --pretty=%B)"
           if [[ ! $message =~ release-tag-([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            echo "No release marker in the head commit message."
+            # A missing marker used to end the run in ten silent seconds, which
+            # read as "the release shipped" until the tag turned out to be absent.
+            # Say it where the run summary shows it, and keep the run green since
+            # most pushes are not releases.
+            echo "::warning title=No release marker::This push to main is not a release: no release-tag-<version> in the head commit message. To ship, put the marker in the head commit of the push."
+            echo "No release marker in the head commit message: nothing tagged." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
