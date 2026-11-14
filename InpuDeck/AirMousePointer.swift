@@ -157,7 +157,11 @@ final class AirMousePointer: ObservableObject {
             frame = found
         } else {
             frame = AirMousePointerFrame(
-                horizontalAxis: gravity.normalized,
+                horizontalAxis: AirMouseVector3(
+                    x: -gravity.normalized.x,
+                    y: -gravity.normalized.y,
+                    z: -gravity.normalized.z
+                ),
                 verticalAxis: frame.verticalAxis
             )
         }

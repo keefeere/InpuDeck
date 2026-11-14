@@ -40,20 +40,21 @@ struct ContentView: View {
     @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
     /// Rotation rate a still axis has to exceed before the pointer moves at all.
     @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
-    // Only the vertical is inverted out of the box. Pushing the top edge of the
-    // phone away sends the pointer that way; turning the phone sideways sends it
-    // the way the phone turned, which is what the field testing asked for. Both
-    // stay toggleable.
+    // The sign of a wrist movement is settled in the engine, where it belongs:
+    // `AirMouseEngine.pointerFrame` builds its axes from the direction away from the
+    // ground, so a phone turned to the right sends the cursor right and one tipped
+    // with its top edge away sends it down, with neither switch touched. Both
+    // switches therefore mean "this hand wants the opposite", and both are off.
     //
-    // Both keys are fresh names, and that is not decoration: `@AppStorage` answers
-    // from a stored value before it looks at the default in code, so a phone that
-    // has answered a switch once goes on answering it whatever the source says -
-    // that is how one inverted default survived three releases of being switched off
-    // in code. A default that has to change therefore arrives as a new key.
-    // Dead behind this: `airMouseInvertY`, `airMouseInvertYV3` (the one release that
-    // tried the wrist's own convention), `airMouseInvertYV4`, and `airMouseInvertX`.
-    @AppStorage("airMouseInvertXV2") private var airMouseInvertX = false
-    @AppStorage("airMouseInvertYV5") private var airMouseInvertY = true
+    // Both keys are fresh names anyway, and that is not decoration: `@AppStorage`
+    // answers from a stored value before it looks at the default in code, so a phone
+    // that has answered a switch once goes on answering it whatever the source says.
+    // That is how one inverted default survived three releases of being switched off
+    // in code, and why a default that changes has to arrive as a new key. Dead behind
+    // this: `airMouseInvertX`, `airMouseInvertXV2`, `airMouseInvertY`,
+    // `airMouseInvertYV3`, `airMouseInvertYV4`, `airMouseInvertYV5`.
+    @AppStorage("airMouseInvertXV3") private var airMouseInvertX = false
+    @AppStorage("airMouseInvertYV6") private var airMouseInvertY = false
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""

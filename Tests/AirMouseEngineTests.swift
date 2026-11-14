@@ -17,8 +17,10 @@ private let deviceRight = AirMouseVector3(x: 1)
 struct AirMouseEngineTests {
     static func main() {
         pointerFrameFollowsTheWorld()
+        turningThePhoneRightSendsThePointerRightUninverted()
+        tippingTheTopEdgeAwaySendsThePointerDownUninverted()
         turningSidewaysIsPureHorizontalAtEveryRoll()
-        tippingOverTheHeadingLiftsThePointer()
+        tippingOverTheHeadingIsPureVertical()
         theTipAxisLiesInsideTheScreensPlane()
         aRolledPhoneNearFlatCarriesTheWholeTip()
         aPhoneLyingPerfectlyFlatGivesNoTipAxis()
@@ -56,20 +58,122 @@ struct AirMouseEngineTests {
         let frame = frameAt(uprightGravity)
 
         // Horizontal pointer motion is rotation about the world's vertical, which
-        // is the gravity direction itself: no screen plane, no device axis.
-        expect(near(frame.horizontalAxis.y, -cos(tiltAngle), 1e-9)
-                && near(frame.horizontalAxis.z, -sin(tiltAngle), 1e-9)
+        // is the gravity line: no screen plane, no device axis. But the axis is
+        // pointed away from the ground, because that is the direction a rightward
+        // wrist turn drives the pointer, and a pole chosen for any other reason
+        // makes both axes read backwards and asks two switches to pay for it.
+        expect(near(frame.horizontalAxis.y, cos(tiltAngle), 1e-9)
+                && near(frame.horizontalAxis.z, sin(tiltAngle), 1e-9)
                 && near(frame.horizontalAxis.x, 0),
-               "the horizontal axis is the world's vertical")
+               "the horizontal axis is the world's vertical, pointed away from the ground")
         // Tipping over the heading is rotation about a world-horizontal axis, and
-        // for this hold it is the device's own x.
-        expect(near(frame.verticalAxis.x, 1, 1e-9)
+        // for this hold it is the device's own x, pointed the way the tip drives
+        // the pointer.
+        expect(near(frame.verticalAxis.x, -1, 1e-9)
                 && near(frame.verticalAxis.y, 0) && near(frame.verticalAxis.z, 0),
                "the vertical axis is the world-horizontal axis across the heading")
         expect(near(frame.horizontalAxis.length, 1) && near(frame.verticalAxis.length, 1),
                "both axes stay unit")
         expect(near(frame.horizontalAxis.dot(frame.verticalAxis), 0, 1e-9),
                "and they stay square")
+    }
+
+    private static func turningThePhoneRightSendsThePointerRightUninverted() {
+        // The two direction tests are the reason the frame's pole is what it is.
+        // They spell the wrist movement out in the device frame the gyroscope
+        // reports in, for one ordinary hold — phone upright, screen facing the hand,
+        // tipped back 17 degrees — and they leave both inversion switches alone,
+        // because on this platform the sign is not a preference: the gyroscope and
+        // the gravity vector are the same on every iPhone.
+        //
+        // For that hold the world's vertical, which is what a sideways turn is a
+        // rotation about, is (0, cos 17, sin 17) in device coordinates.
+        var config = AirMouseEngine.Config()
+        config.invertX = false
+        config.invertY = false
+        let engine = AirMouseEngine(config: config)
+        var travelled = 0
+        engine.onPointerMove = { dx, _ in travelled += Int(dx) }
+        engine.begin(now: 0)
+        let frame = frameAt(uprightGravity)
+        let rate = Double.pi / 4
+        var clock = live
+        for _ in 0..<40 {
+            engine.update(
+                rotationRate: AirMouseAngularVelocity(
+                    x: 0,
+                    y: cos(tiltAngle) * rate,
+                    z: sin(tiltAngle) * rate
+                ),
+                frame: frame,
+                at: clock
+            )
+            clock += step
+        }
+        expect(travelled > 0,
+               "a phone turned to the right sent the pointer \(travelled) instead of rightwards")
+
+        var backwards = 0
+        let mirror = AirMouseEngine(config: config)
+        mirror.onPointerMove = { dx, _ in backwards += Int(dx) }
+        mirror.begin(now: 0)
+        clock = live
+        for _ in 0..<40 {
+            mirror.update(
+                rotationRate: AirMouseAngularVelocity(
+                    x: 0,
+                    y: -cos(tiltAngle) * rate,
+                    z: -sin(tiltAngle) * rate
+                ),
+                frame: frame,
+                at: clock
+            )
+            clock += step
+        }
+        expect(backwards < 0, "and the same turn the other way sent it \(backwards) instead of leftwards")
+    }
+
+    private static func tippingTheTopEdgeAwaySendsThePointerDownUninverted() {
+        // The same hold, tipped the way a hand tips it to look further down the
+        // screen: the top edge moves away from the hand, which is rotation about the
+        // world-horizontal axis lying across the screen — for this hold the device's
+        // own x, and pointed away from where the edge is going. The HID y axis grows
+        // downwards, so the pointer travelling down the screen is a positive delta.
+        var config = AirMouseEngine.Config()
+        config.invertX = false
+        config.invertY = false
+        let engine = AirMouseEngine(config: config)
+        var travelled = 0
+        engine.onPointerMove = { _, dy in travelled += Int(dy) }
+        engine.begin(now: 0)
+        let frame = frameAt(uprightGravity)
+        let rate = Double.pi / 4
+        var clock = live
+        for _ in 0..<40 {
+            engine.update(
+                rotationRate: AirMouseAngularVelocity(x: -rate, y: 0, z: 0),
+                frame: frame,
+                at: clock
+            )
+            clock += step
+        }
+        expect(travelled > 0,
+               "tipping the top edge away sent the pointer \(travelled) instead of down the screen")
+
+        var lifted = 0
+        let mirror = AirMouseEngine(config: config)
+        mirror.onPointerMove = { _, dy in lifted += Int(dy) }
+        mirror.begin(now: 0)
+        clock = live
+        for _ in 0..<40 {
+            mirror.update(
+                rotationRate: AirMouseAngularVelocity(x: rate, y: 0, z: 0),
+                frame: frame,
+                at: clock
+            )
+            clock += step
+        }
+        expect(lifted < 0, "and tipping it back the other way sent it \(lifted) instead of up")
     }
 
     private static func turningSidewaysIsPureHorizontalAtEveryRoll() {
@@ -96,17 +200,19 @@ struct AirMouseEngineTests {
         }
     }
 
-    private static func tippingOverTheHeadingLiftsThePointer() {
+    private static func tippingOverTheHeadingIsPureVertical() {
         let frame = frameAt(uprightGravity)
-        // The HID y axis grows downwards, so a tip that raises the pointer must
-        // come out negative.
-        let up = AirMouseEngine.pointerRates(of: spin(-frame.verticalAxis), frame: frame)
-        expect(near(up.x, 0, 1e-9) && near(up.y, -1, 1e-9),
-               "tipping the phone over its heading lifts the pointer")
+        // Spinning along the frame's own vertical axis is by construction the pure
+        // vertical reading; what a real gesture is worth in which direction is the
+        // business of the two direction tests, which spell the wrist movement out in
+        // device coordinates instead of borrowing the axis.
+        let along = AirMouseEngine.pointerRates(of: spin(-frame.verticalAxis), frame: frame)
+        expect(near(along.x, 0, 1e-9) && near(along.y, -1, 1e-9),
+               "spinning against the tip axis reads as negative vertical")
 
-        let down = AirMouseEngine.pointerRates(of: spin(frame.verticalAxis), frame: frame)
-        expect(near(down.x, 0, 1e-9) && near(down.y, 1, 1e-9),
-               "and tipping it the other way drops it")
+        let back = AirMouseEngine.pointerRates(of: spin(frame.verticalAxis), frame: frame)
+        expect(near(back.x, 0, 1e-9) && near(back.y, 1, 1e-9),
+               "and spinning along it reads as positive vertical")
 
         // Rolling the phone in its own plane must not bleed the tip into sideways
         // travel.
@@ -184,8 +290,8 @@ struct AirMouseEngineTests {
         )
         let rates = AirMouseEngine.pointerRates(of: AirMouseAngularVelocity(y: -1),
                                                frame: frameAt(gravity))
-        expect(near(rates.y, -1, 1e-6) && near(rates.x, 0, 1e-6),
-               "a phone lying in landscape still sends the whole tip, and it lifts the pointer")
+        expect(near(abs(rates.y), 1, 1e-6) && near(rates.x, 0, 1e-6),
+               "a phone lying in landscape still sends the whole tip, and none of it sideways")
     }
 
     private static func aPhoneLyingPerfectlyFlatGivesNoTipAxis() {
@@ -361,8 +467,8 @@ struct AirMouseEngineTests {
 
         // 20 degrees is 0.35 rad, which at the default 2700 units per radian is
         // about 950 units of travel, plus a small bonus for the middle of the tip.
-        expect(totals.y >= 800 && totals.y <= 1250,
-               "an even 20 degree tip walks about 950 units on the default gain")
+        expect(totals.y <= -800 && totals.y >= -1250,
+               "an even 20 degree tip walks about 950 units up the screen on the default gain")
         expect(totals.x == 0, "and a tip leaves the sideways axis alone")
 
         var quiet: [(dx: Int8, dy: Int8)] = []

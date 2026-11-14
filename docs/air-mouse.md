@@ -10,7 +10,9 @@ and the same three mouse buttons keep working.
 | --- | --- |
 | Turn the phone to the side | The cursor travels the same way, at the same speed whatever angle the phone is held at |
 | Tip the phone over the level line drawn across its screen | The cursor moves up and down, at full speed at any roll and any tilt |
-| Push the top edge away, or turn the phone sideways | The cursor goes that way: the vertical ships inverted, the horizontal does not |
+| Turn the phone to the right | The cursor goes right, with no inversion switch touched |
+| Push the top edge of the phone away from you | The cursor goes down the screen |
+| Flip either switch under Air mouse | That axis runs the other way, for a hand that wants it there |
 | Hold still | The cursor stops, and a moment later the filters clear themselves |
 | Tip the phone slowly, without a swing | The cursor still travels: the angle the screen has risen to is read from gravity |
 | Phone lying flat on a table | The cursor still travels sideways; there is no up-and-down axis to be found in a phone that faces the sky straight up |
@@ -24,15 +26,24 @@ inversion. The sensitivity sliders run from 0 % to 100 % of the base gain, where
 percentage is worth in pointer units per degree, so the slider can be picked from a
 number rather than by feel. A stored setting from the old 40…900 % scale is carried
 across once: 750 % there is 50 % here.
-**Only the vertical is inverted out of the box**: pushing the top edge of the phone
-away sends the pointer that way, and turning the phone sideways sends it the way the
-phone turned. Both stay toggleable; a tip that raises the screen is the one gesture
-that read the other way for a release. The toggles are read from `airMouseInvertXV2`
-and `airMouseInvertYV5`, because
-`@AppStorage` answers from a stored value before it looks at the default in code:
+**The directions are the maths, not the switches**: a phone turned to the right
+sends the pointer right and one tipped with its top edge away sends it down the
+screen, with both inversion switches off. That is a fact about the platform rather
+than a preference — every iPhone reports the same gyroscope and the same gravity
+vector — so it is settled in `AirMouseEngine.pointerFrame`, which builds its axes
+from the direction away from the ground because that is the pole that makes both
+gestures come out right. Building them from gravity itself makes *both* read
+backwards, which is what the two switches had been compensating for, one axis at a
+time, since the feature shipped; the switches now mean only “this hand wants the
+opposite”.
+`turningThePhoneRightSendsThePointerRightUninverted` and
+`tippingTheTopEdgeAwaySendsThePointerDownUninverted` pin both, in device coordinates,
+with the switches left off.
+Should a default ever have to move again it has to arrive as a new key —
+`@AppStorage` answers from a stored value before it looks at the default in code, so
 a phone that has answered a switch once goes on answering it whatever the source
-says, which is how one inverted default survived three releases of being switched
-off in code. A changed default only reaches a device in use as a new key. The
+says. Dead keys behind this: `airMouseInvertX`, `airMouseInvertXV2`,
+`airMouseInvertY`, `airMouseInvertYV3`, `airMouseInvertYV4`, `airMouseInvertYV5`. The
 feature is off by default and the trackpad stays available while it is on; in
 expert mode the pad hides its
 captions and the reset button's label, but keeps showing anything that is
@@ -68,10 +79,12 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
 
 - **Rotation is read about the world's axes, not the phone's.** Gravity gives
   the world's vertical, which is the axis a sideways wrist turn spins about, so
-  `horizontalAxis` is the gravity direction itself; the tip axis is the one
-  direction that is level with the ground *and* lies inside the plane of the
-  screen, because turning the screen's elevation up or down is a turn about
-  exactly that, so `verticalAxis` is `(-gravity.y, gravity.x, 0)` normalised.
+  `horizontalAxis` is that line pointed away from the ground; the tip axis is the
+  one direction that is level with the ground *and* lies inside the plane of the
+  screen, because turning the screen's elevation up or down is a turn about exactly
+  that, so with `up = -gravity` normalised, `verticalAxis` is `(-up.y, up.x, 0)`
+  normalised. Both axes are pointed the way the pointer's own coordinates grow
+  (right, then down), which is why neither needs inverting.
   Turning the phone right is therefore worth the same cursor travel whether the
   phone is held upright, cradled against the chest or laid back on a desk.
   Deriving the axes from the plane of the screen instead makes that worth fall
