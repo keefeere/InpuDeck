@@ -906,40 +906,46 @@ struct ContentView: View {
                                 .accessibilityIdentifier("settingsAirMouseSensitivityY")
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            LabeledContent("Плавний рух") {
-                                Text("\(Int(airMouseSlowMotionPercent.rounded()))%")
-                                    .foregroundStyle(.secondary)
+                        // The engineering knobs, behind the switch that already
+                        // means "show me the machinery". Sensitivity stays in front
+                        // of everyone, because that is the dial a hand actually
+                        // turns; these four only decide how the dial behaves.
+                        if developerMode {
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent("Плавний рух") {
+                                    Text("\(Int(airMouseSlowMotionPercent.rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $airMouseSlowMotionPercent, in: 0...100, step: 5)
+                                    .accessibilityIdentifier("settingsAirMouseSlowMotion")
                             }
-                            Slider(value: $airMouseSlowMotionPercent, in: 0...100, step: 5)
-                                .accessibilityIdentifier("settingsAirMouseSlowMotion")
-                        }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            LabeledContent("Прискорення") {
-                                Text("\(Int(airMouseAccelerationPercent.rounded()))%")
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent("Прискорення") {
+                                    Text("\(Int(airMouseAccelerationPercent.rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $airMouseAccelerationPercent, in: 0...100, step: 5)
+                                    .accessibilityIdentifier("settingsAirMouseAcceleration")
                             }
-                            Slider(value: $airMouseAccelerationPercent, in: 0...100, step: 5)
-                                .accessibilityIdentifier("settingsAirMouseAcceleration")
-                        }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            LabeledContent("Поріг руху") {
-                                Text("\(Int(airMouseMovementThresholdPercent.rounded()))%")
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent("Поріг руху") {
+                                    Text("\(Int(airMouseMovementThresholdPercent.rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $airMouseMovementThresholdPercent, in: 0...100, step: 5)
+                                    .accessibilityIdentifier("settingsAirMouseMovementThreshold")
                             }
-                            Slider(value: $airMouseMovementThresholdPercent, in: 0...100, step: 5)
-                                .accessibilityIdentifier("settingsAirMouseMovementThreshold")
-                        }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            LabeledContent("Мертва зона") {
-                                Text("\(Int(airMouseDeadZonePercent.rounded()))%")
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent("Мертва зона") {
+                                    Text("\(Int(airMouseDeadZonePercent.rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $airMouseDeadZonePercent, in: 0...100, step: 5)
+                                    .accessibilityIdentifier("settingsAirMouseDeadZone")
                             }
-                            Slider(value: $airMouseDeadZonePercent, in: 0...100, step: 5)
-                                .accessibilityIdentifier("settingsAirMouseDeadZone")
                         }
 
                         Toggle("Інвертувати горизонталь", isOn: $airMouseInvertX)
@@ -947,9 +953,19 @@ struct ContentView: View {
                     }
 
                     if !expertMode {
-                        Text("Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Повільний, рівний нахил рахується з напрямку сили тяжіння, бо гіроскоп бачить лише швидкість нахилу; «Плавний рух» керує тим каналом, «Прискорення» додає ходу різким змахуванням, а «Поріг руху» визначає, наскільки бодрим має бути рух, щоб курсор взагалі зрушився. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
+                        Text("Курсор іде за обертанням телефона відносно світу, а не за його власними осями: телефон можна тримати під кутом, напрямок курсора від цього не зміниться. Горизонталь і вертикаль мають окрему чутливість, бо це різні рухи руки. Повільний, рівний нахил рахується з напрямку сили тяжіння, бо гіроскоп бачить лише швидкість нахилу. Поки телефон нерухомий, апаратні фільтри скидаються самі. Потрібен дозвіл на рух (Налаштування → Конфіденційність і безпека → Рух і фітнес) і справний гіроскоп; сенсор працює, поки відкрита вкладка «Ввід».")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        // Say what the hidden numbers are for, wherever they are.
+                        if developerMode {
+                            Text("«Плавний рух» керує каналом сили тяжіння, «Прискорення» додає ходу різким змахуванням, «Поріг руху» визначає, наскільки бодрим має бути рух, щоб курсор взагалі зрушився, а «Мертва зона» зрізає дрібні коливання руки.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Тонкі налаштування — «Плавний рух», «Прискорення», «Поріг руху», «Мертва зона» — з’являються, коли ввімкнено «Режим розробника».")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -988,7 +1004,7 @@ struct ContentView: View {
                     Toggle("Режим розробника", isOn: $developerMode)
                 } footer: {
                     if !expertMode {
-                        Text("Показує журнал підключення, ідентифікатори пристроїв і засоби діагностики Bluetooth.")
+                        Text("Показує журнал підключення, ідентифікатори пристроїв, засоби діагностики Bluetooth і числові налаштування Air mouse.")
                     }
                 }
 
