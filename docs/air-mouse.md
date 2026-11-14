@@ -19,9 +19,11 @@ and the same three mouse buttons keep working.
 | **Скинути нахил** | Tracking restarts from nothing where the phone currently is (an icon alone in expert mode) |
 | Click buttons | The same HID buttons as the trackpad, on either transport, filling the Air mouse field so they sit under the thumb |
 
-Settings → **Air mouse** has separate sensitivity for the two axes, a slow-movement
-gain, an acceleration gain, a movement threshold, a dead zone and per-axis
-inversion. The sensitivity sliders run from 0 % to 100 % of the base gain, where
+Settings → **Air mouse** shows the two sensitivity sliders and per-axis inversion
+to everyone. The four adjustments that decide how that sensitivity behaves — the
+slow-movement gain, the acceleration gain, the movement threshold and the dead zone
+— appear only when **Developer mode** is on, and hiding them does not reset them.
+The sensitivity sliders run from 0 % to 100 % of the base gain, where
 50 % is the gain a hand steers by, and “Where the numbers come from” states what a
 percentage is worth in pointer units per degree, so the slider can be picked from a
 number rather than by feel. A stored setting from the old 40…900 % scale is carried
