@@ -40,20 +40,20 @@ struct ContentView: View {
     @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
     /// Rotation rate a still axis has to exceed before the pointer moves at all.
     @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
-    // Both axes are inverted out of the box, which is the convention the field
-    // testing came back to: turning the phone to the right and pushing its top edge
-    // away both send the pointer that way, which is what "look over there" means to
-    // this hand. A tip that raises the screen is the one gesture that read the other
-    // way for a release, and it is a toggle rather than a law.
+    // Only the vertical is inverted out of the box. Pushing the top edge of the
+    // phone away sends the pointer that way; turning the phone sideways sends it
+    // the way the phone turned, which is what the field testing asked for. Both
+    // stay toggleable.
     //
-    // The key has to change whenever a default does: `@AppStorage` answers from a
-    // stored value before it looks at the default in code, so a phone that has
-    // answered this switch once goes on answering it whatever the source says. That
-    // is how an inverted default survived three releases of being switched off in
-    // code. `airMouseInvertY` is dead for that reason, and `airMouseInvertYV3`
-    // carries the one release that tried the wrist's own convention.
-    @AppStorage("airMouseInvertX") private var airMouseInvertX = true
-    @AppStorage("airMouseInvertYV4") private var airMouseInvertY = true
+    // Both keys are fresh names, and that is not decoration: `@AppStorage` answers
+    // from a stored value before it looks at the default in code, so a phone that
+    // has answered a switch once goes on answering it whatever the source says -
+    // that is how one inverted default survived three releases of being switched off
+    // in code. A default that has to change therefore arrives as a new key.
+    // Dead behind this: `airMouseInvertY`, `airMouseInvertYV3` (the one release that
+    // tried the wrist's own convention), `airMouseInvertYV4`, and `airMouseInvertX`.
+    @AppStorage("airMouseInvertXV2") private var airMouseInvertX = false
+    @AppStorage("airMouseInvertYV5") private var airMouseInvertY = true
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""

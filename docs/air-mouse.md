@@ -10,6 +10,7 @@ and the same three mouse buttons keep working.
 | --- | --- |
 | Turn the phone to the side | The cursor travels the same way, at the same speed whatever angle the phone is held at |
 | Tip the phone over the level line drawn across its screen | The cursor moves up and down, at full speed at any roll and any tilt |
+| Push the top edge away, or turn the phone sideways | The cursor goes that way: the vertical ships inverted, the horizontal does not |
 | Hold still | The cursor stops, and a moment later the filters clear themselves |
 | Tip the phone slowly, without a swing | The cursor still travels: the angle the screen has risen to is read from gravity |
 | Phone lying flat on a table | The cursor still travels sideways; there is no up-and-down axis to be found in a phone that faces the sky straight up |
@@ -23,15 +24,14 @@ inversion. The sensitivity sliders run from 0 % to 100 % of the base gain, where
 percentage is worth in pointer units per degree, so the slider can be picked from a
 number rather than by feel. A stored setting from the old 40…900 % scale is carried
 across once: 750 % there is 50 % here.
-**Both axes are inverted out of the box**: turning the phone to the right and
-pushing its top edge away both send the pointer that way, which is what “look over
-there” means to the hand that tuned this. The one gesture that read the other way
-for a release is a tip that raises the screen — it lifts the cursor with the
-toggle off — and both axes stay toggleable. The vertical toggle is read from
-`airMouseInvertYV4`, not `airMouseInvertYV3` or `airMouseInvertY`, because
+**Only the vertical is inverted out of the box**: pushing the top edge of the phone
+away sends the pointer that way, and turning the phone sideways sends it the way the
+phone turned. Both stay toggleable; a tip that raises the screen is the one gesture
+that read the other way for a release. The toggles are read from `airMouseInvertXV2`
+and `airMouseInvertYV5`, because
 `@AppStorage` answers from a stored value before it looks at the default in code:
 a phone that has answered a switch once goes on answering it whatever the source
-says, which is how an inverted default survived three releases of being switched
+says, which is how one inverted default survived three releases of being switched
 off in code. A changed default only reaches a device in use as a new key. The
 feature is off by default and the trackpad stays available while it is on; in
 expert mode the pad hides its
