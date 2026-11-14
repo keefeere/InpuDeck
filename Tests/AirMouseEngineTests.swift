@@ -917,8 +917,10 @@ struct AirMouseEngineTests {
         }
         expect(near(turned.x, -1, 0.05) && near(turned.y, 0, 0.05),
                "a slow change of how the phone is held is tracked")
-        expect(frameAt(turned).horizontalAxis.x < -0.9,
-               "and the frame follows it")
+        // Gravity has swung to the phone's left, so the ground is that way and the
+        // frame's horizontal axis - pointed away from it - follows to the right.
+        expect(frameAt(turned).horizontalAxis.x > 0.9,
+               "and the frame follows it, pointed away from the ground")
 
         filter.reset()
         expect(filter.value == AirMouseGravityEstimator.initialGravity, "reset returns to the upright seed")
