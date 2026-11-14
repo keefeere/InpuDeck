@@ -218,7 +218,11 @@ imports Foundation only, so it is compiled and tested with plain `swiftc`:
 
 The stream runs only while the Input tab is on screen and the app is active.
 Backgrounded iOS samples slowly and throttles them to zero, so a surface that
-kept "running" in the background would be a lie.
+kept "running" in the background would be a lie. The tab is part of that rule and
+not a detail: the surface choice is a setting that outlives every tab switch, and
+the Keyboard tab carries its own trackpad, so a gyroscope that ignores the tab
+moves the same pointer as the trackpad the user is looking at — which is what
+happened until both were guarded.
 
 ## Testing
 

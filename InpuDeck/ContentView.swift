@@ -121,6 +121,9 @@ struct ContentView: View {
         }
         .onChange(of: tabConfigurationRawValue) { _, _ in
             if !tabConfiguration.isEnabled(.tools) { jigglerEnabled = false }
+            // A tab setup that drops the Input tab has to drop the gyroscope with
+            // it: the resolved selection moves off a surface that is no longer there.
+            syncPointerSurface()
         }
         .onChange(of: jigglerEnabled) { _, _ in
             updateIdleTimer()
@@ -1091,8 +1094,14 @@ struct ContentView: View {
     /// Leaving the surface also drops held buttons: the surface the user lands on
     /// cannot hold one, and a button state that outlives its source is the worst
     /// failure this feature can produce.
+    ///
+    /// The pointing surface lives on the input tab and nowhere else, while the
+    /// surface choice itself is a setting that outlives every tab switch — so the
+    /// tab has to be part of this guard. Without it, a phone with the Air mouse on
+    /// kept streaming from the keyboard tab, whose own trackpad was moving the same
+    /// pointer at the same time.
     private func syncPointerSurface() {
-        guard pointerSurface == .airMouse, scenePhase == .active else {
+        guard pointerSurface == .airMouse, activeTab == .input, scenePhase == .active else {
             if airMouse.status != .off {
                 airMouse.deactivate()
                 ble.releaseAllInput()
