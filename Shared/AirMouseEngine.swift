@@ -452,7 +452,7 @@ final class AirMouseEngine {
         )
 
         var unitsPerSecondX = thresholdX * config.horizontalUnitsPerRadianPerSecond * gain
-        var unitsPerSecondY = thresholdY * config.verticalUnitsPerRadianPerSecond * Self.tipSign
+        var unitsPerSecondY = thresholdY * config.verticalUnitsPerRadianPerSecond * gain * Self.tipSign
         if config.invertX { unitsPerSecondX = -unitsPerSecondX }
         if config.invertY { unitsPerSecondY = -unitsPerSecondY }
 

@@ -44,6 +44,7 @@ struct AirMouseEngineTests {
         smoothingDampsTheFirstStepAndConverges()
         smoothingLagsTheSameTimeAtAnySampleRate()
         fastTurnsGetExtraGain()
+        bothAxesGetTheSameAccelerationBonus()
         inversionMirrorsBothAxes()
         stillPhoneReanchorsItsFilters()
         activationHoldAndRecentreControlTracking()
@@ -818,6 +819,29 @@ struct AirMouseEngineTests {
 
         expect(perSecondFast > perSecondSlow * 1.2,
                "a fast flick is worth more than ten times a slow turn, so the host does not have to accelerate for it")
+    }
+
+    private static func bothAxesGetTheSameAccelerationBonus() {
+        // Losing the acceleration bonus on one axis is invisible until a fast flick
+        // turns out to be worth exactly ten times a slow crawl. Per axis the number
+        // is unremarkable, so the claim is made between the axes: a flick is worth
+        // the same multiple of a crawl whichever way the phone is turned.
+        func ratio(_ feed: (Sink, Double) -> Void) -> Double {
+            let slow = Sink { config in config.smoothing = 0 }
+            slow.begin()
+            feed(slow, 0.6)
+            let fast = Sink { config in config.smoothing = 0 }
+            fast.begin()
+            feed(fast, 6.0)
+            let slowUnits = Double(abs(slow.totals.x) + abs(slow.totals.y)) / 60
+            let fastUnits = Double(abs(fast.totals.x) + abs(fast.totals.y)) / 600
+            return fastUnits / slowUnits
+        }
+        let sideways = ratio { sink, rate in sink.feedHorizontal(rate, samples: 60) }
+        let tipped = ratio { sink, rate in sink.feedVertical(rate, samples: 60) }
+        expect(abs(sideways - tipped) < sideways * 0.03,
+               "a flick is worth the same multiple of a crawl on either axis: "
+               + "\(sideways) against \(tipped)")
     }
 
     private static func inversionMirrorsBothAxes() {
