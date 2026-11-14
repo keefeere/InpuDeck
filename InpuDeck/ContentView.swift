@@ -40,18 +40,20 @@ struct ContentView: View {
     @AppStorage("airMouseAccelerationPercent") private var airMouseAccelerationPercent = 40.0
     /// Rotation rate a still axis has to exceed before the pointer moves at all.
     @AppStorage("airMouseMovementThresholdPercent") private var airMouseMovementThresholdPercent = 24.0
-    // Sideways is inverted out of the box: turning the phone to the right is what
-    // the maintainer means by "look over there", and it is easier to switch off
-    // than to find. Vertical is not: a tip that raises the screen lifts the
-    // pointer, which is the way the hand already reads it — the inverted default
-    // there fought the wrist for three releases.
+    // Both axes are inverted out of the box, which is the convention the field
+    // testing came back to: turning the phone to the right and pushing its top edge
+    // away both send the pointer that way, which is what "look over there" means to
+    // this hand. A tip that raises the screen is the one gesture that read the other
+    // way for a release, and it is a toggle rather than a law.
     //
-    // `airMouseInvertYV3`, not `airMouseInvertY`: `@AppStorage` reads the stored
-    // value before the default, so a phone that already switched this switch once
-    // would keep the old answer whatever the code said. A fresh key is the only
-    // way a flipped default actually reaches a device that has been in use.
+    // The key has to change whenever a default does: `@AppStorage` answers from a
+    // stored value before it looks at the default in code, so a phone that has
+    // answered this switch once goes on answering it whatever the source says. That
+    // is how an inverted default survived three releases of being switched off in
+    // code. `airMouseInvertY` is dead for that reason, and `airMouseInvertYV3`
+    // carries the one release that tried the wrist's own convention.
     @AppStorage("airMouseInvertX") private var airMouseInvertX = true
-    @AppStorage("airMouseInvertYV3") private var airMouseInvertY = false
+    @AppStorage("airMouseInvertYV4") private var airMouseInvertY = true
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""
