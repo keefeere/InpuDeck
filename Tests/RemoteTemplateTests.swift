@@ -299,7 +299,7 @@ struct RemoteTemplateTests {
 
         let dpad = RemoteTemplate.defaultTemplate.cells.first(where: { $0.control == .dpad })!
         precondition(dpad.roles.count == 5, "the default dpad needs five roles")
-        precondition(dpad.roles[.center]?.action.kind == .consumer && dpad.roles[.center]?.usage == RemoteUsageId.menuPick,
+        precondition(dpad.roles[.center]?.action.kind == .consumer && dpad.roles[.center]?.action.usage == RemoteUsageId.menuPick,
                      "the dpad centre must be the consumer Select usage")
         precondition(dpad.roles[.up]?.action.kind == .key && dpad.roles[.up]?.action.keycode == HID.keyUpArrow,
                      "the dpad arm must be a keystroke, not a media usage")
