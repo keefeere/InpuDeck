@@ -449,7 +449,6 @@ enum RemoteTemplateDecoder {
                     }
                     resolved[role] = RemoteRoleAction(action: action, label: rawAction.label ?? "")
                 }
-                }
                 if failed { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
