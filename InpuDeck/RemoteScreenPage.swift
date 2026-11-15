@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// One rocker half, drawn as its own control, so it needs a stable SwiftUI id.
+private struct RockerHalf: Identifiable {
+    let role: RemoteRole
+    let frame: RemoteCellFrame
+    var id: String { role.rawValue }
+}
+
 /// The TV remote screen: a template grid rendered from `RemoteTemplate`.
 /// Design: docs/tv-remote.md.
 ///
@@ -98,28 +105,21 @@ struct RemoteScreenPage<Header: View>: View {
             .frame(width: frame.width, height: frame.height)
 
         case .rocker:
-            /// A half is its own control, so it needs a stable SwiftUI id.
-            struct Half: Identifiable {
-                let role: RemoteRole
-                let frame: RemoteCellFrame
-                var id: String { role.rawValue }
-            }
-
             let width = Double(frame.width)
             let height = Double(frame.height)
             let spacing = Double(gap)
-            let halves: [Half] = cell.rockerIsHorizontal
-                ? [Half(role: .primary,
+            let halves: [RockerHalf] = cell.rockerIsHorizontal
+                ? [RockerHalf(role: .primary,
                         frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: frame.x, y: frame.y,
                                                width: (width - spacing) / 2, height: height)),
-                   Half(role: .secondary,
+                   RockerHalf(role: .secondary,
                         frame: RemoteCellFrame(id: RemoteRole.secondary.rawValue,
                                                x: frame.x + (width + spacing) / 2, y: frame.y,
                                                width: (width - spacing) / 2, height: height))]
-                : [Half(role: .primary,
+                : [RockerHalf(role: .primary,
                         frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: frame.x, y: frame.y,
                                                width: width, height: (height - spacing) / 2)),
-                   Half(role: .secondary,
+                   RockerHalf(role: .secondary,
                         frame: RemoteCellFrame(id: RemoteRole.secondary.rawValue,
                                                x: frame.x, y: frame.y + (height + spacing) / 2,
                                                width: width, height: (height - spacing) / 2))]

@@ -73,8 +73,7 @@ struct RemoteTemplateTests {
         }
 
         let duplicate = cellJSON(
-            #"{"id":"a","row":1,"col":1,"control":"button","label":"A","action":{"kind":"none"}},
-              {"id":"a","row":2,"col":1,"control":"button","label":"B","action":{"kind":"none"}}"#
+            #"{"id":"a","row":1,"col":1,"control":"button","label":"A","action":{"kind":"none"}},{"id":"a","row":2,"col":1,"control":"button","label":"B","action":{"kind":"none"}}"#
         )
         guard case .rejected(let reason) = load(duplicate) else {
             preconditionFailure("duplicate cell ids must be rejected")
@@ -82,8 +81,7 @@ struct RemoteTemplateTests {
         precondition(reason.contains("duplicate"), "rejection must say duplicate: \(reason)")
 
         let overlap = cellJSON(
-            #"{"id":"a","row":1,"col":1,"rowSpan":2,"colSpan":2,"control":"dpad","actions":{"up":{"kind":"key","key":"up"},"down":{"kind":"key","key":"down"},"left":{"kind":"key","key":"left"},"right":{"kind":"key","key":"right"}}},
-              {"id":"b","row":2,"col":2,"control":"button","label":"B","action":{"kind":"none"}}"#
+            #"{"id":"a","row":1,"col":1,"rowSpan":2,"colSpan":2,"control":"dpad","actions":{"up":{"kind":"key","key":"up"},"down":{"kind":"key","key":"down"},"left":{"kind":"key","key":"left"},"right":{"kind":"key","key":"right"}}},{"id":"b","row":2,"col":2,"control":"button","label":"B","action":{"kind":"none"}}"#
         )
         guard case .rejected(let reason) = load(overlap) else {
             preconditionFailure("overlapping cells must be rejected: two controls on one cell cannot both be shown")
@@ -180,8 +178,7 @@ struct RemoteTemplateTests {
 
         // A cell outside the grid is dropped; an unknown extra field is ignored.
         let outOfGrid = cellJSON(
-            #"{"id":"a","row":9,"col":1,"control":"button","label":"A","action":{"kind":"none"}},
-              {"id":"b","row":1,"col":1,"control":"button","label":"B","action":{"kind":"none"},"volume":3}"#
+            #"{"id":"a","row":9,"col":1,"control":"button","label":"A","action":{"kind":"none"}},{"id":"b","row":1,"col":1,"control":"button","label":"B","action":{"kind":"none"},"volume":3}"#
         )
         guard case let .loaded(template, notes) = load(outOfGrid) else {
             preconditionFailure("one out-of-grid cell must not reject the template")

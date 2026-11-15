@@ -24,7 +24,6 @@ enum RemoteActionKind: String, Codable, CaseIterable {
     case consumer
     case none
 }
-}
 
 enum RemoteTone: String, Codable {
     case plain
@@ -488,7 +487,6 @@ enum RemoteTemplateDecoder {
                 return nil
             }
             return .consumer(usage)
-            return RemoteAction(kind: .text, keycode: nil, modifiers: 0, usage: nil, text: text)
         }
     }
 }
