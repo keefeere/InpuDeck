@@ -19,3 +19,13 @@ to the SideStore source; a merged PR or a CI artifact alone is not the delivery.
   the version and build number in the response.
 - A successful build does not establish physical Bluetooth or wake behavior;
   distinguish CI validation from the maintainer's device testing.
+
+## Static checks before pushing
+
+CI is the only Swift compiler in this repository, so local syntax mistakes surface
+only after a release tag is pushed. Run the checks in `docs/validation-hooks.md`
+before pushing, or install the opt-in hooks:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
