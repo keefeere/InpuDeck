@@ -209,16 +209,21 @@ struct RemoteTemplateTests {
         // 4 columns over 400 with 3 gaps of 10 leaves 370 for the units.
         let unitWidth = (400.0 - 3 * 10.0) / 4.0
         let unitHeight = (600.0 - 5 * 10.0) / 6.0
-        // The origin cell is Home, not Power: Power is a toggle, and a TV that is
-        // off cannot be woken over this link, so the template has no power cell.
-        let origin = frames.first(where: { $0.id == "home" })!
-        precondition(origin.x == 0 && origin.y == 0, "home sits at the origin: \(origin)")
-        precondition(origin.width == unitWidth && origin.height == unitHeight,
-                     "a single cell is one unit: \(origin)")
+        // The origin is the VOL pair, mirroring the LG remote: a two-row rocker in
+        // the first column. Home is a bottom-row cell, not the origin.
+        let origin = frames.first(where: { $0.id == "volume" })!
+        precondition(origin.x == 0 && origin.y == 0, "volume sits at the origin: \(origin)")
+        precondition(origin.width == unitWidth, "a one-column rocker keeps one unit of width: \(origin)")
+        precondition(origin.height == unitHeight * 2 + gap,
+                     "a two-row rocker adds the gap between its units: \(origin)")
+
+        let home = frames.first(where: { $0.id == "home" })!
+        precondition(home.x == unitWidth + gap && home.y == unitHeight * 5 + gap * 5,
+                     "home is row 6, column 2: \(home)")
 
         let pad = frames.first(where: { $0.id == "pad" })!
-        precondition(pad.x == 0 && pad.y == unitHeight + gap,
-                     "the dpad starts at row 2, column 1, so only y moves: \(pad)")
+        precondition(pad.x == 0 && pad.y == unitHeight * 2 + gap * 2,
+                     "the dpad starts at row 3, column 1, so only y moves: \(pad)")
         precondition(pad.width == unitWidth * 3 + gap * 2 && pad.height == unitHeight * 3 + gap * 2,
                      "a span must add the gaps between the units it covers: \(pad)")
 
@@ -306,8 +311,12 @@ struct RemoteTemplateTests {
 
         // A rocker is exactly two halves; three states go in three buttons, which
         // is why Previous / Play-pause / Next are separate cells.
+        // VOL and CH are vertical pairs, like the LG remote. Three states stay in
+        // three buttons, so Previous / Play-pause / Next are never a rocker.
         let rockers = RemoteTemplate.defaultTemplate.cells.filter { $0.control == .rocker }
-        precondition(rockers.count == 1, "the default remote ships one rocker")
+        precondition(rockers.count == 2, "the default remote ships two rockers")
+        precondition(rockers.allSatisfy { !$0.rockerIsHorizontal },
+                     "VOL and CH stack their halves vertically")
         for rocker in rockers {
             precondition(!rocker.roles[.primary]!.label.isEmpty && !rocker.roles[.secondary]!.label.isEmpty,
                          "rocker halves must be labelled, otherwise they are two anonymous buttons")

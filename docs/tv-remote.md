@@ -197,10 +197,12 @@ v1 has exactly one template, and it is not user data:
 
 ### The shipped layout
 
-`InpuDeck/RemoteTemplate.tv-default.json` is 4 columns x 6 rows, fully covered:
-Home / Back / Guide / Info, a 3x3 pad with a vertical volume rocker and Mute
-beside it, Channel + / Channel − / Exit / Source, then Previous / Play-pause /
-Next / Menu.
+`InpuDeck/RemoteTemplate.tv-default.json` is 4 columns x 6 rows, fully covered, and
+follows the shape of the LG remote the maintainer showed: a vertical VOL pair and a
+vertical CH pair up top with Guide and Info between them, Exit and Mute on the
+second row, the 3x3 pad filling rows 3-5 with Play-pause / Previous / Next down the
+right edge, and Back / Home / Input / Menu as the bottom row. Home is the only
+prominent cell; Power is not in the template at all.
 
 Two rules come from how the codes behave, not from taste:
 
