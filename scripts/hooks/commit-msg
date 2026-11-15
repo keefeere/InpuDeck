@@ -1,0 +1,45 @@
+#!/bin/bash
+# Opt-in commit-msg hook. Install with:
+#   git config core.hooksPath scripts/hooks
+#
+# auto-release-tag.yml tags a push on main only when the push's commit messages
+# contain "release-tag-<version>". Three releases in this session pushed a bumped
+# MARKETING_VERSION with no marker: CI ran, the workflow stayed silent, no release
+# appeared, and "everything succeeded" hid it. This enforces the contract instead
+# of relying on the workflow reporting a miss.
+#
+# HOOK_SKIP=1 skips everything.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+
+if [ "${HOOK_SKIP:-0}" = "1" ]; then
+  echo "commit-msg skipped (HOOK_SKIP=1)"
+  exit 0
+fi
+
+message_file="$1"
+message=$(cat "$message_file")
+
+pbxproj="InpuDeck.xcodeproj/project.pbxproj"
+old_version=$(git show "HEAD:$pbxproj" 2>/dev/null | grep -m1 'MARKETING_VERSION = ' | sed 's/.*= //; s/;//' || true)
+new_version=$(git show ":$pbxproj" 2>/dev/null | grep -m1 'MARKETING_VERSION = ' | sed 's/.*= //; s/;//' || true)
+
+if [ -n "$new_version" ] && [ "$new_version" != "$old_version" ]; then
+  if ! printf '%s' "$message" | grep -q "release-tag-${new_version}"; then
+    echo "commit-msg: MARKETING_VERSION is bumped to ${new_version}, but the message has no release-tag-${new_version}."
+    echo "auto-release-tag.yml will not tag this push, so no release and no SideStore update will follow."
+    echo "Add the marker, or revert the version bump, or bypass with HOOK_SKIP=1 git commit."
+    exit 1
+  fi
+fi
+
+# The release workflow appends sidestore-source.json itself; a manual commit of it
+# is a duplicate that can point at a stale asset.
+if git diff --cached --name-only | grep -q '^sidestore-source.json$'; then
+  echo "commit-msg: sidestore-source.json is staged. build-ios-ipa.yml appends it during the release;"
+  echo "commit it only if you are deliberately correcting an already-published release."
+fi
+
+echo "commit-msg checks passed."

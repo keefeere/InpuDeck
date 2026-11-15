@@ -1,0 +1,101 @@
+#!/bin/bash
+# Opt-in pre-commit hook. Install with:
+#   git config core.hooksPath scripts/hooks
+#
+# Every check below exists because a real commit in this repo got that thing
+# wrong, and CI - the only Swift compiler in this project - caught it after a
+# release tag had already been pushed. Checks run on staged content only.
+#
+# HOOK_SKIP=1 skips everything; HOOK_SKIP_SWIFT=1 skips the Swift unit tests when
+# a local swiftc exists.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+
+if [ "${HOOK_SKIP:-0}" = "1" ]; then
+  echo "pre-commit skipped (HOOK_SKIP=1)"
+  exit 0
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "$staged" ]; then exit 0; fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+stage_blob() {
+  mkdir -p "$tmp/$(dirname "$1")"
+  git show ":$1" > "$tmp/$1"
+}
+
+fail=0
+note() {
+  echo "pre-commit: $1"
+  fail=1
+}
+
+matches() { printf '%s\n' "$staged" | grep -E "$1" || true; }
+
+swift_files=$(matches '\.swift$')
+template_files=$(matches 'RemoteTemplate.*\.json$')
+doc_files=$(matches '^docs/.*\.md$')
+test_files=$(matches '^Tests/.*Tests\.swift$')
+strings_files=$(matches '\.strings$')
+
+if [ -n "$swift_files" ]; then
+  paths=()
+  for file in $swift_files; do stage_blob "$file"; paths+=("$tmp/$file"); done
+  if ! python3 scripts/check-swift-structure.py "${paths[@]}"; then
+    note "Swift structure check failed"
+  fi
+fi
+
+if [ -n "$template_files" ]; then
+  paths=()
+  for file in $template_files; do stage_blob "$file"; paths+=("$tmp/$file"); done
+  if ! python3 scripts/check-remote-template.py "${paths[@]}"; then
+    note "remote template contract failed"
+  fi
+fi
+
+if [ -n "$doc_files" ]; then
+  paths=()
+  for file in $doc_files; do stage_blob "$file"; paths+=("$tmp/$file"); done
+  if ! python3 scripts/check-doc-citations.py "${paths[@]}"; then
+    note "docs cite a file:line that no longer exists"
+  fi
+fi
+
+if [ -n "$test_files" ] || printf '%s\n' "$staged" | grep -q 'scripts/test-direct-hid.sh'; then
+  if ! python3 scripts/check-test-registration.py; then
+    note "a Swift test file is not registered in the release test script"
+  fi
+fi
+
+# Adding a tab changes AppTab.allCases, and the tab-configuration tests assert the
+# exact order. That pair broke when the Пульт tab was added.
+if printf '%s\n' "$staged" | grep -q 'Shared/AppTabConfiguration.swift'; then
+  if ! printf '%s\n' "$staged" | grep -q 'Tests/AppTabConfigurationTests.swift'; then
+    note "AppTab changed: update Tests/AppTabConfigurationTests.swift in the same commit"
+  fi
+fi
+
+# Localization gate, the same one CI runs.
+if [ -n "$strings_files" ] || [ -n "$swift_files" ]; then
+  if ! bash scripts/test-localizations.sh >/dev/null; then
+    note "localization gate failed (run: bash scripts/test-localizations.sh)"
+  fi
+fi
+
+# With a local Swift compiler, the real unit tests beat any static guess.
+if [ "${HOOK_SKIP_SWIFT:-0}" != "1" ] && command -v swiftc >/dev/null 2>&1; then
+  if ! bash scripts/test-direct-hid.sh; then
+    note "Swift unit tests failed"
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "Commit blocked. Fix the checks, or bypass deliberately with HOOK_SKIP=1 git commit."
+  exit 1
+fi
+echo "pre-commit checks passed."
