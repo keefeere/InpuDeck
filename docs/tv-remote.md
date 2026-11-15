@@ -199,10 +199,11 @@ v1 has exactly one template, and it is not user data:
 
 `InpuDeck/RemoteTemplate.tv-default.json` is 4 columns x 6 rows, fully covered, and
 follows the shape of the LG remote the maintainer showed: a vertical VOL pair and a
-vertical CH pair up top with Guide and Info between them, Exit and Mute on the
-second row, the 3x3 pad filling rows 3-5 with Play-pause / Previous / Next down the
-right edge, and Back / Home / Input / Menu as the bottom row. Home is the only
-prominent cell; Power is not in the template at all.
+vertical CH pair up top with Guide between them, Mute top-right, Exit and Info on
+row 2, the 3x3 pad filling rows 3-5 with Menu beside it, and Back / Home / TV on the
+bottom row. Home is the only prominent cell. Empty tiles (`spacer`) fill the rest,
+because the codes that did not reach the TV are absent rather than guessed, and
+Power is not in the template at all.
 
 Two rules come from how the codes behave, not from taste:
 
@@ -261,21 +262,32 @@ The format is host-independent; the *default template* is not. Established:
   documentation about USB HID in general — it is not a test of the C1, and not a
   statement about this app.
 
-Not established, and only a phone-in-hand test answers it:
+**Measured on the maintainer's C1, 2026-11-15 (build 3.6.7 / 3.6.8):**
 
-- whether webOS binds the ESP's composite device (keyboard + mouse + consumer +
-  microphone-mute in one descriptor) fully, or only part of it. TVs are known to
-  be uneven about composite HID devices, so this is the first thing to look at
-  when the remote tab exists;
-- whether webOS maps consumer `Home` `0x0223` / `Back` `0x0224` at all, or only
-  plain keyboard `Escape` / `Return`;
+- acted on: consumer `volumeUp` `0x00E9`, `volumeDown` `0x00EA`, `mute` `0x00E2`,
+  `menu` `0x0040`, `exit` `0x0094`; keyboard arrow keys (the pad's arms);
+- ignored: consumer `menuPick` (Select) `0x0041`, `home` `0x0223`, `back` `0x0224`,
+  `playPause` `0x00CD`;
+- consumer `tv` `0x0089` does something, but it switches to the TV input instead of
+  opening the input list the original remote's button shows.
+
+So the shipped template sends keyboard `Return` for the pad centre, keyboard
+`Escape` for Back, keyboard `Home` for Home, and drops the media buttons. `Tests/
+RemoteTemplateTests.swift` refuses a template that reintroduces an ignored usage.
+Still unmeasured on the C1: Guide `0x008D`, Info `0x0060`, Channel Up/Down
+`0x009C/0x009D`, keyboard `Home` `0x004A` as the Home button, and what opens the
+input list at all.
+
+- how far webOS binds the ESP's composite device (keyboard + mouse + consumer +
+  microphone-mute in one descriptor): the 2026-11-15 test proves keyboard and
+  consumer both arrive, but the consumer set it accepts is partial, so the
+  composite binding is only partly demonstrated;
 - whether the C1 accepts a direct Bluetooth HID pairing (the "потім напряму"
   path) — not investigated here.
 
-The plan for that uncertainty costs nothing: the bundled template starts with
-`home`/`back` as consumer usages, and if the C1 ignores them, those two cells
-change to `escape`/`return`. That is a two-line edit in a JSON file, which is
-the entire argument for the keys living in a template rather than in Swift.
+The template-first design paid for itself here: the fix was a JSON edit, not a
+code change. The remaining unknowns are the same shape - one or two cells in one
+file, verified by the maintainer's phone, never by a guess.
 
 ## Order, each step independently shippable
 

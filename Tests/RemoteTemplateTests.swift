@@ -304,15 +304,33 @@ struct RemoteTemplateTests {
 
         let dpad = RemoteTemplate.defaultTemplate.cells.first(where: { $0.control == .dpad })!
         precondition(dpad.roles.count == 5, "the default dpad needs five roles")
-        precondition(dpad.roles[.center]?.action.kind == .consumer && dpad.roles[.center]?.action.usage == RemoteUsageId.menuPick,
-                     "the dpad centre must be the consumer Select usage")
+        // Consumer Select (0x0041) did nothing on the maintainer's C1; Enter does.
+        precondition(dpad.roles[.center]?.action.kind == .key && dpad.roles[.center]?.action.keycode == HID.keyEnter,
+                     "the dpad centre must be Enter")
         precondition(dpad.roles[.up]?.action.kind == .key && dpad.roles[.up]?.action.keycode == HID.keyUpArrow,
                      "the dpad arm must be a keystroke, not a media usage")
 
         // A rocker is exactly two halves; three states go in three buttons, which
         // is why Previous / Play-pause / Next are separate cells.
-        // VOL and CH are vertical pairs, like the LG remote. Three states stay in
-        // three buttons, so Previous / Play-pause / Next are never a rocker.
+        // Codes the C1 ignored are not in the shipped template: sending them is a
+        // silent dead button, which is the worst failure this feature can have.
+        let ignored: Set<UInt16> = [
+            RemoteUsageId.menuPick, RemoteUsageId.home, RemoteUsageId.back,
+            RemoteUsageId.playPause, RemoteUsageId.previous, RemoteUsageId.next,
+        ]
+        for cell in RemoteTemplate.defaultTemplate.cells {
+            let usages: [UInt16]
+            switch cell.control {
+            case .button, .spacer:
+                usages = cell.action.usage.map { [$0] } ?? []
+            case .dpad, .rocker:
+                usages = cell.roles.values.compactMap { $0.action.usage }
+            }
+            precondition(!usages.contains(where: { ignored.contains($0) }),
+                         "cell \(cell.id) sends a usage the C1 ignored: \(usages)")
+        }
+
+        // VOL and CH are vertical pairs, like the LG remote.
         let rockers = RemoteTemplate.defaultTemplate.cells.filter { $0.control == .rocker }
         precondition(rockers.count == 2, "the default remote ships two rockers")
         precondition(rockers.allSatisfy { !$0.rockerIsHorizontal },

@@ -118,9 +118,11 @@ struct RemoteTemplate: Equatable {
         columns: 4,
         rows: 6,
         cells: [
-            // Mirrors the LG remote's grouping: VOL and CH are vertical pairs, the
-            // pad is the big piece with arrows and a square OK, Back / Home / Input
-            // sit at the bottom. No Power cell - see docs/tv-remote.md.
+            // Mirrors the LG remote grouping. The codes here are the ones the
+            // maintainer's C1 actually acted on (see docs/tv-remote.md): consumer
+            // volume / mute / menu / exit, keyboard arrows and Enter, keyboard
+            // Escape for Back. Consumer Select, Home, Back and Play-pause were
+            // ignored by the TV, so they are not in this template.
             RemoteCell(id: "volume", row: 1, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
                        label: "Гучність", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
@@ -135,14 +137,14 @@ struct RemoteTemplate: Equatable {
                            .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelUp), label: "Канал +"),
                            .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelDown), label: "Канал −"),
                        ]),
-            RemoteCell(id: "info", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
+            RemoteCell(id: "mute", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
             RemoteCell(id: "exit", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
-            RemoteCell(id: "mute", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
+            RemoteCell(id: "info", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
             // The pad's arms carry no label: ▲ ▼ ◀ ▶ read faster than five words
-            // inside a narrow tile, and the centre gets the prominent fill.
+            // inside a narrow tile. Enter is the centre, not consumer Select.
             RemoteCell(id: "pad", row: 3, col: 1, rowSpan: 3, colSpan: 3, control: .dpad,
                        label: "Навігація", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
@@ -150,22 +152,22 @@ struct RemoteTemplate: Equatable {
                            .down: RemoteRoleAction(action: .key(RemoteKeyId.down), label: ""),
                            .left: RemoteRoleAction(action: .key(RemoteKeyId.left), label: ""),
                            .right: RemoteRoleAction(action: .key(RemoteKeyId.right), label: ""),
-                           .center: RemoteRoleAction(action: .consumer(RemoteUsageId.menuPick), label: ""),
+                           .center: RemoteRoleAction(action: .key(RemoteKeyId.returnKey), label: ""),
                        ]),
-            RemoteCell(id: "playPause", row: 3, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Пауза / грати", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.playPause), roles: [:]),
-            RemoteCell(id: "previous", row: 4, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Попередній", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.previous), roles: [:]),
-            RemoteCell(id: "next", row: 5, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Наступний", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.next), roles: [:]),
-            RemoteCell(id: "back", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.back), roles: [:]),
-            RemoteCell(id: "home", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Додому", tone: .prominent, press: .tap, action: .consumer(RemoteUsageId.home), roles: [:]),
-            RemoteCell(id: "source", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Джерело", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.tv), roles: [:]),
-            RemoteCell(id: "menu", row: 6, col: 4, rowSpan: 1, colSpan: 1, control: .button,
+            RemoteCell(id: "menu", row: 3, col: 4, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Меню", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
+            RemoteCell(id: "gap1", row: 4, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+            RemoteCell(id: "gap2", row: 5, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+            RemoteCell(id: "back", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Назад", tone: .plain, press: .tap, action: .key(RemoteKeyId.escape), roles: [:]),
+            RemoteCell(id: "home", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Додому", tone: .prominent, press: .tap, action: .key(RemoteKeyId.home), roles: [:]),
+            RemoteCell(id: "tv-input", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "ТБ", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.tv), roles: [:]),
+            RemoteCell(id: "gap3", row: 6, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
         ]
     )
 }
