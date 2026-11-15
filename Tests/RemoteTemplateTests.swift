@@ -247,10 +247,12 @@ struct RemoteTemplateTests {
 
         let vertical = RemoteCell(id: "v", row: 1, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
                                   label: "", tone: .plain, press: .hold, action: .none, roles: [:])
-        precondition(!vertical.rockerIsHorizontal, "a taller-than-wide rocker splits horizontally across halves")
+        precondition(!vertical.rockerIsHorizontal,
+                     "a taller-than-wide rocker stacks its halves vertically")
         let horizontal = RemoteCell(id: "c", row: 1, col: 1, rowSpan: 1, colSpan: 2, control: .rocker,
                                     label: "", tone: .plain, press: .hold, action: .none, roles: [:])
-        precondition(horizontal.rockerIsHorizontal, "a wider-than-tall rocker splits vertically across halves")
+        precondition(horizontal.rockerIsHorizontal,
+                     "a wider-than-tall rocker puts its halves side by side")
     }
 
     static func usageTables() {

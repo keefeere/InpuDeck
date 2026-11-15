@@ -50,10 +50,12 @@ struct AppTabConfigurationTests {
         precondition(AppTabConfiguration(rawValue: #"{"order":[],"hidden":[]}"#) == defaults)
 
         var multiple = defaults
+        // `destination` is an index in the collection *before* removal, so a move
+        // of two elements to index 4 inserts after the removal, not at index 4.
         multiple.move(from: IndexSet([0, 2]), to: 4)
-        precondition(multiple.order == [.keyboard, .commands, .remote, .input, .tools])
+        precondition(multiple.order == [.keyboard, .commands, .input, .tools, .remote])
         multiple.move(from: IndexSet(integer: 0), to: 4)
-        precondition(multiple.order == [.commands, .remote, .input, .tools, .keyboard])
+        precondition(multiple.order == [.commands, .input, .tools, .keyboard, .remote])
         let unchanged = multiple
         multiple.move(from: IndexSet(integer: 20), to: 0)
         precondition(multiple == unchanged)
