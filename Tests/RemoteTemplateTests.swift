@@ -50,14 +50,16 @@ struct RemoteTemplateTests {
         guard case .rejected(let reason) = load(
             #"{"id":"t","name":"T","columns":4,"rows":4,"cells":[]}"#
         ) else {
-            preconditionFailure("a template without formatVersion must be rejected: \(reason)")
+            // A guard's bindings are not visible in its else block, so this must
+            // not quote the reason.
+            preconditionFailure("a template without formatVersion must be rejected")
         }
         precondition(reason.contains("formatVersion"), "rejection must name the field: \(reason)")
 
         guard case .rejected(let reason) = load(
             #"{"formatVersion":2,"id":"t","name":"T","columns":4,"rows":4,"cells":[]}"#
         ) else {
-            preconditionFailure("a newer format version must be rejected, not guessed: \(reason)")
+            preconditionFailure("a newer format version must be rejected, not guessed")
         }
         precondition(reason.contains("2"), "rejection must name the version: \(reason)")
 
@@ -205,8 +207,8 @@ struct RemoteTemplateTests {
         precondition(frames.count == template.cells.count, "every cell gets a frame")
 
         // 4 columns over 400 with 3 gaps of 10 leaves 370 for the units.
-        let unitWidth = (400 - 3 * 10) / 4
-        let unitHeight = (600 - 5 * 10) / 6
+        let unitWidth = (400.0 - 3 * 10.0) / 4.0
+        let unitHeight = (600.0 - 5 * 10.0) / 6.0
         let power = frames.first(where: { $0.id == "power" })!
         precondition(power.x == 0 && power.y == 0, "power sits at the origin: \(power)")
         precondition(power.width == unitWidth && power.height == unitHeight,
