@@ -41,6 +41,7 @@ enum RemotePress: String, Codable {
 /// A named slot inside a multi-action control.
 enum RemoteRole: String, Codable {
     case up, down, left, right, center, primary, secondary
+}
 
 /// A slot's action plus the text drawn on it. Rocker halves and the dpad centre
 /// need their own labels, because an action cannot say "Гучність +" by itself.
@@ -48,7 +49,6 @@ struct RemoteRoleAction: Equatable {
     let action: RemoteAction
     /// Localization key; empty means the renderer falls back to a glyph.
     let label: String
-}
 }
 
 /// A validated action. Every field is resolved, so the renderer never has to
