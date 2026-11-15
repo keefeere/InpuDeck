@@ -1,10 +1,15 @@
 # TV remote
 
-Design draft for the roadmap item "TV remote". Nothing in this file is
-implemented yet: there is no template decoder, no remote tab and no bundled
-template in the app. The point of this document is to settle the template
-format before the first line of UI, because a format that ships is hard to
-change afterwards.
+Design of the roadmap item "TV remote". Nothing in this file is implemented
+yet: there is no template decoder, no remote tab and no bundled template in the
+app. The point of this document is to settle the template format before the
+first line of UI, because a format that ships is hard to change afterwards.
+
+Scope is settled as of 2026-11-14 — see "Decisions". In short: the target is the
+maintainer's LG C1 OLED 2021 driven through the ESP32 bridge, v1 has no pointer
+at all, and v1 ships one bundled template with no editing. Those three answers
+removed a field and two action kinds from the format described below, which is
+the whole reason they were worth asking for first.
 
 ## What the transport can already carry (verified, not inferred)
 
@@ -77,10 +82,9 @@ a future iPad width and the iPhone Duo layout without editing the template.
 {
   "formatVersion": 1,          // required; unknown major → refuse the file
   "id": "tv-default",          // required, stable; the user picks by id
-  "name": "TV",                // required, shown in the picker
+  "name": "TV",                // required, the screen title
   "columns": 4,                // required, 3…6
   "rows": 6,                   // required, 3…10
-  "pointerZone": "none",       // "none" | "strip" — see Open decisions
   "cells": [
     {
       "id": "power",           // required, unique within the template
@@ -123,15 +127,20 @@ template cannot ask for an action the transports do not implement:
 | `key` | `key`, `modifiers` | `sendKeyDown`/`sendKeyUp` | `key` is a name (`up`, `return`, `escape`, `digits`…) resolved through `HID`; `modifiers` optional |
 | `consumer` | `usage` | `sendConsumerDown`/`sendConsumerUp` | `usage` is a name from the tables above |
 | `text` | `text` | the existing typing path | for TV search boxes; reuses `MixedCommandParser`, so `<Enter>` markers already work |
-| `setting` | `setting`, `value` | writes an app setting | the one non-HID kind; see Open decisions |
-| `sequence` | `steps` | the actions in order | for "mute then volume", app-launch combos |
 | `none` | — | nothing | a labelled gap or an unassigned key |
 
-Names, not numbers: a template that says `"usage": "home"` is readable and
-validated, and a typo is a hard error at load time. Raw numbers are accepted
-for `consumer` (`{"kind":"consumer","usage":547}`) but the loader marks that
-cell as unverified in the editor, because a plausible number that no host acts
-on is the worst possible silent failure.
+Two kinds were in an earlier draft and are deliberately **not** in v1:
+`setting` (writes an app setting — its only real use was the pointer-surface
+switch, which v1 does not have) and `sequence` (its only use was a case no TV
+remote has). A format should carry only what the shipped template actually
+presses; every field that no template uses is a field whose semantics nobody
+will ever re-derive.
+
+Names, not numbers. A template that says `"usage": "home"` is readable, and a
+typo is a hard error at load time instead of a silent dead button. Raw numbers
+(`{"kind":"consumer","usage":547}`) are **not** accepted in v1: with no editor,
+the only source of templates is the bundled file, which will use names, so
+accepting numbers would only widen what the decoder has to trust.
 
 ## Layout rules
 
@@ -159,16 +168,17 @@ field can be added without changing existing files.
 
 ## Storage and defaults
 
-Following the `CommandletStore` precedent (`InpuDeck/Commandlet.swift:35-51`,
-JSON in Application Support):
+v1 has exactly one template, and it is not user data:
 
-- user templates: `Application Support/InpuDeck/remoteTemplates.json`
-- the bundled default lives in the app bundle as a real `.json` resource, so
-  the shipped remote and the format are the same code path, and the bundled
-  file is parsed by the same decoder that parses the user's — a format bug then
-  shows up before any user can hit it
-- the selected template id: one `@AppStorage` key, not an index; deleting the
-  chosen template falls back to the bundled default
+- the bundled default lives in the app bundle as a real `.json` **resource**, so
+  the shipped remote and the format are one code path — the decoder that reads
+  the shipped file is the decoder that is unit-tested, and a format bug surfaces
+  in CI instead of on the maintainer's sofa;
+- nothing is written to Application Support and no template id is stored in
+  `@AppStorage`. Both are one file and one key away, and `CommandletStore`
+  (`InpuDeck/Commandlet.swift:35-51`) is the precedent to copy when there is a
+  second template worth choosing between. Storing a selection before there is a
+  picker is how the air-mouse invert keys accumulated migrations.
 
 ## Validation and recovery
 
@@ -177,53 +187,68 @@ and recovery must never leave the user with a blank screen.
 
 | Situation | Behaviour |
 | --- | --- |
-| unparseable file | keep the bundled default, say why in the picker |
+| unparseable file | unreachable in v1 (only the bundled file exists), but tested: the tab shows an empty remote plus a hint, never a crash |
 | `formatVersion` newer than the app | refuse that one template, keep the rest |
-| unknown `control` / `kind` / name | drop that cell, name it in diagnostics |
+| unknown `control` / `kind` / name | drop that cell, name it in the test failure and in the app log |
 | out-of-range or overlapping coordinates | refuse the template |
 | duplicate `id` | refuse the template |
 | unknown key in an object | ignore it, so a newer template still half-works |
 
 Refusing is reserved for what makes a screen ambiguous; anything else degrades
-visibly and is listed in the editor rather than fixed silently. This is the
+visibly and is reported rather than fixed silently. This is the
 rule the air-mouse sign work taught the hard way: a wrong guess that loads
 "successfully" costs the user a whole install/test cycle.
 
-## Unverified — and it decides nothing above, but decides the defaults
+## Decisions (maintainer, 2026-11-14)
 
-The design above is host-independent. What is **not** established:
+1. **Host: the maintainer's LG C1 OLED 2021, reached through the ESP32 bridge
+   today**, i.e. the path is iPhone → BLE → ESP32 → USB HID → TV USB port.
+   Direct Bluetooth is a possible later step, explicitly not part of v1.
+2. **No pointer on the remote tab in v1.** `pointerSurface` stays one global
+   `@AppStorage` and `syncPointerSurface()` (`InpuDeck/ContentView.swift:1120`)
+   keeps streaming only while the Input tab is on screen, so the exactly-one-
+   pointer-source rule from 3.5.13 is untouched. This is why the format lost its
+   `pointerZone` field and the `setting` action.
+3. **One bundled template, no editor in v1.** Which means the bundled file is
+   the only real specification of the format: whatever it does not exercise is
+   not yet a requirement.
 
-- whether the target TV acts as a Bluetooth HID host at all. Bluetooth keyboards
-  are common on Android TV, far less predictable on other brands;
-- whether that TV maps `Home`/`Back` as consumer `0x0223`/`0x0224`, or only
-  reacts to plain keyboard `Escape`/`Return`;
-- whether the remote is meant for a TV directly, or for a box/PC attached to it.
+## Unverified — what the C1 actually does with these codes
 
-If the TV is not a HID host, the whole feature still works unchanged — the same
-template just drives the box or the PC — so this does not block the format. It
-does decide which two keys go in the bundled default, and it is a question about
-real hardware rather than a thing to be reasoned out.
+The format is host-independent; the *default template* is not. Established:
 
-## Open decisions (answered by the maintainer, not by me)
+- LG documents connecting a wired or wireless keyboard, mouse or gamepad to a
+  Smart TV through the USB port, for models from 2012 on (LG help library,
+  retrieved 2026-11-14: `lg.com/us/support/help-library/lg-tv-how-to-connect-a-
+  keyboard-mouse-or-gamepad-to-your-lg-tv--20152890341179`). That is vendor
+  documentation about USB HID in general — it is not a test of the C1, and not a
+  statement about this app.
 
-1. **Pointer switch.** `pointerSurface` is one global `@AppStorage`, and after
-   3.5.13 the gyroscope streams only while the Input tab is on screen
-   (`syncPointerSurface()`,
-   `InpuDeck/ContentView.swift:1120-1126`). A remote tab with a pointer must either
-   widen that guard or keep its own pointer state. Widening it re-opens the
-   exactly-one-pointer-source rule that the 3.5.13 fix exists to hold, so this
-   is a decision, not a detail.
-2. **Editing in v1, or bundled template only?** Format + engine + one shipped
-   template is a much smaller step than also building an editor, and the
-   bundled template already exercises every part of the format. A raw-JSON
-   editor with the validation table above is the cheapest honest editor; a
-   visual one is not cheap.
-3. **Which host is this for?** See "Unverified".
+Not established, and only a phone-in-hand test answers it:
 
-## Suggested order, each step independently shippable
+- whether webOS binds the ESP's composite device (keyboard + mouse + consumer +
+  microphone-mute in one descriptor) fully, or only part of it. TVs are known to
+  be uneven about composite HID devices, so this is the first thing to look at
+  when the remote tab exists;
+- whether webOS maps consumer `Home` `0x0223` / `Back` `0x0224` at all, or only
+  plain keyboard `Escape` / `Return`;
+- whether the C1 accepts a direct Bluetooth HID pairing (the "потім напряму"
+  path) — not investigated here.
 
-1. decoder + validation + the tables, pure `Shared/`, unit-tested before any UI
-   (this is where the tests are cheap and where mistakes are expensive);
-2. bundled default template rendered on a tab, read-only, no pointer;
-3. the pointer decision;
-4. an editor, if still wanted once the format has been lived with.
+The plan for that uncertainty costs nothing: the bundled template starts with
+`home`/`back` as consumer usages, and if the C1 ignores them, those two cells
+change to `escape`/`return`. That is a two-line edit in a JSON file, which is
+the entire argument for the keys living in a template rather than in Swift.
+
+## Order, each step independently shippable
+
+1. decoder + validation + the usage tables in pure `Shared/`, unit-tested before
+   any UI (this is where tests are cheap and mistakes are expensive);
+2. the bundled template rendered on a tab, read-only, no pointer — this is the
+   first release where the C1 can actually be tested with it;
+3. an editor only if the format survives living with the real remote for a
+   while.
+
+Nothing here needs a descriptor change, a firmware change, or a new transport.
+The first change that could need one is a key outside Consumer `0x0000`–`0x03FF`
+or a report type the composite descriptor does not already declare.
