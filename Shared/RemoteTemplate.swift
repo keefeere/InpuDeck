@@ -41,6 +41,7 @@ enum RemotePress: String, Codable {
 /// A named slot inside a multi-action control.
 enum RemoteRole: String, Codable {
     case up, down, left, right, center, primary, secondary
+}
 
 /// A slot's action plus the text drawn on it. Rocker halves and the dpad centre
 /// need their own labels, because an action cannot say "Гучність +" by itself.
@@ -48,7 +49,6 @@ struct RemoteRoleAction: Equatable {
     let action: RemoteAction
     /// Localization key; empty means the renderer falls back to a glyph.
     let label: String
-}
 }
 
 /// A validated action. Every field is resolved, so the renderer never has to
@@ -119,48 +119,48 @@ struct RemoteTemplate: Equatable {
         rows: 6,
         cells: [
             RemoteCell(id: "power", row: 1, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Живлення", tone: .prominent, press: .tap, action: .consumer(RemoteUsageId.power)),
+                       label: "Живлення", tone: .prominent, press: .tap, action: .consumer(RemoteUsageId.power), roles: [:]),
             RemoteCell(id: "home", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Додому", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.home)),
+                       label: "Додому", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.home), roles: [:]),
             RemoteCell(id: "back", row: 1, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.back)),
+                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.back), roles: [:]),
             RemoteCell(id: "guide", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Гід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.programGuide)),
+                       label: "Гід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.programGuide), roles: [:]),
             RemoteCell(id: "pad", row: 2, col: 1, rowSpan: 3, colSpan: 3, control: .dpad,
-                       label: "", tone: .plain, press: .hold, action: .none,
+                       label: "", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
                            .up: RemoteRoleAction(action: .key(RemoteKeyId.up), label: ""),
                            .down: RemoteRoleAction(action: .key(RemoteKeyId.down), label: ""),
                            .left: RemoteRoleAction(action: .key(RemoteKeyId.left), label: ""),
                            .right: RemoteRoleAction(action: .key(RemoteKeyId.right), label: ""),
-                           .center: RemoteRoleAction(action: .key(RemoteKeyId.return), label: ""),
+                           .center: RemoteRoleAction(action: .key(RemoteKeyId.returnKey), label: ""),
                        ]),
             RemoteCell(id: "volume", row: 2, col: 4, rowSpan: 2, colSpan: 1, control: .rocker,
-                       label: "", tone: .plain, press: .hold, action: .none,
+                       label: "", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
                            .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: "Гучність +"),
                            .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: "Гучність −"),
                        ]),
             RemoteCell(id: "mute", row: 4, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute)),
+                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
             RemoteCell(id: "channel", row: 5, col: 1, rowSpan: 1, colSpan: 2, control: .rocker,
-                       label: "", tone: .plain, press: .hold, action: .none,
+                       label: "", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
                            .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelUp), label: "Канал +"),
                            .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelDown), label: "Канал −"),
                        ]),
             RemoteCell(id: "info", row: 5, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info)),
+                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
             RemoteCell(id: "exit", row: 5, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit)),
+                       label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
             RemoteCell(id: "previous", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Попередній", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.previous)),
+                       label: "Попередній", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.previous), roles: [:]),
             RemoteCell(id: "rewind", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад стрічку", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.rewind)),
+                       label: "Назад стрічку", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.rewind), roles: [:]),
             RemoteCell(id: "playPause", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Пауза / грати", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.playPause)),
+                       label: "Пауза / грати", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.playPause), roles: [:]),
             RemoteCell(id: "next", row: 6, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Наступний", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.next)),
+                       label: "Наступний", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.next), roles: [:]),
         ]
     )
 }
@@ -333,7 +333,9 @@ enum RemoteTemplateDecoder {
         decode(Data(text.utf8))
     }
 
-    static func load(_ raw: RawTemplate) -> RemoteTemplateLoad {
+    /// RawTemplate is private, so this entry point is fileprivate; `decode` is
+    /// the public one.
+    fileprivate static func load(_ raw: RawTemplate) -> RemoteTemplateLoad {
         guard let version = raw.formatVersion else {
             return .rejected("formatVersion is missing")
         }
@@ -392,11 +394,11 @@ enum RemoteTemplateDecoder {
                     notes.append("cell \"\(rawCell.id)\" is a \(control.rawValue) but lists role actions, dropped")
                     continue
                 }
-                let action = rawCell.action.map { resolveAction($0, id: rawCell.id, notes: &notes) } ?? .none
-                if action == nil { continue }
+                let action = resolveAction(rawCell.action ?? RawAction(kind: "none"), id: rawCell.id, notes: &notes)
+                guard let action else { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: action ?? .none, roles: [:]))
+                                        action: action, roles: [:]))
 
             case .dpad:
                 if rawCell.action != nil {
@@ -404,7 +406,7 @@ enum RemoteTemplateDecoder {
                     continue
                 }
                 let roles = rawCell.actions ?? [:]
-                var resolved: [RemoteRole: RemoteAction] = [:]
+                var resolved: [RemoteRole: RemoteRoleAction] = [:]
                 var failed = false
                 for name in ["up", "down", "left", "right"] {
                     guard let role = RemoteRole(rawValue: name), let rawAction = roles[name] else {
@@ -427,7 +429,7 @@ enum RemoteTemplateDecoder {
                 }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: .none, roles: resolved))
+                                        action: RemoteAction.none, roles: resolved))
 
             case .rocker:
                 if rawCell.action != nil {
@@ -435,7 +437,7 @@ enum RemoteTemplateDecoder {
                     continue
                 }
                 let roles = rawCell.actions ?? [:]
-                var resolved: [RemoteRole: RemoteAction] = [:]
+                var resolved: [RemoteRole: RemoteRoleAction] = [:]
                 var failed = false
                 for name in ["primary", "secondary"] {
                     guard let role = RemoteRole(rawValue: name), let rawAction = roles[name] else {
@@ -449,11 +451,10 @@ enum RemoteTemplateDecoder {
                     }
                     resolved[role] = RemoteRoleAction(action: action, label: rawAction.label ?? "")
                 }
-                }
                 if failed { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: .none, roles: resolved))
+                                        action: RemoteAction.none, roles: resolved))
             }
         }
 
@@ -469,7 +470,7 @@ enum RemoteTemplateDecoder {
         }
         switch kind {
         case .none:
-            return .none
+            return RemoteAction.none
         case .key:
             guard let keyName = raw.key, let keycode = RemoteKeyId.resolve(keyName) else {
                 notes.append("cell \"\(id)\" names an unknown key \(raw.key ?? "nil"), dropped")

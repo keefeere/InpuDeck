@@ -140,7 +140,7 @@ struct RemoteScreenPage<Header: View>: View {
                             _ cellFrame: RemoteCellFrame) -> some View {
         let label = cell.roles[role]?.label ?? ""
         return keyButton(title: label.isEmpty ? directionGlyph(role) : localized(label),
-                         action: cell.roles[role]?.action ?? .none, press: dpadPress(role),
+                         action: cell.roles[role]?.action ?? RemoteAction.none, press: dpadPress(role),
                          prominent: role == .center,
                          frame: RemoteCellFrame(id: unit.id, x: cellFrame.x + unit.x,
                                                 y: cellFrame.y + unit.y,
