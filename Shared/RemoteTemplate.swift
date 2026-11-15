@@ -333,7 +333,9 @@ enum RemoteTemplateDecoder {
         decode(Data(text.utf8))
     }
 
-    static func load(_ raw: RawTemplate) -> RemoteTemplateLoad {
+    /// RawTemplate is private, so this entry point is fileprivate; `decode` is
+    /// the public one.
+    fileprivate static func load(_ raw: RawTemplate) -> RemoteTemplateLoad {
         guard let version = raw.formatVersion else {
             return .rejected("formatVersion is missing")
         }
@@ -404,7 +406,7 @@ enum RemoteTemplateDecoder {
                     continue
                 }
                 let roles = rawCell.actions ?? [:]
-                var resolved: [RemoteRole: RemoteAction] = [:]
+                var resolved: [RemoteRole: RemoteRoleAction] = [:]
                 var failed = false
                 for name in ["up", "down", "left", "right"] {
                     guard let role = RemoteRole(rawValue: name), let rawAction = roles[name] else {
@@ -435,7 +437,7 @@ enum RemoteTemplateDecoder {
                     continue
                 }
                 let roles = rawCell.actions ?? [:]
-                var resolved: [RemoteRole: RemoteAction] = [:]
+                var resolved: [RemoteRole: RemoteRoleAction] = [:]
                 var failed = false
                 for name in ["primary", "secondary"] {
                     guard let role = RemoteRole(rawValue: name), let rawAction = roles[name] else {
