@@ -1,9 +1,10 @@
 # TV remote
 
-Design of the roadmap item "TV remote". Nothing in this file is implemented
-yet: there is no template decoder, no remote tab and no bundled template in the
-app. The point of this document is to settle the template format before the
-first line of UI, because a format that ships is hard to change afterwards.
+The roadmap item "TV remote". Steps 1 and 2 are implemented: the decoder and
+its tables live in `Shared/RemoteTemplate.swift`, the shipped template is
+`InpuDeck/RemoteTemplate.tv-default.json`, and the screen is
+`InpuDeck/RemoteScreenPage.swift` behind a new `Пульт` tab. What is still
+design-only is the pointer and an editor, both deferred (see "Decisions").
 
 Scope is settled as of 2026-11-14 — see "Decisions". In short: the target is the
 maintainer's LG C1 OLED 2021 driven through the ESP32 bridge, v1 has no pointer
@@ -93,7 +94,7 @@ a future iPad width and the iPhone Duo layout without editing the template.
       "control": "button",     // button | dpad | rocker | spacer
       "label": "Живлення",     // see "Labels"
       "tone": "plain",         // plain | prominent
-      "press": "tap",          // tap | hold
+      "press": "tap",          // tap | hold; a dpad centre is always a tap
       "action": { "kind": "consumer", "usage": "power" }
     },
     {
@@ -116,6 +117,19 @@ Only `button`, `dpad`, `rocker` and `spacer` exist in v1. `rocker` is one cell
 with two halves (Volume ±, Channel ±) and is worth having precisely because
 putting those four as separate cells looks wrong on a remote.
 
+`dpad` and `rocker` slots carry their **own** label, because an action cannot
+say "Гучність +" by itself:
+
+```jsonc
+"actions": {
+  "primary":   { "kind": "consumer", "usage": "volumeUp", "label": "Гучність +" },
+  "secondary": { "kind": "consumer", "usage": "volumeDown", "label": "Гучність −" }
+}
+```
+
+A slot with no label renders a glyph (`▲ ▼ ◀ ▶ ⏎ + −`), which is why the shipped
+dpad is unlabelled and still readable.
+
 ### Actions
 
 The vocabulary is closed. Each entry maps onto an existing call on
@@ -126,21 +140,22 @@ template cannot ask for an action the transports do not implement:
 | --- | --- | --- | --- |
 | `key` | `key`, `modifiers` | `sendKeyDown`/`sendKeyUp` | `key` is a name (`up`, `return`, `escape`, `digits`…) resolved through `HID`; `modifiers` optional |
 | `consumer` | `usage` | `sendConsumerDown`/`sendConsumerUp` | `usage` is a name from the tables above |
-| `text` | `text` | the existing typing path | for TV search boxes; reuses `MixedCommandParser`, so `<Enter>` markers already work |
 | `none` | — | nothing | a labelled gap or an unassigned key |
 
-Two kinds were in an earlier draft and are deliberately **not** in v1:
+Three kinds were in an earlier draft and are deliberately **not** in v1:
 `setting` (writes an app setting — its only real use was the pointer-surface
-switch, which v1 does not have) and `sequence` (its only use was a case no TV
-remote has). A format should carry only what the shipped template actually
-presses; every field that no template uses is a field whose semantics nobody
-will ever re-derive.
+switch, which v1 does not have), `sequence` (its only use was a case no TV
+remote has), and `text` (typing needs the host-layout state the Input tab owns,
+so `TextTypingPlanner` would have to be threaded through the remote for a cell
+the shipped template does not have). A format should carry only what the shipped
+template actually presses; every field no template uses is a field whose
+semantics nobody will ever re-derive. Adding a kind later is additive.
 
 Names, not numbers. A template that says `"usage": "home"` is readable, and a
 typo is a hard error at load time instead of a silent dead button. Raw numbers
 (`{"kind":"consumer","usage":547}`) are **not** accepted in v1: with no editor,
-the only source of templates is the bundled file, which will use names, so
-accepting numbers would only widen what the decoder has to trust.
+the only source of templates is the bundled file, which uses names, so accepting
+numbers would only widen what the decoder has to trust.
 
 ## Layout rules
 
@@ -193,6 +208,8 @@ and recovery must never leave the user with a blank screen.
 | out-of-range or overlapping coordinates | refuse the template |
 | duplicate `id` | refuse the template |
 | unknown key in an object | ignore it, so a newer template still half-works |
+| known key with the wrong type | refuse the template (a numeric usage is a malformed file, not a guess) |
+| a `dpad` without its centre | keep the four directions, report the missing centre |
 
 Refusing is reserved for what makes a screen ambiguous; anything else degrades
 visibly and is reported rather than fixed silently. This is the
@@ -242,12 +259,11 @@ the entire argument for the keys living in a template rather than in Swift.
 
 ## Order, each step independently shippable
 
-1. decoder + validation + the usage tables in pure `Shared/`, unit-tested before
-   any UI (this is where tests are cheap and mistakes are expensive);
-2. the bundled template rendered on a tab, read-only, no pointer — this is the
-   first release where the C1 can actually be tested with it;
-3. an editor only if the format survives living with the real remote for a
-   while.
+1. **done** — decoder + validation + usage tables in pure `Shared/`, with
+   `Tests/RemoteTemplateTests.swift` in the release test script;
+2. **done** — the bundled template rendered on the `Пульт` tab, read-only, no
+   pointer. This is the first release where the C1 can be tested with it;
+3. an editor only if the format survives living with the real remote for a while.
 
 Nothing here needs a descriptor change, a firmware change, or a new transport.
 The first change that could need one is a key outside Consumer `0x0000`–`0x03FF`

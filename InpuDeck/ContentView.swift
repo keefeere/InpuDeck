@@ -259,6 +259,10 @@ struct ContentView: View {
             CommandPalettePage(ble: ble, isActiveTab: activeTab == .commands) {
                 connectionHeader
             }
+        case .remote:
+            RemoteScreenPage(ble: ble, isActiveTab: activeTab == .remote) {
+                connectionHeader
+            }
         }
     }
 

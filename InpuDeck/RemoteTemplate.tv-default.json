@@ -1,0 +1,167 @@
+{
+  "formatVersion": 1,
+  "id": "tv-default",
+  "name": "TV",
+  "columns": 4,
+  "rows": 6,
+  "cells": [
+    {
+      "id": "power",
+      "row": 1,
+      "col": 1,
+      "control": "button",
+      "label": "Живлення",
+      "tone": "prominent",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "power" }
+    },
+    {
+      "id": "home",
+      "row": 1,
+      "col": 2,
+      "control": "button",
+      "label": "Додому",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "home" }
+    },
+    {
+      "id": "back",
+      "row": 1,
+      "col": 3,
+      "control": "button",
+      "label": "Назад",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "back" }
+    },
+    {
+      "id": "guide",
+      "row": 1,
+      "col": 4,
+      "control": "button",
+      "label": "Гід",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "guide" }
+    },
+    {
+      "id": "pad",
+      "row": 2,
+      "col": 1,
+      "rowSpan": 3,
+      "colSpan": 3,
+      "control": "dpad",
+      "label": "",
+      "tone": "plain",
+      "press": "hold",
+      "actions": {
+        "up": { "kind": "key", "key": "up" },
+        "down": { "kind": "key", "key": "down" },
+        "left": { "kind": "key", "key": "left" },
+        "right": { "kind": "key", "key": "right" },
+        "center": { "kind": "key", "key": "return" }
+      }
+    },
+    {
+      "id": "volume",
+      "row": 2,
+      "col": 4,
+      "rowSpan": 2,
+      "colSpan": 1,
+      "control": "rocker",
+      "label": "",
+      "tone": "plain",
+      "press": "hold",
+      "actions": {
+        "primary": { "kind": "consumer", "usage": "volumeUp", "label": "Гучність +" },
+        "secondary": { "kind": "consumer", "usage": "volumeDown", "label": "Гучність −" }
+      }
+    },
+    {
+      "id": "mute",
+      "row": 4,
+      "col": 4,
+      "control": "button",
+      "label": "Вимкнути звук",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "mute" }
+    },
+    {
+      "id": "channel",
+      "row": 5,
+      "col": 1,
+      "rowSpan": 1,
+      "colSpan": 2,
+      "control": "rocker",
+      "label": "",
+      "tone": "plain",
+      "press": "hold",
+      "actions": {
+        "primary": { "kind": "consumer", "usage": "channelUp", "label": "Канал +" },
+        "secondary": { "kind": "consumer", "usage": "channelDown", "label": "Канал −" }
+      }
+    },
+    {
+      "id": "info",
+      "row": 5,
+      "col": 3,
+      "control": "button",
+      "label": "Інфо",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "info" }
+    },
+    {
+      "id": "exit",
+      "row": 5,
+      "col": 4,
+      "control": "button",
+      "label": "Вийти",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "exit" }
+    },
+    {
+      "id": "previous",
+      "row": 6,
+      "col": 1,
+      "control": "button",
+      "label": "Попередній",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "previous" }
+    },
+    {
+      "id": "rewind",
+      "row": 6,
+      "col": 2,
+      "control": "button",
+      "label": "Назад стрічку",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "rewind" }
+    },
+    {
+      "id": "playPause",
+      "row": 6,
+      "col": 3,
+      "control": "button",
+      "label": "Пауза / грати",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "playPause" }
+    },
+    {
+      "id": "next",
+      "row": 6,
+      "col": 4,
+      "control": "button",
+      "label": "Наступний",
+      "tone": "plain",
+      "press": "tap",
+      "action": { "kind": "consumer", "usage": "next" }
+    }
+  ]
+}

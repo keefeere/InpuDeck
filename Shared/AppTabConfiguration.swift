@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppTab: String, Codable, CaseIterable, Identifiable, Sendable {
-    case input, keyboard, tools, commands
+    case input, keyboard, tools, commands, remote
     var id: String { rawValue }
 
     var titleKey: String {
@@ -10,6 +10,7 @@ enum AppTab: String, Codable, CaseIterable, Identifiable, Sendable {
         case .keyboard: "Клавіатура"
         case .tools: "Інструменти"
         case .commands: "Команди"
+        case .remote: "Пульт"
         }
     }
 
@@ -18,6 +19,7 @@ enum AppTab: String, Codable, CaseIterable, Identifiable, Sendable {
         case .input, .keyboard: "keyboard"
         case .tools: "switch.2"
         case .commands: "command.square"
+        case .remote: "tv"
         }
     }
 

@@ -83,6 +83,15 @@ swiftc -swift-version 5 \
 "$build_dir/tab-configuration-tests"
 
 swiftc -swift-version 5 \
+  "$repo_root/Shared/Localization.swift" \
+  "$repo_root/Shared/HID.swift" \
+  "$repo_root/Shared/HIDReports.swift" \
+  "$repo_root/Shared/RemoteTemplate.swift" \
+  "$repo_root/Tests/RemoteTemplateTests.swift" \
+  -o "$build_dir/remote-template-tests"
+"$build_dir/remote-template-tests"
+
+swiftc -swift-version 5 \
   "$repo_root/Shared/CommandUnlockState.swift" \
   "$repo_root/Tests/CommandUnlockStateTests.swift" \
   -o "$build_dir/command-unlock-tests"
