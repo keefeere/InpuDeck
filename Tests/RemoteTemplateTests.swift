@@ -209,10 +209,12 @@ struct RemoteTemplateTests {
         // 4 columns over 400 with 3 gaps of 10 leaves 370 for the units.
         let unitWidth = (400.0 - 3 * 10.0) / 4.0
         let unitHeight = (600.0 - 5 * 10.0) / 6.0
-        let power = frames.first(where: { $0.id == "power" })!
-        precondition(power.x == 0 && power.y == 0, "power sits at the origin: \(power)")
-        precondition(power.width == unitWidth && power.height == unitHeight,
-                     "a single cell is one unit: \(power)")
+        // The origin cell is Home, not Power: Power is a toggle, and a TV that is
+        // off cannot be woken over this link, so the template has no power cell.
+        let origin = frames.first(where: { $0.id == "home" })!
+        precondition(origin.x == 0 && origin.y == 0, "home sits at the origin: \(origin)")
+        precondition(origin.width == unitWidth && origin.height == unitHeight,
+                     "a single cell is one unit: \(origin)")
 
         let pad = frames.first(where: { $0.id == "pad" })!
         precondition(pad.x == 0 && pad.y == unitHeight + gap,
@@ -292,16 +294,20 @@ struct RemoteTemplateTests {
         // The shipped template must not silently drop a control.
         let ids = Set(RemoteTemplate.defaultTemplate.cells.map(\.id))
         precondition(ids.count == RemoteTemplate.defaultTemplate.cells.count, "default ids must be unique")
-        precondition(ids.isSubset(of: Set(bundledTemplateLoad().template.cells.map(\.id))),
-                     "the shipped file must carry every default control")
+        precondition(ids == Set(bundledTemplateLoad().template.cells.map(\.id)),
+                     "the shipped file must carry exactly the default controls")
 
         let dpad = RemoteTemplate.defaultTemplate.cells.first(where: { $0.control == .dpad })!
         precondition(dpad.roles.count == 5, "the default dpad needs five roles")
-        precondition(dpad.roles[.center]?.action.kind == .key && dpad.roles[.center]?.action.keycode == HID.keyEnter,
-                     "the dpad centre must be Enter")
+        precondition(dpad.roles[.center]?.action.kind == .consumer && dpad.roles[.center]?.usage == RemoteUsageId.menuPick,
+                     "the dpad centre must be the consumer Select usage")
+        precondition(dpad.roles[.up]?.action.kind == .key && dpad.roles[.up]?.action.keycode == HID.keyUpArrow,
+                     "the dpad arm must be a keystroke, not a media usage")
 
+        // A rocker is exactly two halves; three states go in three buttons, which
+        // is why Previous / Play-pause / Next are separate cells.
         let rockers = RemoteTemplate.defaultTemplate.cells.filter { $0.control == .rocker }
-        precondition(rockers.count == 2, "the default remote ships two rockers")
+        precondition(rockers.count == 1, "the default remote ships one rocker")
         for rocker in rockers {
             precondition(!rocker.roles[.primary]!.label.isEmpty && !rocker.roles[.secondary]!.label.isEmpty,
                          "rocker halves must be labelled, otherwise they are two anonymous buttons")

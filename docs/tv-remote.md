@@ -195,6 +195,24 @@ v1 has exactly one template, and it is not user data:
   second template worth choosing between. Storing a selection before there is a
   picker is how the air-mouse invert keys accumulated migrations.
 
+### The shipped layout
+
+`InpuDeck/RemoteTemplate.tv-default.json` is 4 columns x 6 rows, fully covered:
+Home / Back / Guide / Info, a 3x3 pad with a vertical volume rocker and Mute
+beside it, Channel + / Channel − / Exit / Source, then Previous / Play-pause /
+Next / Menu.
+
+Two rules come from how the codes behave, not from taste:
+
+- **No Power cell.** Consumer Power `0x0030` is a toggle: one press turns the TV
+  off, and a TV that is off no longer answers this link, so the button would be a
+  one-way ticket - the app could not bring the TV back and the bridge would sit
+  disconnected. Power stays a legal usage in the format for a template that runs
+  over a link that survives standby.
+- **A rocker is exactly two halves.** Previous / Play-pause / Next are three
+  states, so they are three buttons; a three-role rocker renders two halves and
+  overlaps their labels, which is what the first device build showed.
+
 ## Validation and recovery
 
 Same posture as `AppTabConfiguration`: a saved file is data of unknown quality,

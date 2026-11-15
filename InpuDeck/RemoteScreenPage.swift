@@ -46,13 +46,16 @@ struct RemoteScreenPage<Header: View>: View {
             }
 
             GeometryReader { geometry in
+                let size = gridSize(in: geometry.size)
                 ZStack(alignment: .topLeading) {
-                    ForEach(items(in: geometry.size)) { item in
+                    ForEach(items(in: size)) { item in
                         render(item.cell, item.frame)
                             .position(x: item.frame.x + item.frame.width / 2,
                                       y: item.frame.y + item.frame.height / 2)
                     }
                 }
+                .frame(width: size.width, height: size.height)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .accessibilityIdentifier("remoteGrid")
         }
@@ -72,6 +75,21 @@ struct RemoteScreenPage<Header: View>: View {
         let id: String
         let cell: RemoteCell
         let frame: RemoteCellFrame
+    }
+
+    /// The grid fills the width, but letting rows absorb all leftover height
+    /// turns every tile into a tall slab: the remote looked like a column of
+    /// empty gaps on a phone. Tiles stay close to square, and the grid centers
+    /// vertically inside whatever height is left.
+    private func gridSize(in available: CGSize) -> CGSize {
+        let columns = max(1, template.columns)
+        let rows = max(1, template.rows)
+        let spacing = Double(gap)
+        let cellWidth = max(24, (Double(available.width) - spacing * Double(columns - 1)) / Double(columns))
+        let cellHeight = min(max(40, cellWidth * 1.15),
+                             (Double(available.height) - spacing * Double(rows - 1)) / Double(rows))
+        return CGSize(width: cellWidth * Double(columns) + spacing * Double(columns - 1),
+                      height: cellHeight * Double(rows) + spacing * Double(rows - 1))
     }
 
     private func items(in size: CGSize) -> [Item] {
@@ -110,18 +128,18 @@ struct RemoteScreenPage<Header: View>: View {
             let spacing = Double(gap)
             let halves: [RockerHalf] = cell.rockerIsHorizontal
                 ? [RockerHalf(role: .primary,
-                        frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: frame.x, y: frame.y,
+                        frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: 0, y: 0,
                                                width: (width - spacing) / 2, height: height)),
                    RockerHalf(role: .secondary,
                         frame: RemoteCellFrame(id: RemoteRole.secondary.rawValue,
-                                               x: frame.x + (width + spacing) / 2, y: frame.y,
+                                               x: (width + spacing) / 2, y: 0,
                                                width: (width - spacing) / 2, height: height))]
                 : [RockerHalf(role: .primary,
-                        frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: frame.x, y: frame.y,
+                        frame: RemoteCellFrame(id: RemoteRole.primary.rawValue, x: 0, y: 0,
                                                width: width, height: (height - spacing) / 2)),
                    RockerHalf(role: .secondary,
                         frame: RemoteCellFrame(id: RemoteRole.secondary.rawValue,
-                                               x: frame.x, y: frame.y + (height + spacing) / 2,
+                                               x: 0, y: (height + spacing) / 2,
                                                width: width, height: (height - spacing) / 2))]
             ZStack(alignment: .topLeading) {
                 ForEach(halves, id: \.role) { half in
@@ -129,6 +147,8 @@ struct RemoteScreenPage<Header: View>: View {
                         keyButton(title: slot.label.isEmpty ? directionGlyph(half.role) : localized(slot.label),
                                   action: slot.action, press: cell.press, prominent: false,
                                   frame: half.frame, id: "\(cell.id).\(half.role.rawValue)")
+                            .position(x: half.frame.x + half.frame.width / 2,
+                                      y: half.frame.y + half.frame.height / 2)
                     }
                 }
             }
@@ -140,12 +160,12 @@ struct RemoteScreenPage<Header: View>: View {
                             _ cellFrame: RemoteCellFrame) -> some View {
         let label = cell.roles[role]?.label ?? ""
         return keyButton(title: label.isEmpty ? directionGlyph(role) : localized(label),
-                         action: cell.roles[role]?.action ?? RemoteAction.none, press: dpadPress(role),
+                         action: cell.roles[role]?.action ?? .none, press: dpadPress(role),
                          prominent: role == .center,
-                         frame: RemoteCellFrame(id: unit.id, x: cellFrame.x + unit.x,
-                                                y: cellFrame.y + unit.y,
+                         frame: RemoteCellFrame(id: unit.id, x: unit.x, y: unit.y,
                                                 width: unit.width, height: unit.height),
                          id: "\(cell.id).\(role.rawValue)")
+            .position(x: unit.x + unit.width / 2, y: unit.y + unit.height / 2)
     }
 
     /// Enter is a keystroke, not a scroll: holding it would spam the host. The

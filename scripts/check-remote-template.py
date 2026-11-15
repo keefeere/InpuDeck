@@ -124,8 +124,9 @@ def check(path: str) -> list[str]:
                 problems.append(f'cell "{cell_id}": dpad has no center (kept, but say so in docs)')
             if set(roles) - DPAD_ROLES:
                 problems.append(f'cell "{cell_id}": dpad has unknown roles {sorted(set(roles) - DPAD_ROLES)}')
-            for role, action in roles.items():
-                problems += action_problems(action, f'{cell_id}.{role}')
+            for role, slot in roles.items():
+                # Role slots are flat actions with an optional label, matching RawAction.
+                problems += action_problems(slot, f'{cell_id}.{role}')
         else:
             if "action" in cell:
                 problems.append(f'cell "{cell_id}": a rocker must not list a single action')
@@ -135,10 +136,10 @@ def check(path: str) -> list[str]:
                     problems.append(f'cell "{cell_id}": rocker is missing "{role}"')
             if set(roles) - ROCKER_ROLES:
                 problems.append(f'cell "{cell_id}": rocker has unknown roles {sorted(set(roles) - ROCKER_ROLES)}')
-            for role, action in roles.items():
-                if not action.get("label") and not cell.get("label"):
+            for role, slot in roles.items():
+                if not slot.get("label") and not cell.get("label"):
                     problems.append(f'cell "{cell_id}.{role}": a rocker half with no label is an anonymous button')
-                problems += action_problems(action, f'{cell_id}.{role}')
+                problems += action_problems(slot, f'{cell_id}.{role}')
 
     gaps = [(r, c) for r in range(1, rows + 1) for c in range(1, columns + 1) if (r, c) not in occupied]
     if gaps:
