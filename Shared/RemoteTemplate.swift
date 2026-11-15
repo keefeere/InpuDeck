@@ -398,7 +398,7 @@ enum RemoteTemplateDecoder {
                 guard let action else { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: action ?? .none, roles: [:]))
+                                        action: action, roles: [:]))
 
             case .dpad:
                 if rawCell.action != nil {

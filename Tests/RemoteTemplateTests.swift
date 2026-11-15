@@ -215,7 +215,8 @@ struct RemoteTemplateTests {
                      "a single cell is one unit: \(power)")
 
         let pad = frames.first(where: { $0.id == "pad" })!
-        precondition(pad.x == unitWidth + gap && pad.y == unitHeight + gap, "dpad starts at row 2, col 2 unit: \(pad)")
+        precondition(pad.x == 0 && pad.y == unitHeight + gap,
+                     "the dpad starts at row 2, column 1, so only y moves: \(pad)")
         precondition(pad.width == unitWidth * 3 + gap * 2 && pad.height == unitHeight * 3 + gap * 2,
                      "a span must add the gaps between the units it covers: \(pad)")
 
