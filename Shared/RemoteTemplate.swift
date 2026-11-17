@@ -161,7 +161,7 @@ struct RemoteTemplate: Equatable {
             RemoteCell(id: "gap2", row: 5, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
                        label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
             RemoteCell(id: "back", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .key(RemoteKeyId.escape), roles: [:]),
+                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
             RemoteCell(id: "home", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Додому", tone: .prominent, press: .tap, action: .key(RemoteKeyId.home), roles: [:]),
             RemoteCell(id: "tv-input", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .button,
@@ -215,6 +215,10 @@ enum RemoteUsageId {
     static let channelDown: UInt16 = 0x009D
     static let home: UInt16 = 0x0223
     static let back: UInt16 = 0x0224
+    /// LG maps its remote's Back button here (Linux maps the same usage to
+    /// KEY_CONTEXTUAL_INSERT, keycode 461). Keyboard Escape and Backspace do nothing
+    /// on the maintainer's C1, so this is the only Back that works.
+    static let backLg: UInt16 = 0x01CD
     static let forward: UInt16 = 0x0225
     static let stop: UInt16 = 0x0226
     static let refresh: UInt16 = 0x0227
@@ -231,7 +235,7 @@ enum RemoteUsageId {
         "menu": menu, "menuPick": menuPick, "menuEscape": menuEscape,
         "info": info, "closedCaption": closedCaption, "tv": tv, "guide": programGuide,
         "exit": exit, "help": help, "channelUp": channelUp, "channelDown": channelDown,
-        "home": home, "back": back, "forward": forward, "stop": stop, "refresh": refresh,
+        "home": home, "back": back, "backLg": backLg, "forward": forward, "stop": stop, "refresh": refresh,
     ]
 
     static func resolve(_ name: String) -> UInt16? { names[name] }

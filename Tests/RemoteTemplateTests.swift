@@ -267,6 +267,9 @@ struct RemoteTemplateTests {
         // remote would send codes the LG C1 never acts on, silently.
         precondition(RemoteUsageId.home == 0x0223, "Home must stay 0x0223")
         precondition(RemoteUsageId.back == 0x0224, "Back must stay 0x0224")
+        // LG's own Back button is a different consumer usage; Escape and Backspace
+        // did nothing on the C1, so the shipped Back cell uses this one.
+        precondition(RemoteUsageId.backLg == 0x01CD, "LG Back must stay 0x01CD")
         precondition(RemoteUsageId.programGuide == 0x008D, "Program Guide must stay 0x008D")
         precondition(RemoteUsageId.channelUp == 0x009C, "Channel Up must stay 0x009C")
         precondition(RemoteUsageId.channelDown == 0x009D, "Channel Down must stay 0x009D")

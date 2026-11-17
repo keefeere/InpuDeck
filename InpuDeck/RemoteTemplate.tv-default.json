@@ -187,8 +187,8 @@
       "press": "tap",
       "tone": "plain",
       "action": {
-        "kind": "key",
-        "key": "escape"
+        "kind": "consumer",
+        "usage": "backLg"
       }
     },
     {

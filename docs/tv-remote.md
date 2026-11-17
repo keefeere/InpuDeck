@@ -268,15 +268,23 @@ The format is host-independent; the *default template* is not. Established:
   `menu` `0x0040`, `exit` `0x0094`; keyboard arrow keys (the pad's arms);
 - ignored: consumer `menuPick` (Select) `0x0041`, `home` `0x0223`, `back` `0x0224`,
   `playPause` `0x00CD`;
+- a real keyboard on the TV answered **keyboard Enter** for Select, which is why the
+  app's pad centre did nothing: it sent consumer `menuPick`, not Enter. Keyboard
+  `Home` reached the TV's home screen. Keyboard `Escape` and `Backspace` did not act
+  as Back at all.
 - consumer `tv` `0x0089` does something, but it switches to the TV input instead of
   opening the input list the original remote's button shows.
 
 So the shipped template sends keyboard `Return` for the pad centre, keyboard
-`Escape` for Back, keyboard `Home` for Home, and drops the media buttons. `Tests/
+`Home` for Home, and drops the media buttons. For Back it sends consumer `0x01CD`,
+the usage LG's own remote is reported to use: Linux maps that usage to
+`KEY_CONTEXTUAL_INSERT`, whose keycode is 461 - the number the maintainer found
+(`drivers/hid/hid-input.c`, retrieved 2026-11-15). This is the one cell whose
+behaviour is a hypothesis rather than a measurement: the keyboard keys that failed
+do not tell us what the TV's own remote sends. `Tests/
 RemoteTemplateTests.swift` refuses a template that reintroduces an ignored usage.
 Still unmeasured on the C1: Guide `0x008D`, Info `0x0060`, Channel Up/Down
-`0x009C/0x009D`, keyboard `Home` `0x004A` as the Home button, and what opens the
-input list at all.
+`0x009C/0x009D`, and what opens the input list at all.
 
 - how far webOS binds the ESP's composite device (keyboard + mouse + consumer +
   microphone-mute in one descriptor): the 2026-11-15 test proves keyboard and
