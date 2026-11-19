@@ -1,8 +1,11 @@
 name: Build unsigned iOS IPA
 
-# The build job needs a hosted macOS runner, the most expensive minutes on the
-# account, so it runs for releases only. Pushes to main and pull requests no
-# longer build an IPA; use workflow_dispatch when a branch needs a test build.
+# The build job runs on the self-hosted macOS runner (a macOS VM on KeeFAI), so
+# release builds no longer queue behind hosted minutes. It still runs for
+# releases only: pushes to main and pull requests do not build an IPA, and use
+# workflow_dispatch when a branch needs a test build.
+# The runner is x86_64 with Xcode 16.x, so the iOS SDK there is older than the
+# hosted macos-26 image; pull-request gates stay on hosted runners.
 # auto-release-tag.yml dispatches this workflow against the new ios-v* tag,
 # because a tag pushed with GITHUB_TOKEN starts no run of its own.
 on:
@@ -156,8 +159,8 @@ jobs:
 
   build:
     needs: [firmware, windows-installer]
-    runs-on: macos-26
-    timeout-minutes: 20
+    runs-on: [self-hosted, macos-inpudeck]
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: write
@@ -177,8 +180,13 @@ jobs:
       - name: Validate English and Ukrainian localizations
         run: bash ./scripts/test-localizations.sh
 
+      # The VM keeps ldid and gh built for x86_64 in ~/local/bin; Homebrew has
+      # no Intel macOS bottles, so hosted-style `brew install` is a fallback.
+      - name: Put local tooling on PATH
+        run: echo "$HOME/local/bin" >> "$GITHUB_PATH"
+
       - name: Install ldid
-        run: brew install ldid
+        run: command -v ldid || brew install ldid
 
       - name: Parse the app views no test target compiles
         run: ./scripts/parse-app-sources.sh
