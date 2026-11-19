@@ -267,8 +267,7 @@ struct RemoteTemplateTests {
         // remote would send codes the LG C1 never acts on, silently.
         precondition(RemoteUsageId.home == 0x0223, "Home must stay 0x0223")
         precondition(RemoteUsageId.back == 0x0224, "Back must stay 0x0224")
-        // LG's own Back button is a different consumer usage; Escape and Backspace
-        // did nothing on the C1, so the shipped Back cell uses this one.
+        // Historical failed experiment; webOS keycode 461 does not identify a HID usage.
         precondition(RemoteUsageId.backLg == 0x01CD, "LG Back must stay 0x01CD")
         precondition(RemoteUsageId.programGuide == 0x008D, "Program Guide must stay 0x008D")
         precondition(RemoteUsageId.channelUp == 0x009C, "Channel Up must stay 0x009C")
@@ -335,7 +334,19 @@ struct RemoteTemplateTests {
 
         // VOL and CH are vertical pairs, like the LG remote.
         let rockers = RemoteTemplate.defaultTemplate.cells.filter { $0.control == .rocker }
-        precondition(rockers.count == 2, "the default remote ships two rockers")
+        precondition(rockers.count == 1, "only the volume rocker remains")
+        precondition(!ids.contains("channel") && !ids.contains("tv-input"),
+                     "unused Channel and TV input controls must stay removed")
+        let home = RemoteTemplate.defaultTemplate.cells.first(where: { $0.id == "home" })!
+        precondition(home.action == .key(0, modifiers: HID.modLeftGUI),
+                     "Home means Win/GUI, NOT the keyboard Home navigation key")
+        let bundledHome = bundledTemplateLoad().template.cells.first(where: { $0.id == "home" })!
+        precondition(bundledHome.action == home.action, "bundled Win resolves to a modifier-only action")
+        let winReports = HIDInputState().tap(0, modifiers: HID.modLeftGUI)
+        precondition(winReports.first?.data == Data([0x08, 0, 0, 0, 0, 0, 0, 0]),
+                     "Win is the GUI modifier bit, never navigation Home or a regular key slot")
+        precondition(winReports.last?.data == Data(repeating: 0, count: 8),
+                     "Win must release the GUI modifier")
         precondition(rockers.allSatisfy { !$0.rockerIsHorizontal },
                      "VOL and CH stack their halves vertically")
         for rocker in rockers {

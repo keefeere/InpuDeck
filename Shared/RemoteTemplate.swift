@@ -121,7 +121,8 @@ struct RemoteTemplate: Equatable {
             // Mirrors the LG remote grouping. The codes here are the ones the
             // maintainer's C1 actually acted on (see docs/tv-remote.md): consumer
             // volume / mute / menu / exit, keyboard arrows and Enter, keyboard
-            // Escape for Back. Consumer Select, Home, Back and Play-pause were
+            // Win for Home. Back remains an unsuccessful experiment. Consumer
+            // Select, Home, Back and Play-pause were
             // ignored by the TV, so they are not in this template.
             RemoteCell(id: "volume", row: 1, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
                        label: "Гучність", tone: .plain, press: .hold, action: RemoteAction.none,
@@ -131,12 +132,8 @@ struct RemoteTemplate: Equatable {
                        ]),
             RemoteCell(id: "guide", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Гід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.programGuide), roles: [:]),
-            RemoteCell(id: "channel", row: 1, col: 3, rowSpan: 2, colSpan: 1, control: .rocker,
-                       label: "Канал", tone: .plain, press: .hold, action: RemoteAction.none,
-                       roles: [
-                           .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelUp), label: "Канал +"),
-                           .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.channelDown), label: "Канал −"),
-                       ]),
+            RemoteCell(id: "channel-space", row: 1, col: 3, rowSpan: 2, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
             RemoteCell(id: "mute", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
             RemoteCell(id: "exit", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
@@ -163,9 +160,9 @@ struct RemoteTemplate: Equatable {
             RemoteCell(id: "back", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
             RemoteCell(id: "home", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Додому", tone: .prominent, press: .tap, action: .key(RemoteKeyId.home), roles: [:]),
-            RemoteCell(id: "tv-input", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "ТБ", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.tv), roles: [:]),
+                       label: "Додому", tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
+            RemoteCell(id: "input-space", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
             RemoteCell(id: "gap3", row: 6, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
                        label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
         ]
@@ -215,9 +212,8 @@ enum RemoteUsageId {
     static let channelDown: UInt16 = 0x009D
     static let home: UInt16 = 0x0223
     static let back: UInt16 = 0x0224
-    /// LG maps its remote's Back button here (Linux maps the same usage to
-    /// KEY_CONTEXTUAL_INSERT, keycode 461). Keyboard Escape and Backspace do nothing
-    /// on the maintainer's C1, so this is the only Back that works.
+    /// Failed experiment: webOS event keycode 461 is NOT a USB HID usage.
+    /// 0x01CD is consumer AC Insert, not a verified LG Back mapping.
     static let backLg: UInt16 = 0x01CD
     static let forward: UInt16 = 0x0225
     static let stop: UInt16 = 0x0226
@@ -261,6 +257,7 @@ enum RemoteKeyId {
     /// `"return"` is the name templates use; `RemoteKeyId.return` is not a legal
     /// Swift member name, so the constant is spelled `returnKey`.
     static let names: [String: UInt8] = [
+        "win": 0, // Modifier-only key; resolveAction adds the GUI bit.
         "up": up, "down": down, "left": left, "right": right,
         "return": returnKey, "escape": escape, "backspace": backspace, "tab": tab,
         "space": space, "delete": delete, "home": home, "end": end,
@@ -492,7 +489,7 @@ enum RemoteTemplateDecoder {
                 notes.append("cell \"\(id)\" names an unknown modifier, dropped")
                 return nil
             }
-            return .key(keycode, modifiers: mask)
+            return .key(keycode, modifiers: keyName == "win" ? mask | HID.modLeftGUI : mask)
         case .consumer:
             guard let usageName = raw.usage, let usage = RemoteUsageId.resolve(usageName) else {
                 notes.append("cell \"\(id)\" names an unknown consumer usage \(raw.usage ?? "nil"), dropped")

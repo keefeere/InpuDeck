@@ -196,7 +196,10 @@ struct RemoteScreenPage<Header: View>: View {
     private func sendDown(_ action: RemoteAction) {
         switch action.kind {
         case .key:
-            if let keycode = action.keycode { ble.sendKeyDown(modifiersMask: action.modifiers, keycode: keycode) }
+            if let keycode = action.keycode {
+                if keycode == 0 { ble.setModifiers(action.modifiers) }
+                else { ble.sendKeyDown(modifiersMask: action.modifiers, keycode: keycode) }
+            }
         case .consumer:
             if let usage = action.usage { ble.sendConsumerDown(usage: usage) }
         case .none:
@@ -207,7 +210,10 @@ struct RemoteScreenPage<Header: View>: View {
     private func sendUp(_ action: RemoteAction) {
         switch action.kind {
         case .key:
-            if let keycode = action.keycode { ble.sendKeyUp(keycode: keycode) }
+            if let keycode = action.keycode {
+                if keycode == 0 { ble.setModifiers(0) }
+                else { ble.sendKeyUp(keycode: keycode) }
+            }
         case .consumer:
             ble.sendConsumerUp()
         case .none:

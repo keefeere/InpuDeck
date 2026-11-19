@@ -270,18 +270,25 @@ The format is host-independent; the *default template* is not. Established:
   `playPause` `0x00CD`;
 - a real keyboard on the TV answered **keyboard Enter** for Select, which is why the
   app's pad centre did nothing: it sent consumer `menuPick`, not Enter. Keyboard
-  `Home` reached the TV's home screen. Keyboard `Escape` and `Backspace` did not act
+  **Win/GUI** reached the TV's home screen (the earlier text incorrectly said the
+  Home navigation key). Keyboard `Escape` and `Backspace` did not act
   as Back at all.
 - consumer `tv` `0x0089` does something, but it switches to the TV input instead of
   opening the input list the original remote's button shows.
 
-So the shipped template sends keyboard `Return` for the pad centre, keyboard
-`Home` for Home, and drops the media buttons. For Back it sends consumer `0x01CD`,
-the usage LG's own remote is reported to use: Linux maps that usage to
-`KEY_CONTEXTUAL_INSERT`, whose keycode is 461 - the number the maintainer found
-(`drivers/hid/hid-input.c`, retrieved 2026-11-15). This is the one cell whose
-behaviour is a hypothesis rather than a measurement: the keyboard keys that failed
-do not tell us what the TV's own remote sends. `Tests/
+The centre uses keyboard `Return`. Home must send **Win/GUI**, a modifier-only
+keyboard report (modifier byte `0x08`, no ordinary key), not navigation Home
+`0x4A`. Channel +/- and TV input are removed at the maintainer\'s request.
+
+**Correction, 2026-11-19:** webOS event keycode 461 (`0x1CD`) is not a USB HID
+usage. The previous inference from equal numbers was invalid: consumer `0x01CD`
+is AC Insert, not a verified LG Back code. The maintainer tested it and it did
+not work. Back remains unresolved; do not claim it works or try more unrelated
+numeric codes. The bridge parses the full little-endian UInt16 and forwards it
+to `USBHIDConsumerControl.press` without a per-usage filter. That is source-code
+evidence, not proof of what the currently flashed device actually emits. The next
+useful measurement is the ESP USB report on a computer, followed by identifying
+which USB HID report (if any) webOS translates to its Back event. `Tests/
 RemoteTemplateTests.swift` refuses a template that reintroduces an ignored usage.
 Still unmeasured on the C1: Guide `0x008D`, Info `0x0060`, Channel Up/Down
 `0x009C/0x009D`, and what opens the input list at all.

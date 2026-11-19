@@ -42,26 +42,17 @@
       }
     },
     {
-      "id": "channel",
+      "id": "channel-space",
       "row": 1,
       "col": 3,
       "rowSpan": 2,
       "colSpan": 1,
-      "control": "rocker",
-      "label": "Канал",
-      "press": "hold",
+      "control": "spacer",
+      "label": "",
+      "press": "tap",
       "tone": "plain",
-      "actions": {
-        "primary": {
-          "kind": "consumer",
-          "usage": "channelUp",
-          "label": "Канал +"
-        },
-        "secondary": {
-          "kind": "consumer",
-          "usage": "channelDown",
-          "label": "Канал −"
-        }
+      "action": {
+        "kind": "none"
       }
     },
     {
@@ -201,20 +192,19 @@
       "tone": "prominent",
       "action": {
         "kind": "key",
-        "key": "home"
+        "key": "win"
       }
     },
     {
-      "id": "tv-input",
+      "id": "input-space",
       "row": 6,
       "col": 3,
-      "control": "button",
-      "label": "ТБ",
+      "control": "spacer",
+      "label": "",
       "press": "tap",
       "tone": "plain",
       "action": {
-        "kind": "consumer",
-        "usage": "tv"
+        "kind": "none"
       }
     },
     {
