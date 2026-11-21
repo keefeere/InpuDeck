@@ -268,7 +268,8 @@ struct RemoteTemplateTests {
         precondition(RemoteUsageId.home == 0x0223, "Home must stay 0x0223")
         precondition(RemoteUsageId.back == 0x0224, "Back must stay 0x0224")
         // Historical failed experiment; webOS keycode 461 does not identify a HID usage.
-        precondition(RemoteUsageId.backLg == 0x01CD, "LG Back must stay 0x01CD")
+        precondition(RemoteUsageId.backLg == 0x01A4,
+                     "Back experiment must send the HID usage mapped to Linux KEY_PREVIOUS (412)")
         precondition(RemoteUsageId.programGuide == 0x008D, "Program Guide must stay 0x008D")
         precondition(RemoteUsageId.channelUp == 0x009C, "Channel Up must stay 0x009C")
         precondition(RemoteUsageId.channelDown == 0x009D, "Channel Down must stay 0x009D")
