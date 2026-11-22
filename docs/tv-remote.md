@@ -315,8 +315,8 @@ The bridge parses the full little-endian UInt16 and forwards it
 to `USBHIDConsumerControl.press` without a per-usage filter. That is source-code
 evidence, not proof of what the currently flashed device actually emits.
 `Tests/RemoteTemplateTests.swift` refuses a template that reintroduces an ignored
-usage. Still unmeasured on the C1: Info `0x0060`, Input `0x0082` (works), Channel Up/Down
-`0x009C/0x009D`.
+usage. Still unmeasured on the C1: Info `0x0060` and Channel Up/Down
+`0x009C/0x009D`; Back `0x01A4` and Input `0x0082` both work.
 
 - how far webOS binds the ESP's composite device (keyboard + mouse + consumer +
   microphone-mute in one descriptor): the 2026-11-15 test proves keyboard and
