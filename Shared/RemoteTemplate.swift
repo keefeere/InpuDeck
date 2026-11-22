@@ -212,9 +212,10 @@ enum RemoteUsageId {
     static let channelDown: UInt16 = 0x009D
     static let home: UInt16 = 0x0223
     static let back: UInt16 = 0x0224
-    /// Failed experiment: webOS event keycode 461 is NOT a USB HID usage.
-    /// 0x01CD is consumer AC Insert, not a verified LG Back mapping.
-    static let backLg: UInt16 = 0x01CD
+    /// Candidate from Simon34545's LG input-hook table: Back is Linux
+    /// KEY_PREVIOUS (412). Linux maps consumer AL Previous Task (0x01A4)
+    /// to that key. This is not the webOS DOM keycode and awaits a C1 test.
+    static let backLg: UInt16 = 0x01A4
     static let forward: UInt16 = 0x0225
     static let stop: UInt16 = 0x0226
     static let refresh: UInt16 = 0x0227
