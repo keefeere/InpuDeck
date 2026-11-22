@@ -208,22 +208,23 @@ struct RemoteTemplateTests {
 
         // 4 columns over 400 with 3 gaps of 10 leaves 370 for the units.
         let unitWidth = (400.0 - 3 * 10.0) / 4.0
-        let unitHeight = (600.0 - 5 * 10.0) / 6.0
-        // The origin is the VOL pair, mirroring the LG remote: a two-row rocker in
-        // the first column. Home is a bottom-row cell, not the origin.
+        let unitHeight = (600.0 - 4 * 10.0) / 5.0
+        // Volume is the two-row rocker in the column left of the pad, so it is
+        // beside the cross instead of stacked above its left arm.
         let origin = frames.first(where: { $0.id == "volume" })!
-        precondition(origin.x == 0 && origin.y == 0, "volume sits at the origin: \(origin)")
+        precondition(origin.x == 0 && origin.y == unitHeight * 2 + gap * 2,
+                     "volume is row 3, column 1: \(origin)")
         precondition(origin.width == unitWidth, "a one-column rocker keeps one unit of width: \(origin)")
         precondition(origin.height == unitHeight * 2 + gap,
                      "a two-row rocker adds the gap between its units: \(origin)")
 
         let home = frames.first(where: { $0.id == "home" })!
-        precondition(home.x == unitWidth + gap && home.y == unitHeight * 5 + gap * 5,
-                     "home is row 6, column 2: \(home)")
+        precondition(home.x == unitWidth + gap && home.y == 0,
+                     "home is the top row, column 2: \(home)")
 
         let pad = frames.first(where: { $0.id == "pad" })!
-        precondition(pad.x == 0 && pad.y == unitHeight * 2 + gap * 2,
-                     "the dpad starts at row 3, column 1, so only y moves: \(pad)")
+        precondition(pad.x == unitWidth + gap && pad.y == unitHeight * 2 + gap * 2,
+                     "the dpad starts at row 3, column 2, leaving column 1 for volume: \(pad)")
         precondition(pad.width == unitWidth * 3 + gap * 2 && pad.height == unitHeight * 3 + gap * 2,
                      "a span must add the gaps between the units it covers: \(pad)")
 
@@ -267,9 +268,14 @@ struct RemoteTemplateTests {
         // remote would send codes the LG C1 never acts on, silently.
         precondition(RemoteUsageId.home == 0x0223, "Home must stay 0x0223")
         precondition(RemoteUsageId.back == 0x0224, "Back must stay 0x0224")
-        // Historical failed experiment; webOS keycode 461 does not identify a HID usage.
+        // Verified on the C1 with 3.6.12: Linux maps this consumer usage to
+        // KEY_PREVIOUS (412), which the LG input-hook table reports as Back.
         precondition(RemoteUsageId.backLg == 0x01A4,
-                     "Back experiment must send the HID usage mapped to Linux KEY_PREVIOUS (412)")
+                     "Back must send the HID usage mapped to Linux KEY_PREVIOUS (412)")
+        // Candidate for the Input button: Linux KEY_VIDEO_NEXT, listed as
+        // TV_VIDEO (241) in that same table.
+        precondition(RemoteUsageId.videoNext == 0x0082,
+                     "Input must stay consumer 0x0082, the usage Linux calls KEY_VIDEO_NEXT")
         precondition(RemoteUsageId.programGuide == 0x008D, "Program Guide must stay 0x008D")
         precondition(RemoteUsageId.channelUp == 0x009C, "Channel Up must stay 0x009C")
         precondition(RemoteUsageId.channelDown == 0x009D, "Channel Down must stay 0x009D")
@@ -336,6 +342,12 @@ struct RemoteTemplateTests {
         // VOL and CH are vertical pairs, like the LG remote.
         let rockers = RemoteTemplate.defaultTemplate.cells.filter { $0.control == .rocker }
         precondition(rockers.count == 1, "only the volume rocker remains")
+        precondition(rockers.first!.col == 1, "the volume rocker must sit left of the pad")
+        precondition(!ids.contains("guide"), "Guide is removed at the maintainer's request")
+        precondition(ids.contains("input"), "the Input button belongs on the remote")
+        let inputCell = RemoteTemplate.defaultTemplate.cells.first(where: { $0.id == "input" })!
+        precondition(inputCell.action.usage == RemoteUsageId.videoNext,
+                     "Input must use the TV_VIDEO candidate usage, not the untested Guide")
         precondition(!ids.contains("channel") && !ids.contains("tv-input"),
                      "unused Channel and TV input controls must stay removed")
         let home = RemoteTemplate.defaultTemplate.cells.first(where: { $0.id == "home" })!
