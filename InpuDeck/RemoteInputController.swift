@@ -69,6 +69,20 @@ final class RemoteInputController: ObservableObject {
         }
     }
 
+    /// Identifies the device this remote screen is talking to, so a template
+    /// choice belongs to that device and not to the app as a whole. Uses the
+    /// connected device when there is one, otherwise the selected one.
+    var templateHostKey: String {
+        switch mode {
+        case .esp:
+            let id = esp.connectedBridgeID ?? esp.selectedBridgeID
+            return "esp:" + (id?.uuidString ?? "none")
+        case .bluetooth:
+            let id = direct.connectedHostID ?? direct.selectedHostID
+            return "direct:" + (id?.uuidString ?? "none")
+        }
+    }
+
     func selectDirectHost(_ id: UUID) {
         guard !isSwitching else { return }
         if mode == .bluetooth {
