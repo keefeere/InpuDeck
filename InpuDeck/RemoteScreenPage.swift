@@ -95,6 +95,10 @@ struct RemoteScreenPage<Header: View>: View {
     private func items(in size: CGSize) -> [Item] {
         let frames = template.frames(size: (Double(size.width), Double(size.height)), gap: Double(gap))
         return template.cells.compactMap { cell in
+            // A spacer exists only to keep the decoder's grid coverage honest.
+            // Painting it would put a dead, unlabelled tile on the remote, which
+            // reads as a broken button.
+            guard cell.control != .spacer else { return nil }
             guard let frame = frames.first(where: { $0.id == cell.id }) else { return nil }
             return Item(id: cell.id, cell: cell, frame: frame)
         }
@@ -104,6 +108,8 @@ struct RemoteScreenPage<Header: View>: View {
     private func render(_ cell: RemoteCell, _ frame: RemoteCellFrame) -> some View {
         switch cell.control {
         case .button, .spacer:
+            // `items` never hands a spacer here; the branch keeps the switch
+            // exhaustive without ever drawing a dead tile.
             keyButton(title: localized(cell.label), action: cell.action, press: cell.press,
                       prominent: cell.tone == .prominent, frame: frame, id: cell.id)
 

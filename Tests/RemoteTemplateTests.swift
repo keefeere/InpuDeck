@@ -222,6 +222,16 @@ struct RemoteTemplateTests {
         precondition(home.x == unitWidth + gap && home.y == 0,
                      "home is the top row, column 2: \(home)")
 
+        // Spacers only exist to keep the grid coverage honest; the renderer must
+        // never turn one into an unlabelled dead tile.
+        let spacers = template.cells.filter { $0.control == .spacer }
+        precondition(spacers.allSatisfy { $0.label.isEmpty && $0.action.kind == .none },
+                     "a spacer must carry nothing: \(spacers)")
+
+        let back = frames.first(where: { $0.id == "back" })!
+        precondition(back.x == (unitWidth + gap) * 3 && back.y == unitHeight + gap,
+                     "back belongs on the outer right edge of row 2: \(back)")
+
         let pad = frames.first(where: { $0.id == "pad" })!
         precondition(pad.x == unitWidth + gap && pad.y == unitHeight * 2 + gap * 2,
                      "the dpad starts at row 3, column 2, leaving column 1 for volume: \(pad)")
@@ -272,8 +282,8 @@ struct RemoteTemplateTests {
         // KEY_PREVIOUS (412), which the LG input-hook table reports as Back.
         precondition(RemoteUsageId.backLg == 0x01A4,
                      "Back must send the HID usage mapped to Linux KEY_PREVIOUS (412)")
-        // Candidate for the Input button: Linux KEY_VIDEO_NEXT, listed as
-        // TV_VIDEO (241) in that same table.
+        // Verified on the C1 with 3.6.13: Linux KEY_VIDEO_NEXT, listed as
+        // TV_VIDEO (241) in that same table, opens the input list.
         precondition(RemoteUsageId.videoNext == 0x0082,
                      "Input must stay consumer 0x0082, the usage Linux calls KEY_VIDEO_NEXT")
         precondition(RemoteUsageId.programGuide == 0x008D, "Program Guide must stay 0x008D")
@@ -347,7 +357,7 @@ struct RemoteTemplateTests {
         precondition(ids.contains("input"), "the Input button belongs on the remote")
         let inputCell = RemoteTemplate.defaultTemplate.cells.first(where: { $0.id == "input" })!
         precondition(inputCell.action.usage == RemoteUsageId.videoNext,
-                     "Input must use the TV_VIDEO candidate usage, not the untested Guide")
+                     "Input must use the verified 0x0082, not tv 0x0089 which only switches input")
         precondition(!ids.contains("channel") && !ids.contains("tv-input"),
                      "unused Channel and TV input controls must stay removed")
         let home = RemoteTemplate.defaultTemplate.cells.first(where: { $0.id == "home" })!

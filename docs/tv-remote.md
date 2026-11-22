@@ -200,12 +200,17 @@ v1 has exactly one template, and it is not user data:
 ### The shipped layout
 
 `InpuDeck/RemoteTemplate.tv-default.json` is 4 columns x 5 rows, fully covered, and
-follows the maintainer's requests: Mute / **Home** / Menu / Input on the top row,
-Back (leftmost) / Exit / Info on row 2, the volume rocker in the column **left of
-the pad**, and the 3x3 pad on rows 3-5, columns 2-4. Home is the only prominent
-cell. Empty tiles (`spacer`) fill the rest,
-because the codes that did not reach the TV are absent rather than guessed, and
-Power is not in the template at all. Guide is gone: the maintainer does not use it.
+follows the maintainer's requests: Mute (**Тиша**) / **Home** / Menu / Input on the
+top row, Exit / Info on row 2 with **Back on the outer right edge**, the volume
+rocker in the column **left of the pad** with short `Гучн. +` / `Гучн. −` labels
+(the long ones clipped), and the 3x3 pad on rows 3-5, columns 2-4. Home is the only
+prominent cell.
+
+`spacer` cells exist only so the decoder can require complete grid coverage.
+`RemoteScreenPage.items` drops them before rendering, so a tile the TV never acts
+on is absent rather than shown as an unlabelled dead button. Dead codes stay out
+of the template rather than guessed, and Power is not in the template at all.
+Guide is gone: the maintainer does not use it.
 
 Two rules come from how the codes behave, not from taste:
 
@@ -284,8 +289,11 @@ Backspace stay out of the template. See `docs/tv-back-412.md`.
 
 The centre uses keyboard `Return`. Home must send **Win/GUI**, a modifier-only
 keyboard report (modifier byte `0x08`, no ordinary key), not navigation Home
-`0x4A`. Channel +/-, TV input and Guide are removed at the maintainer's request;
-the Input cell is the `0x0082` candidate below.
+`0x4A`. Channel +/-, TV input and Guide are removed at the maintainer's request.
+
+**Input works, 2026-11-22 (3.6.13):** the maintainer confirmed consumer `0x0082`
+opens the input list on the C1, so the LG table → Linux code → HID usage chain
+held twice. `0x0089` switches to the TV input and is not the Input button.
 
 **Correction, 2026-11-19:** webOS event keycode 461 (`0x1CD`) is not a USB HID
 usage. The previous inference from equal numbers was invalid: consumer `0x01CD`
@@ -296,16 +304,18 @@ not work. Do not claim it works or try more unrelated numeric codes.
 `BACK 412`, a Linux input code, not a webOS DOM keycode. Linux defines
 `KEY_PREVIOUS = 0x19c` (412) and maps consumer usage `0x01A4` (AL Previous Task)
 to it, so the Back cell sends `0x01A4`. That chain held on the C1. Reading the
-same table against Linux's `hid-input.c` gives the Input candidate: the table's
-`TV_VIDEO 241` is `KEY_VIDEO_NEXT`, which Linux maps from consumer `0x0082`. It is
-unverified — the C1 has to say whether it opens the input list; `tv` `0x0089`
-(`KEY_TV`, the table's `TV 377`) only switches to the TV input.
+same table against Linux's `hid-input.c` gave the Input button: the table's
+`TV_VIDEO 241` is `KEY_VIDEO_NEXT`, which Linux maps from consumer `0x0082`.
+
+**Input works, 2026-11-22 (3.6.13):** the maintainer confirmed consumer `0x0082`
+opens the input list on the C1, so the LG table → Linux code → HID usage chain
+held twice. `0x0089` is not the Input button.
 
 The bridge parses the full little-endian UInt16 and forwards it
 to `USBHIDConsumerControl.press` without a per-usage filter. That is source-code
 evidence, not proof of what the currently flashed device actually emits.
 `Tests/RemoteTemplateTests.swift` refuses a template that reintroduces an ignored
-usage. Still unmeasured on the C1: Info `0x0060`, Input `0x0082`, Channel Up/Down
+usage. Still unmeasured on the C1: Info `0x0060`, Input `0x0082` (works), Channel Up/Down
 `0x009C/0x009D`.
 
 - how far webOS binds the ESP's composite device (keyboard + mouse + consumer +

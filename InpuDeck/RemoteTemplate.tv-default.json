@@ -10,7 +10,7 @@
       "row": 1,
       "col": 1,
       "control": "button",
-      "label": "Вимкнути звук",
+      "label": "Тиша",
       "press": "tap",
       "tone": "plain",
       "action": {
@@ -58,22 +58,9 @@
       }
     },
     {
-      "id": "back",
-      "row": 2,
-      "col": 1,
-      "control": "button",
-      "label": "Назад",
-      "press": "tap",
-      "tone": "plain",
-      "action": {
-        "kind": "consumer",
-        "usage": "backLg"
-      }
-    },
-    {
       "id": "exit",
       "row": 2,
-      "col": 2,
+      "col": 1,
       "control": "button",
       "label": "Вийти",
       "press": "tap",
@@ -86,7 +73,7 @@
     {
       "id": "info",
       "row": 2,
-      "col": 3,
+      "col": 2,
       "control": "button",
       "label": "Інфо",
       "press": "tap",
@@ -97,15 +84,28 @@
       }
     },
     {
-      "id": "gap-top",
+      "id": "gap-mid",
       "row": 2,
-      "col": 4,
+      "col": 3,
       "control": "spacer",
       "label": "",
       "press": "tap",
       "tone": "plain",
       "action": {
         "kind": "none"
+      }
+    },
+    {
+      "id": "back",
+      "row": 2,
+      "col": 4,
+      "control": "button",
+      "label": "Назад",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "backLg"
       }
     },
     {
@@ -122,12 +122,12 @@
         "primary": {
           "kind": "consumer",
           "usage": "volumeUp",
-          "label": "Гучність +"
+          "label": "Гучн. +"
         },
         "secondary": {
           "kind": "consumer",
           "usage": "volumeDown",
-          "label": "Гучність −"
+          "label": "Гучн. −"
         }
       }
     },
