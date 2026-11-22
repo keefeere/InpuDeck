@@ -19,6 +19,7 @@ struct RemoteTemplateStoreTests {
     static func main() {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RemoteTemplateStoreTests-\(UUID().uuidString)", isDirectory: true)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let defaults = UserDefaults(suiteName: "RemoteTemplateStoreTests")!
         defaults.removePersistentDomain(forName: "RemoteTemplateStoreTests")
         let store = RemoteTemplateStore(directory: directory, defaults: defaults)

@@ -17,7 +17,7 @@ struct RemoteTemplateDescriptor: Equatable {
 
 /// Why an import was refused. The message is shown to the user verbatim, so it
 /// names the concrete problem instead of "invalid file".
-enum RemoteTemplateStoreError: Equatable {
+enum RemoteTemplateStoreError: Error, Equatable {
     case unreadable
     case invalid(String)
     case conflictsWithBundled
@@ -51,8 +51,7 @@ final class RemoteTemplateStore {
     /// default so tests can point the store at a temporary directory.
     static func applicationDirectory(fileManager: FileManager = .default) -> URL? {
         let bases = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            + fileManager.urls(for: .temporaryDirectory, in: .userDomainMask)
-        guard let base = bases.first else { return nil }
+        guard let base = bases.first else { return fileManager.temporaryDirectory }
         return base.appendingPathComponent("RemoteTemplates", isDirectory: true)
     }
 
