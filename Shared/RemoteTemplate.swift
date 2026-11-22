@@ -116,33 +116,44 @@ struct RemoteTemplate: Equatable {
         id: defaultId,
         name: "TV",
         columns: 4,
-        rows: 6,
+        rows: 5,
         cells: [
-            // Mirrors the LG remote grouping. The codes here are the ones the
-            // maintainer's C1 actually acted on (see docs/tv-remote.md): consumer
-            // volume / mute / menu / exit, keyboard arrows and Enter, keyboard
-            // Win for Home. Back remains an unsuccessful experiment. Consumer
-            // Select, Home, Back and Play-pause were
-            // ignored by the TV, so they are not in this template.
-            RemoteCell(id: "volume", row: 1, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
+            // Mirrors the maintainer's requests and the codes the C1 actually
+            // acted on (docs/tv-remote.md): consumer volume / mute / menu / exit,
+            // keyboard arrows and Enter, keyboard Win for Home, consumer 0x01A4
+            // for Back. Guide is dropped because the maintainer does not use it;
+            // Consumer Select, Home, Back and Play-pause were ignored by the TV,
+            // so they are not in this template.
+            RemoteCell(id: "mute", row: 1, col: 1, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
+            RemoteCell(id: "home", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Додому", tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
+            RemoteCell(id: "menu", row: 1, col: 3, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Меню", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
+            // Unverified candidate for the Input button: consumer 0x0082 is what
+            // Linux turns into KEY_VIDEO_NEXT, listed as TV_VIDEO (241) in the
+            // LG input-hook table.
+            RemoteCell(id: "input", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Вхід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.videoNext), roles: [:]),
+            RemoteCell(id: "back", row: 2, col: 1, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
+            RemoteCell(id: "exit", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
+            RemoteCell(id: "info", row: 2, col: 3, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
+            RemoteCell(id: "gap-top", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+            // The rocker takes the column left of the pad, so volume sits beside
+            // the cross rather than stacked above its left arm.
+            RemoteCell(id: "volume", row: 3, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
                        label: "Гучність", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
                            .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: "Гучність +"),
                            .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: "Гучність −"),
                        ]),
-            RemoteCell(id: "guide", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Гід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.programGuide), roles: [:]),
-            RemoteCell(id: "channel-space", row: 1, col: 3, rowSpan: 2, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
-            RemoteCell(id: "mute", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
-            RemoteCell(id: "exit", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
-            RemoteCell(id: "info", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
             // The pad's arms carry no label: ▲ ▼ ◀ ▶ read faster than five words
             // inside a narrow tile. Enter is the centre, not consumer Select.
-            RemoteCell(id: "pad", row: 3, col: 1, rowSpan: 3, colSpan: 3, control: .dpad,
+            RemoteCell(id: "pad", row: 3, col: 2, rowSpan: 3, colSpan: 3, control: .dpad,
                        label: "Навігація", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
                            .up: RemoteRoleAction(action: .key(RemoteKeyId.up), label: ""),
@@ -151,19 +162,7 @@ struct RemoteTemplate: Equatable {
                            .right: RemoteRoleAction(action: .key(RemoteKeyId.right), label: ""),
                            .center: RemoteRoleAction(action: .key(RemoteKeyId.returnKey), label: ""),
                        ]),
-            RemoteCell(id: "menu", row: 3, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Меню", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
-            RemoteCell(id: "gap1", row: 4, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
-            RemoteCell(id: "gap2", row: 5, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
-            RemoteCell(id: "back", row: 6, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
-            RemoteCell(id: "home", row: 6, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Додому", tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
-            RemoteCell(id: "input-space", row: 6, col: 3, rowSpan: 1, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
-            RemoteCell(id: "gap3", row: 6, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+            RemoteCell(id: "gap-bottom", row: 5, col: 1, rowSpan: 1, colSpan: 1, control: .spacer,
                        label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
         ]
     )
@@ -205,6 +204,9 @@ enum RemoteUsageId {
     static let info: UInt16 = 0x0060
     static let closedCaption: UInt16 = 0x0061
     static let tv: UInt16 = 0x0089
+    /// Consumer usage Linux maps to KEY_VIDEO_NEXT, which Simon34545's LG table
+    /// lists as TV_VIDEO (241). Candidate for the Input button; unverified.
+    static let videoNext: UInt16 = 0x0082
     static let programGuide: UInt16 = 0x008D
     static let exit: UInt16 = 0x0094
     static let help: UInt16 = 0x0095
@@ -212,9 +214,11 @@ enum RemoteUsageId {
     static let channelDown: UInt16 = 0x009D
     static let home: UInt16 = 0x0223
     static let back: UInt16 = 0x0224
-    /// Candidate from Simon34545's LG input-hook table: Back is Linux
-    /// KEY_PREVIOUS (412). Linux maps consumer AL Previous Task (0x01A4)
-    /// to that key. This is not the webOS DOM keycode and awaits a C1 test.
+    /// Verified on the maintainer's C1 with 3.6.12: this is the Back button.
+    /// Simon34545's LG input-hook table reports Back as Linux KEY_PREVIOUS
+    /// (412), and Linux maps consumer AL Previous Task (0x01A4) to that key.
+    /// Consumer `back` (0x0224) and the keyboard Escape/Backspace keys are
+    /// ignored by the TV, so do not swap them back.
     static let backLg: UInt16 = 0x01A4
     static let forward: UInt16 = 0x0225
     static let stop: UInt16 = 0x0226
@@ -231,6 +235,7 @@ enum RemoteUsageId {
         "volumeUp": volumeUp, "volumeDown": volumeDown,
         "menu": menu, "menuPick": menuPick, "menuEscape": menuEscape,
         "info": info, "closedCaption": closedCaption, "tv": tv, "guide": programGuide,
+        "videoNext": videoNext,
         "exit": exit, "help": help, "channelUp": channelUp, "channelDown": channelDown,
         "home": home, "back": back, "backLg": backLg, "forward": forward, "stop": stop, "refresh": refresh,
     ]

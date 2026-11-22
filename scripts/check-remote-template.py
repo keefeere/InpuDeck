@@ -16,6 +16,7 @@ USAGE = {
     "shuffle": 0x00B9, "repeat": 0x00BC, "playPause": 0x00CD, "mute": 0x00E2,
     "volumeUp": 0x00E9, "volumeDown": 0x00EA, "menu": 0x0040, "menuPick": 0x0041,
     "menuEscape": 0x0046, "info": 0x0060, "closedCaption": 0x0061, "tv": 0x0089,
+    "videoNext": 0x0082,
     "guide": 0x008D, "exit": 0x0094, "help": 0x0095, "channelUp": 0x009C,
     "channelDown": 0x009D, "home": 0x0223, "back": 0x0224, "backLg": 0x01A4, "forward": 0x0225,
     "stop": 0x0226, "refresh": 0x0227,
