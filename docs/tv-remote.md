@@ -333,13 +333,43 @@ The template-first design paid for itself here: the fix was a JSON edit, not a
 code change. The remaining unknowns are the same shape - one or two cells in one
 file, verified by the maintainer's phone, never by a guess.
 
+## Templates: which one, and where it comes from
+
+The remote screen draws the template selected for the current host. `RemoteTemplateStore`
+(`Shared/RemoteTemplateStore.swift`) owns two things and nothing else:
+
+- **imported templates** — JSON copied into app support under
+  `RemoteTemplates/<template id>.json`, accepted only after the same
+  `RemoteTemplateDecoder.decode` the renderer uses passes. A rejected file
+  changes nothing on screen; only its reason is shown. The id `tv-default` is
+  refused on import, so a user file can never shadow the shipped remote.
+- **the per-host choice** — a `UserDefaults` key
+  `remoteTemplate.selected.<host key>`, where the host key comes from
+  `RemoteInputController.templateHostKey`: the transport plus the connected (or
+  selected) device, e.g. `esp:<bridge uuid>` or `direct:<host uuid>`. A TV keeps
+  its remote while a PC bridge keeps its own. Choosing the bundled id clears the
+  key; deleting a template clears every host that pointed at it; an unknown id
+  falls back to the bundled template rather than blanking the screen.
+
+The row above the grid offers the picker and `Імпорт із Files`. Editing a
+template on the phone is deliberately not offered: a grid editor on a small
+screen is the worst possible UI for this, and the maintainer decided the editor
+belongs on a desktop (`docs/tv-remote.md`, order step 3). Until then, a template
+is written on a computer and imported from Files.
+
+`Tests/RemoteTemplateStoreTests.swift` covers import acceptance, refusal, the
+bundled-id conflict, per-host isolation, removal, and the fallbacks.
+
 ## Order, each step independently shippable
 
 1. **done** — decoder + validation + usage tables in pure `Shared/`, with
    `Tests/RemoteTemplateTests.swift` in the release test script;
 2. **done** — the bundled template rendered on the `Пульт` tab, read-only, no
    pointer. This is the first release where the C1 can be tested with it;
-3. an editor only if the format survives living with the real remote for a while.
+3. **done** — imported templates and a per-host template choice; the bundled
+   template stays the fallback;
+4. a template **editor on a desktop**, not on the phone: the maintainer decided a
+   grid editor does not belong on a small screen. Nothing here blocks it.
 
 Nothing here needs a descriptor change, a firmware change, or a new transport.
 The first change that could need one is a key outside Consumer `0x0000`–`0x03FF`

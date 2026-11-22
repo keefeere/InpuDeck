@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One rocker half, drawn as its own control, so it needs a stable SwiftUI id.
 private struct RockerHalf: Identifiable {
@@ -21,16 +22,28 @@ struct RemoteScreenPage<Header: View>: View {
     /// fallback used when the resource is missing or unreadable.
     @State private var template = RemoteTemplate.defaultTemplate
     @State private var loadNote: String?
+    /// Templates the user imported, refreshed after every import.
+    @State private var storedTemplates: [RemoteTemplateDescriptor] = []
+    @State private var showsTemplateImporter = false
+
+    /// Imported JSON lives in app support; the bundled template is never
+    /// rewritten, so a bad import can only ever hide itself.
+    private let store = RemoteTemplateStore(
+        directory: RemoteTemplateStore.applicationDirectory()
+            ?? FileManager.default.temporaryDirectory
+    )
 
     private let gap: CGFloat = 10
 
     init(
         ble: RemoteInputController,
         isActiveTab: Bool,
+        hostKey: String,
         @ViewBuilder header: () -> Header
     ) {
         self.ble = ble
         self.isActiveTab = isActiveTab
+        self.hostKey = hostKey
         self.header = header()
     }
 
@@ -44,6 +57,8 @@ struct RemoteScreenPage<Header: View>: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("remoteLoadNote")
             }
+
+            templateBar
 
             GeometryReader { geometry in
                 let size = gridSize(in: geometry.size)
@@ -60,7 +75,16 @@ struct RemoteScreenPage<Header: View>: View {
             .accessibilityIdentifier("remoteGrid")
         }
         .padding()
-        .task { loadBundledTemplate() }
+        .task {
+            storedTemplates = store.storedDescriptors()
+            loadTemplate()
+        }
+        .onChange(of: hostKey) { _, _ in loadTemplate() }
+        .fileImporter(isPresented: $showsTemplateImporter,
+                      allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            importTemplate(result)
+        }
         .onChange(of: isActiveTab) { _, active in
             // Holding a direction key while swiping away must not leave the TV
             // scrolling forever.
@@ -76,6 +100,11 @@ struct RemoteScreenPage<Header: View>: View {
         let cell: RemoteCell
         let frame: RemoteCellFrame
     }
+
+    /// Where this remote's template choice is remembered: the transport and the
+    /// device actually connected, so a TV remote stays a TV remote when another
+    /// bridge is selected.
+    private let hostKey: String
 
     /// The grid fills the width, but letting rows absorb all leftover height
     /// turns every tile into a tall slab: the remote looked like a column of
@@ -243,21 +272,116 @@ struct RemoteScreenPage<Header: View>: View {
 
     /// A bad bundled template is reported, never silently repaired: the same
     /// decoder is what the unit tests run, so this only guards a packaging bug.
-    private func loadBundledTemplate() {
+    private func bundledTemplate() -> RemoteTemplate? {
         guard let url = Bundle.main.url(forResource: "RemoteTemplate.tv-default", withExtension: "json"),
               let data = try? Data(contentsOf: url) else {
-            template = RemoteTemplate.defaultTemplate
             loadNote = localized("Шаблон пульта не знайдено у пакунці")
-            return
+            return nil
         }
         switch RemoteTemplateDecoder.decode(data) {
         case let .loaded(loaded, notes):
-            template = loaded.cells.isEmpty ? RemoteTemplate.defaultTemplate : loaded
             loadNote = notes.isEmpty ? nil
                 : localizedFormat("Деякі кнопки пульта не працюють (%d): перевірте шаблон", notes.count)
+            return loaded.cells.isEmpty ? RemoteTemplate.defaultTemplate : loaded
         case .rejected(let reason):
-            template = RemoteTemplate.defaultTemplate
             loadNote = localizedFormat("Шаблон пульта не прочитано: %@", reason)
+            return RemoteTemplate.defaultTemplate
         }
+    }
+
+    /// Draws the template this host selected, falling back to the bundled one.
+    private func loadTemplate() {
+        guard let bundled = bundledTemplate() else {
+            template = RemoteTemplate.defaultTemplate
+            return
+        }
+        template = store.template(for: hostKey, bundled: bundled)
+    }
+
+    /// An import is validated by the same decoder the app renders with. A
+    /// rejected file changes nothing on screen; only its reason is reported.
+    private func importTemplate(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let url = urls.first else {
+            if case .failure(let error) = result {
+                loadNote = localizedFormat("Шаблон не імпортовано: %@", error.localizedDescription)
+            }
+            return
+        }
+        // Security-scoped access is required for a Files pick; a bookmark is not
+        // kept, because the template is copied into app support, not referenced.
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        switch store.importTemplate(from: url) {
+        case let .success(notes):
+            storedTemplates = store.storedDescriptors()
+            loadTemplate()
+            loadNote = notes.isEmpty ? nil
+                : localizedFormat("Деякі кнопки пульта не працюють (%d): перевірте шаблон", notes.count)
+        case .failure(.unreadable):
+            loadNote = localized("Шаблон не вдалося прочитати")
+        case .failure(.tooLarge):
+            loadNote = localized("Файл шаблону завеликий")
+        case .failure(.conflictsWithBundled):
+            loadNote = localized("Шаблон із таким id уже є у пакунці")
+        case .failure(.invalid(let reason)):
+            loadNote = localizedFormat("Шаблон не підходить: %@", reason)
+        }
+    }
+
+    /// Template choice for this host, plus the import entry point. Deliberately
+    /// small: the grid is the screen, and this row only decides which grid to
+    /// draw.
+    @ViewBuilder
+    private var templateBar: some View {
+        let descriptors = [RemoteTemplateDescriptor(id: RemoteTemplate.defaultId,
+                                                    name: localized("Вбудований шаблон"),
+                                                    source: .bundled)] + storedTemplates
+        HStack(spacing: 8) {
+            Menu {
+                ForEach(descriptors, id: \.id) { descriptor in
+                    Button {
+                        store.select(templateID: descriptor.id, for: hostKey)
+                        loadTemplate()
+                    } label: {
+                        if descriptor.id == template.id {
+                            Label(descriptor.name, systemImage: "checkmark")
+                        } else {
+                            Text(descriptor.name)
+                        }
+                    }
+                    .accessibilityIdentifier("remoteTemplate-\(descriptor.id)")
+                }
+                if !storedTemplates.isEmpty {
+                    Divider()
+                    ForEach(storedTemplates, id: \.id) { descriptor in
+                        Button(role: .destructive) {
+                            store.removeStoredTemplate(id: descriptor.id)
+                            storedTemplates = store.storedDescriptors()
+                            loadTemplate()
+                        } label: {
+                            Text(localizedFormat("Видалити шаблон «%@»", descriptor.name))
+                        }
+                        .accessibilityIdentifier("remoteTemplateDelete-\(descriptor.id)")
+                    }
+                }
+            } label: {
+                Label(template.name, systemImage: "square.grid.2x2")
+                    .font(.caption)
+            }
+            .fixedSize()
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("remoteTemplateMenu")
+            Spacer()
+
+            Button {
+                showsTemplateImporter = true
+            } label: {
+                Label(localized("Імпорт із Files"), systemImage: "square.and.arrow.down")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("remoteTemplateImport")
+        }
+        .padding(.horizontal, 2)
     }
 }
