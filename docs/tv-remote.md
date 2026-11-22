@@ -283,8 +283,15 @@ keyboard report (modifier byte `0x08`, no ordinary key), not navigation Home
 **Correction, 2026-11-19:** webOS event keycode 461 (`0x1CD`) is not a USB HID
 usage. The previous inference from equal numbers was invalid: consumer `0x01CD`
 is AC Insert, not a verified LG Back code. The maintainer tested it and it did
-not work. Back remains unresolved; do not claim it works or try more unrelated
-numeric codes. The bridge parses the full little-endian UInt16 and forwards it
+not work. Do not claim it works or try more unrelated numeric codes.
+
+**Candidate, 2026-11-21:** Simon34545's LG input-hook table reports `BACK 412`,
+which is a Linux input code, not a webOS DOM keycode. Linux defines
+`KEY_PREVIOUS = 0x19c` (412) and maps consumer usage `0x01A4` (AL Previous Task)
+to it, so the Back cell now sends `0x01A4`. See `docs/tv-back-412.md` for the
+chain and its limits; the C1 still has to confirm the behavior.
+
+The bridge parses the full little-endian UInt16 and forwards it
 to `USBHIDConsumerControl.press` without a per-usage filter. That is source-code
 evidence, not proof of what the currently flashed device actually emits. The next
 useful measurement is the ESP USB report on a computer, followed by identifying
