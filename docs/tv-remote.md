@@ -273,6 +273,7 @@ The format is host-independent; the *default template* is not. Established:
 
 - acted on: consumer `volumeUp` `0x00E9`, `volumeDown` `0x00EA`, `mute` `0x00E2`,
   `menu` `0x0040`, `exit` `0x0094`; keyboard arrow keys (the pad's arms);
+  in 3.6.14 the maintainer also confirmed `info` `0x0060` acts on the TV;
 - ignored: consumer `menuPick` (Select) `0x0041`, `home` `0x0223`, `back` `0x0224`,
   `playPause` `0x00CD`; keyboard `Escape` and `Backspace`.
 - a real keyboard on the TV answered **keyboard Enter** for Select, which is why the
@@ -289,7 +290,8 @@ Backspace stay out of the template. See `docs/tv-back-412.md`.
 
 The centre uses keyboard `Return`. Home must send **Win/GUI**, a modifier-only
 keyboard report (modifier byte `0x08`, no ordinary key), not navigation Home
-`0x4A`. Channel +/-, TV input and Guide are removed at the maintainer's request.
+`0x4A`. Channel +/-, TV input and Guide are removed at the maintainer's request;
+Channel is explicitly not wanted, not merely untested.
 
 **Input works, 2026-11-22 (3.6.13):** the maintainer confirmed consumer `0x0082`
 opens the input list on the C1, so the LG table → Linux code → HID usage chain
@@ -315,8 +317,10 @@ The bridge parses the full little-endian UInt16 and forwards it
 to `USBHIDConsumerControl.press` without a per-usage filter. That is source-code
 evidence, not proof of what the currently flashed device actually emits.
 `Tests/RemoteTemplateTests.swift` refuses a template that reintroduces an ignored
-usage. Still unmeasured on the C1: Info `0x0060` and Channel Up/Down
-`0x009C/0x009D`; Back `0x01A4` and Input `0x0082` both work.
+usage. Measured working on the C1 in 3.6.14: Back `0x01A4`, Input `0x0082` and
+Info `0x0060`. Channel Up/Down `0x009C/0x009D` stay unused — the maintainer does
+not want them on the remote, so they remain a legal usage name in the format and
+no cell in the template.
 
 - how far webOS binds the ESP's composite device (keyboard + mouse + consumer +
   microphone-mute in one descriptor): the 2026-11-15 test proves keyboard and
