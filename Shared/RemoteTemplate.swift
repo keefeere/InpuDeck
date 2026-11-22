@@ -125,31 +125,34 @@ struct RemoteTemplate: Equatable {
             // Consumer Select, Home, Back and Play-pause were ignored by the TV,
             // so they are not in this template.
             RemoteCell(id: "mute", row: 1, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вимкнути звук", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
+                       label: "Тиша", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
             RemoteCell(id: "home", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Додому", tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
             RemoteCell(id: "menu", row: 1, col: 3, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Меню", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
-            // Unverified candidate for the Input button: consumer 0x0082 is what
-            // Linux turns into KEY_VIDEO_NEXT, listed as TV_VIDEO (241) in the
-            // LG input-hook table.
+            // Verified on the C1 with 3.6.13: consumer 0x0082 is what Linux
+            // turns into KEY_VIDEO_NEXT, listed as TV_VIDEO (241) in the LG
+            // input-hook table, and it opens the input list. Consumer tv 0x0089
+            // only switches to the TV input.
             RemoteCell(id: "input", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Вхід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.videoNext), roles: [:]),
-            RemoteCell(id: "back", row: 2, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
-            RemoteCell(id: "exit", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
+            RemoteCell(id: "exit", row: 2, col: 1, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
-            RemoteCell(id: "info", row: 2, col: 3, rowSpan: 1, colSpan: 1, control: .button,
+            RemoteCell(id: "info", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
                        label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
-            RemoteCell(id: "gap-top", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .spacer,
+            RemoteCell(id: "gap-mid", row: 2, col: 3, rowSpan: 1, colSpan: 1, control: .spacer,
                        label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+            // Back belongs on the outer right edge, where the maintainer's thumb
+            // reaches it without crossing the pad.
+            RemoteCell(id: "back", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .button,
+                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
             // The rocker takes the column left of the pad, so volume sits beside
             // the cross rather than stacked above its left arm.
             RemoteCell(id: "volume", row: 3, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
                        label: "Гучність", tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
-                           .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: "Гучність +"),
-                           .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: "Гучність −"),
+                           .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: "Гучн. +"),
+                           .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: "Гучн. −"),
                        ]),
             // The pad's arms carry no label: ▲ ▼ ◀ ▶ read faster than five words
             // inside a narrow tile. Enter is the centre, not consumer Select.
@@ -205,7 +208,7 @@ enum RemoteUsageId {
     static let closedCaption: UInt16 = 0x0061
     static let tv: UInt16 = 0x0089
     /// Consumer usage Linux maps to KEY_VIDEO_NEXT, which Simon34545's LG table
-    /// lists as TV_VIDEO (241). Candidate for the Input button; unverified.
+    /// lists as TV_VIDEO (241). Verified on the C1: this opens the input list.
     static let videoNext: UInt16 = 0x0082
     static let programGuide: UInt16 = 0x008D
     static let exit: UInt16 = 0x0094

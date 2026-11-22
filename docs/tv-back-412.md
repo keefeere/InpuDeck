@@ -24,7 +24,7 @@ The same table plus Linux's mapping also produced the Input candidate:
 | LG table entry | Linux code | Consumer usage | C1 status |
 | --- | --- | --- | --- |
 | `BACK 412` | `KEY_PREVIOUS` | `0x01A4` | works (shipped) |
-| `TV_VIDEO 241` | `KEY_VIDEO_NEXT` | `0x0082` | untested candidate for Вхід |
+| `TV_VIDEO 241` | `KEY_VIDEO_NEXT` | `0x0082` | works (shipped as Вхід, 3.6.13) |
 | `TV 377` | `KEY_TV` | `0x0089` | switches to the TV input, not the input list |
 | `MENU 139` | `KEY_MENU` | `0x0040` | works |
 | `EXIT 174` | `KEY_EXIT` | `0x0094` | works |
@@ -33,5 +33,6 @@ The same table plus Linux's mapping also produced the Input candidate:
 
 Equal numbers across webOS DOM keycodes, Linux codes and HID usages mean nothing
 by themselves; the chain that matters is LG table → Linux code → HID usage, and
-only the maintainer's TV confirms the last step. No firmware change was needed:
-the existing bridge forwards a 16-bit consumer usage untouched.
+only the maintainer's TV confirms the last step. That chain held twice: Back and
+Input. No firmware change was needed: the existing bridge forwards a 16-bit
+consumer usage untouched.
