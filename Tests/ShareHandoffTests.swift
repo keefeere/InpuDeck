@@ -29,7 +29,7 @@ struct ShareHandoffTests {
         guard let legacy = ShareEnvelope.decode("s3cret") else {
             preconditionFailure("Legacy plain text must decode")
         }
-        precondition(legacy.text == "s3cret" && legacy.isFresh(at: now),
+        precondition(legacy.text == "s3cret" && legacy.isFresh(at: Date()),
                      "Legacy text was written moments ago, so it stays typeable")
 
         precondition(ShareEnvelope.decode("").map { _ in true } == nil,
