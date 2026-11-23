@@ -23,13 +23,48 @@ TRIPLE_RAW = re.compile(r'#"""')
 
 def strip_noise(src: str) -> str:
     # Remove comments and string literals so brace counting is honest. Raw brace
-    # counting lies: doc comments hold JSON examples with braces, and diagnostics
-    # hold escaped quotes and interpolations.
-    out = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    out = re.sub(r"//[^\n]*", "", out)
-    out = re.sub(r'#"""[\s\S]*?"""#', '""', out)
-    out = re.sub(r'"""[\s\S]*?"""', '""', out)
-    return re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', out)
+    # counting lies: doc comments hold JSON examples with braces, and strings hold
+    # interpolations. One pass, tracking state, so a "//" inside a string literal
+    # is not mistaken for a comment and a "/*" inside a string is not a comment.
+    out = []
+    i = 0
+    n = len(src)
+    state = "code"
+    while i < n:
+        if state == "code":
+            if src.startswith("//", i):
+                state = "line_comment"; i += 2; continue
+            if src.startswith("/*", i):
+                state = "block_comment"; i += 2; continue
+            if src.startswith('#"""', i):
+                state = "triple_raw"; i += 4; continue
+            if src.startswith('"""', i):
+                state = "triple_string"; i += 3; continue
+            if src.startswith('#"', i):
+                state = "raw_string"; i += 2; continue
+            if src[i] == '"':
+                state = "string"; i += 1; continue
+            out.append(src[i]); i += 1
+        elif state == "line_comment":
+            if src[i] == "\n": state = "code"
+            i += 1
+        elif state == "block_comment":
+            if src.startswith("*/", i): state = "code"; i += 2; continue
+            i += 1
+        elif state == "triple_raw":
+            if src.startswith('"""#', i): state = "code"; i += 4; continue
+            i += 1
+        elif state == "triple_string":
+            if src.startswith('"""', i): state = "code"; i += 3; continue
+            i += 1
+        elif state == "raw_string":
+            if src.startswith('"#', i): state = "code"; i += 2; continue
+            i += 1
+        elif state == "string":
+            if src[i] == "\\": i += 2; continue
+            if src[i] == '"': state = "code"; i += 1; continue
+            i += 1
+    return "".join(out)
 
 
 def check(path: str) -> list[str]:

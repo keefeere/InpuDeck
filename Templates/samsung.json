@@ -1,0 +1,182 @@
+{
+  "formatVersion": 1,
+  "id": "samsung-default",
+  "name": "Samsung",
+  "columns": 5,
+  "rows": 4,
+  "cells": [
+    {
+      "id": "mute",
+      "row": 1,
+      "col": 1,
+      "control": "button",
+      "label": "Тиша",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "mute"
+      }
+    },
+    {
+      "id": "home",
+      "row": 1,
+      "col": 2,
+      "control": "button",
+      "label": "Додому",
+      "press": "tap",
+      "tone": "prominent",
+      "action": {
+        "kind": "key",
+        "key": "win"
+      }
+    },
+    {
+      "id": "menu",
+      "row": 1,
+      "col": 3,
+      "control": "button",
+      "label": "Меню",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "menu"
+      }
+    },
+    {
+      "id": "info",
+      "row": 1,
+      "col": 4,
+      "control": "button",
+      "label": "Інфо",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "info"
+      }
+    },
+    {
+      "id": "back",
+      "row": 1,
+      "col": 5,
+      "control": "button",
+      "label": "Назад",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "key",
+        "key": "return"
+      }
+    },
+    {
+      "id": "volume",
+      "row": 2,
+      "col": 1,
+      "rowSpan": 2,
+      "colSpan": 1,
+      "control": "rocker",
+      "label": "Гучність",
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "primary": {
+          "kind": "consumer",
+          "usage": "volumeUp",
+          "label": "Гучн. +"
+        },
+        "secondary": {
+          "kind": "consumer",
+          "usage": "volumeDown",
+          "label": "Гучн. −"
+        }
+      }
+    },
+    {
+      "id": "channel",
+      "row": 2,
+      "col": 2,
+      "rowSpan": 2,
+      "colSpan": 1,
+      "control": "rocker",
+      "label": "Канал",
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "primary": {
+          "kind": "consumer",
+          "usage": "channelUp",
+          "label": "Канал +"
+        },
+        "secondary": {
+          "kind": "consumer",
+          "usage": "channelDown",
+          "label": "Канал −"
+        }
+      }
+    },
+    {
+      "id": "pad",
+      "row": 2,
+      "col": 3,
+      "rowSpan": 3,
+      "colSpan": 3,
+      "control": "dpad",
+      "label": "Навігація",
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "up": {
+          "kind": "key",
+          "key": "up",
+          "label": ""
+        },
+        "down": {
+          "kind": "key",
+          "key": "down",
+          "label": ""
+        },
+        "left": {
+          "kind": "key",
+          "key": "left",
+          "label": ""
+        },
+        "right": {
+          "kind": "key",
+          "key": "right",
+          "label": ""
+        },
+        "center": {
+          "kind": "key",
+          "key": "return",
+          "label": ""
+        }
+      }
+    },
+    {
+      "id": "gap-bottom-left",
+      "row": 4,
+      "col": 1,
+      "control": "spacer",
+      "label": "",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "gap-bottom-mid",
+      "row": 4,
+      "col": 2,
+      "control": "spacer",
+      "label": "",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "none"
+      }
+    }
+  ]
+}
