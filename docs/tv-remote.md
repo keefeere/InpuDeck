@@ -338,11 +338,15 @@ file, verified by the maintainer's phone, never by a guess.
 The remote screen draws the template selected for the current host. `RemoteTemplateStore`
 (`Shared/RemoteTemplateStore.swift`) owns two things and nothing else:
 
-- **imported templates** — JSON copied into app support under
+- **imported templates** — JSON copied into the Documents directory, which the
+  Files app shows under the app's name, under
   `RemoteTemplates/<template id>.json`, accepted only after the same
   `RemoteTemplateDecoder.decode` the renderer uses passes. A rejected file
   changes nothing on screen; only its reason is shown. The id `tv-default` is
-  refused on import, so a user file can never shadow the shipped remote.
+  refused on import, so a user file can never shadow the shipped remote. Because
+  the store lives in Documents, the user can see the file in the Files app, drop
+  a new one in by hand (AirDrop, a text editor), and import it — no app-side
+  file browser needed.
 - **the per-host choice** — a `UserDefaults` key
   `remoteTemplate.selected.<host key>`, where the host key comes from
   `RemoteInputController.templateHostKey`: the transport plus the connected (or
@@ -356,6 +360,16 @@ template on the phone is deliberately not offered: a grid editor on a small
 screen is the worst possible UI for this, and the maintainer decided the editor
 belongs on a desktop (`docs/tv-remote.md`, order step 3). Until then, a template
 is written on a computer and imported from Files.
+
+`Templates/samsung.json` is the first non-LG template: a 5x4 grid with a channel
+rocker (`Канал +` / `Канал −`) beside the volume rocker, Home (Win), Menu, Info,
+Back (keyboard `Return`, which the Samsung table lists as `NavigationReturn/Back`)
+and the pad. It is not bundled — it is the import-and-test example. Its channel
+usages (`channelUp`/`channelDown` → `0x009C`/`0x009D`) come from the same
+USB HID consumer page the LG remote uses; the Samsung table
+(<https://github.com/ollo69/ha-samsungtv-smart/blob/master/docs/Key_codes.md>)
+names SmartThings keys, not HID usages, so the template reuses the HID mapping
+and leaves the Samsung-specific key names to the desktop editor.
 
 `Tests/RemoteTemplateStoreTests.swift` covers import acceptance, refusal, the
 bundled-id conflict, per-host isolation, removal, and the fallbacks.

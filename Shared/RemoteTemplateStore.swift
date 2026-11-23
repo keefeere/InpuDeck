@@ -47,10 +47,12 @@ final class RemoteTemplateStore {
         self.defaults = defaults
     }
 
-    /// The app-support location the iOS target uses. Kept out of `init`'s
-    /// default so tests can point the store at a temporary directory.
+    /// The Documents directory, which the Files app shows under the app's name,
+    /// so imported templates are visible there and can be dropped in by hand.
+    /// Kept out of `init`'s default so tests can point the store at a temporary
+    /// directory.
     static func applicationDirectory(fileManager: FileManager = .default) -> URL? {
-        let bases = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let bases = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
         guard let base = bases.first else { return fileManager.temporaryDirectory }
         return base.appendingPathComponent("RemoteTemplates", isDirectory: true)
     }
