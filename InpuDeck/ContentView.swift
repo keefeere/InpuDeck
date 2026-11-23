@@ -72,6 +72,10 @@ struct ContentView: View {
     @State private var showsPrivacyHelp = false
     @State private var jigglerEnabled = false
     @State private var showsJigglerNotice = false
+    // Handoff text is typed the moment the route is ready, so an idle route is
+    // kicked once. A throttle keeps one share from restarting Bluetooth several
+    // times while the app is still coming forward.
+    @State private var lastPendingTextReconnect = Date.distantPast
 
     private let jigglerIntervals: [Double] = [0.5, 1, 2, 5, 7, 10, 15, 20]
 
@@ -134,6 +138,15 @@ struct ContentView: View {
         }
         .onChange(of: shortcutInbox.pendingText) { _, _ in
             receiveShortcutTextIfNeeded()
+        }
+        .onOpenURL { url in
+            // The Share Extension cannot transmit HID itself: only this running
+            // app owns the Bluetooth route. It stores the text and opens this
+            // URL, which is what makes a shared password go out at once.
+            guard ShareHandoff.isSendRequest(url) else { return }
+            receiveSharedTextIfNeeded()
+            receiveShortcutTextIfNeeded()
+            reconnectForPendingText()
         }
         .onAppear {
             ble.start()
@@ -406,6 +419,13 @@ struct ContentView: View {
                         Text(localized(ble.isReady ? "Надсилання…" : "Очікується підключення"))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                    }
+
+                    if !ble.isReady && !expertMode {
+                        Text(ble.statusText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
 
                     Text(maskedPendingText(pendingShortcutText))
@@ -1229,8 +1249,17 @@ struct ContentView: View {
     }
 
     private func receiveSharedTextIfNeeded() {
-        guard let text = ShareTextInbox.take() else { return }
-        queueIncomingText(text)
+        switch ShareTextInbox.take() {
+        case .text(let text):
+            queueIncomingText(text)
+        case .expired:
+            // Handoff text is normally a password. Typing it into whatever is
+            // focused long after the share is worse than dropping it, and the
+            // drop has to be visible.
+            inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
+        case .empty:
+            break
+        }
     }
 
     private func queueIncomingText(_ text: String) {
@@ -1249,6 +1278,17 @@ struct ContentView: View {
         }
 
         sendPendingShortcutTextIfPossible()
+        reconnectForPendingText()
+    }
+
+    /// Shared text wants the computer now, so a route that is merely idle gets
+    /// the same reconnect the manual button performs. A route that is already
+    /// ready is left alone; restarting it would only delay the typing.
+    private func reconnectForPendingText() {
+        guard pendingShortcutText != nil, !ble.isReady, !ble.isSwitching else { return }
+        guard Date().timeIntervalSince(lastPendingTextReconnect) > 5 else { return }
+        lastPendingTextReconnect = Date()
+        ble.reconnectNow()
     }
 
     private func sendPendingShortcutTextIfPossible() {

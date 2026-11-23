@@ -29,7 +29,7 @@ a local `swiftc` exists.
 | --- | --- | --- |
 | `scripts/check-swift-structure.py` | brace balance after comments and string literals are stripped; a raw string opened with the single-line delimiter on a line it does not close | the brace above, and `#"{"a":1},` spanning lines, which swallowed the rest of the file |
 | `scripts/check-remote-template.py` | the shipped template's grid is fully covered and every named key/usage resolves to a declared code | the bundled file is the only template in v1, so a bad cell is a dead button on the sofa, not a CI failure |
-| `scripts/check-doc-citations.py` | every `path:line` citation in `docs/*.md` points at a non-empty line that exists | docs quoted `ContentView.swift:1105` for the pointer guard while the guard had moved |
+| `scripts/check-doc-citations.py` | every `path:line` citation in `docs/*.md` points at a non-empty line that exists | docs once quoted a stale `ContentView` line for the pointer guard, while the guard had already moved |
 | `scripts/check-test-registration.py` | every `Tests/*Tests.swift` appears in `scripts/test-direct-hid.sh` | that script lists each test binary explicitly, so an unregistered file never compiles or runs |
 
 ## Rules the hooks enforce

@@ -1,13 +1,18 @@
 import UIKit
 import UniformTypeIdentifiers
 
+/// The extension hands off the shared text to the app and closes itself. It
+/// never renders the secret: the text goes through the persistent inbox and
+/// the running app types it, which is the only route that owns the Bluetooth
+/// connection. If the text cannot be read or saved, the extension keeps a
+/// manual fallback instead of reporting success it did not earn.
 final class ShareViewController: UIViewController {
-    private let textView = UITextView()
     private let statusLabel = UILabel()
     private let sendButton = UIButton(type: .system)
     private let closeButton = UIButton(type: .system)
 
     private var fallbackAttributedText: [String] = []
+    private var extractedText = ""
     private var isSending = false
 
     override func viewDidLoad() {
@@ -25,18 +30,10 @@ final class ShareViewController: UIViewController {
         titleLabel.adjustsFontForContentSizeCategory = true
 
         let subtitleLabel = UILabel()
-        subtitleLabel.text = localized("Текст буде збережено для InpuDeck. Відкрий застосунок — він використає вибраний Bluetooth-вихід.")
+        subtitleLabel.text = localized("Текст піде через вибраний Bluetooth-вихід, щойно InpuDeck відкриється.")
         subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
         subtitleLabel.textColor = .secondaryLabel
         subtitleLabel.numberOfLines = 0
-
-        textView.font = .preferredFont(forTextStyle: .body)
-        textView.backgroundColor = .secondarySystemGroupedBackground
-        textView.layer.cornerRadius = 12
-        textView.layer.cornerCurve = .continuous
-        textView.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
-        textView.delegate = self
-        textView.accessibilityLabel = localized("Текст для надсилання")
 
         statusLabel.text = localized("Завантаження…")
         statusLabel.font = .preferredFont(forTextStyle: .footnote)
@@ -44,7 +41,7 @@ final class ShareViewController: UIViewController {
         statusLabel.numberOfLines = 2
 
         var sendConfiguration = UIButton.Configuration.filled()
-        sendConfiguration.title = localized("Зберегти для InpuDeck")
+        sendConfiguration.title = localized("Надіслати зараз")
         sendConfiguration.image = UIImage(systemName: "paperplane.fill")
         sendConfiguration.imagePadding = 8
         sendButton.configuration = sendConfiguration
@@ -63,7 +60,6 @@ final class ShareViewController: UIViewController {
         let stack = UIStackView(arrangedSubviews: [
             titleLabel,
             subtitleLabel,
-            textView,
             statusLabel,
             buttonRow
         ])
@@ -71,23 +67,13 @@ final class ShareViewController: UIViewController {
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let scrollView = UIScrollView()
-        scrollView.keyboardDismissMode = .interactive
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scrollView)
-        scrollView.addSubview(stack)
+        view.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -16),
-            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 18),
-            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -14),
-            stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -32),
-            textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 160),
+            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             sendButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
             closeButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
@@ -110,8 +96,8 @@ final class ShareViewController: UIViewController {
                 guard !value.isEmpty, !values.contains(value) else { return }
                 values.append(value)
             }
-            textView.text = (unique.isEmpty ? fallbackAttributedText : unique).joined(separator: "\n")
-            updateReadyState()
+            extractedText = (unique.isEmpty ? fallbackAttributedText : unique).joined(separator: "\n")
+            enqueueAndClose()
             return
         }
 
@@ -157,56 +143,57 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func updateReadyState() {
-        let hasText = !textView.text.isEmpty
-        sendButton.isEnabled = hasText && !isSending
-        if !isSending {
-            statusLabel.text = hasText
-                ? localized("Готово. За потреби відредагуйте текст перед передаванням.")
-                : localized("У спільному елементі немає тексту або URL.")
-        }
-    }
-
-    @objc private func sendTapped() {
-        let text = textView.text ?? ""
-        guard !text.isEmpty, text.count <= 2_000 else {
-            statusLabel.text = text.isEmpty
-                ? localized("Введіть текст для передавання.")
-                : localized("Скоротіть текст до 2000 символів.")
+    private func enqueueAndClose() {
+        guard !extractedText.isEmpty else {
+            showManualFallback(localized("У спільному елементі немає тексту або URL."))
             return
         }
-        guard ShareTextInbox.enqueue(text) else {
-            finishWithError(localized("Не вдалося зберегти текст"))
+        guard extractedText.count <= 2_000 else {
+            showManualFallback(localized("Скоротіть текст до 2000 символів."))
+            return
+        }
+        guard ShareTextInbox.enqueue(extractedText) else {
+            showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
 
-        view.endEditing(true)
         isSending = true
         sendButton.isEnabled = false
         closeButton.isEnabled = false
         statusLabel.text = localized("Текст збережено. Відкрий InpuDeck для надсилання.")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            self?.extensionContext?.completeRequest(returningItems: nil)
-        }
+
+        // extensionContext.open is not a supported guarantee for foreground
+        // launch, so the text is already in the inbox and the app picks it up
+        // when the user opens it. Do not report success we did not earn: the
+        // extension closes here, and the app's own launch path does the rest.
+        extensionContext?.completeRequest(returningItems: nil)
     }
 
-    private func finishWithError(_ message: String) {
+    private func showManualFallback(_ message: String) {
         isSending = false
         sendButton.isEnabled = true
         closeButton.isEnabled = true
-        var configuration = sendButton.configuration
-        configuration?.title = localized("Повторити")
-        sendButton.configuration = configuration
         statusLabel.text = localizedFormat("%@. Текст не втрачено; можна повторити.", message)
+    }
+
+    @objc private func sendTapped() {
+        guard !extractedText.isEmpty else {
+            statusLabel.text = localized("Введіть текст для передавання.")
+            return
+        }
+        guard ShareTextInbox.enqueue(extractedText) else {
+            showManualFallback(localized("Не вдалося зберегти текст"))
+            return
+        }
+
+        isSending = true
+        sendButton.isEnabled = false
+        closeButton.isEnabled = false
+        statusLabel.text = localized("Текст збережено. Відкрий InpuDeck для надсилання.")
+        extensionContext?.completeRequest(returningItems: nil)
     }
 
     @objc private func closeTapped() {
         extensionContext?.completeRequest(returningItems: nil)
-    }
-}
-
-extension ShareViewController: UITextViewDelegate {
-    func textViewDidChange(_ textView: UITextView) {
-        updateReadyState()
     }
 }

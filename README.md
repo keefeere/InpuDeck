@@ -52,6 +52,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **English and Ukrainian input** - Automatic alphabet detection with physical US and Ukrainian Enhanced HID mappings
 - **Two keyboard modes** - Use the native iOS keyboard beside the trackpad or the dedicated full-screen keyboard tab
 - **Layout synchronization** - Configurable Ctrl+Space, Ctrl+Shift, Alt+Shift, Shift+Space, or Win+Space host shortcut
+- **Share-sheet sending** - `Share` → **InpuDeck** in any app: the text is extracted silently, never rendered, and InpuDeck types it through the selected output
 - **Shortcuts sharing** - Send text or URLs from the iOS Share sheet through a one-time Shortcuts setup; the main app waits for BLE and types it reliably
 - **Clipboard typing** - Send text from the iPhone clipboard in one tap
 - **Precision trackpad** - Cursor movement, two-finger scrolling/right click, pinch-to-zoom, tap-drag, edge scrolling, and three-finger middle click
@@ -168,6 +169,31 @@ code, the Xcode project, and their own tests/scripts. Linux helper changes run
 the separate Linux checks. PR filters consider the whole PR diff against its
 base, so a PR that already changes the button style still runs its UI test on
 subsequent updates.
+
+## Sharing text and passwords
+
+`Share` in any app hands text or a URL to InpuDeck, which types it on the connected
+computer through the selected output.
+
+- **No window, no editor.** `Share` → **InpuDeck** silently extracts the plain text,
+  hands it to the inbox, and closes. The secret is never rendered in the extension; it
+  goes straight to the app, which types it.
+- **No Enter, no extra characters.** The text is passed exactly as shared — the app
+  types it as-is, without any appended newline or transformation.
+- **The app does not open itself.** Only the running app owns the Bluetooth route, so
+  the Share Extension cannot transmit HID by itself. `extensionContext.open` is not a
+  supported guarantee for foreground launch, so the text stays in the inbox and opening
+  InpuDeck sends it. If the route is idle, the app reconnects immediately instead of
+  waiting.
+- **It does not linger.** The inbox is a persistent named pasteboard shared with the
+  extension. Consumed text is cleared and stops being persistent, and text older than
+  15 minutes is dropped with a visible warning rather than typed into whatever happens to
+  be focused much later.
+- **No secret in the URL.** The handoff URL carries only the route request; the text never
+  enters the visible composer, only the send queue.
+
+Envelope freshness and the handoff URL are checked in [`Tests/ShareHandoffTests.swift`](Tests/ShareHandoffTests.swift).
+iOS-side handoff and physical typing still need the maintainer's phone and computer.
 
 ## Requirements
 
@@ -407,7 +433,7 @@ To build the same unsigned IPA on a Mac locally:
 4. In **Settings → Shortcuts**, open the app’s shortcut page, then create a new shortcut with **Send to InpuDeck**:
    - tap its `Text` field → **Select Variable** → **Shortcut Input**
    - in the shortcut’s Details, enable **Show in Share Sheet** and allow **Text** and **URLs**
-5. From another iOS app, choose `Share` → the shortcut. InpuDeck opens, waits for the selected output if needed, then types the input.
+5. From another iOS app, choose `Share` → **InpuDeck** (or the shortcut above). InpuDeck extracts the text silently, then types it through the selected output when it opens.
 6. Use the trackpad area for mouse control:
    - **Drag** to move cursor
    - **Tap** for left click  

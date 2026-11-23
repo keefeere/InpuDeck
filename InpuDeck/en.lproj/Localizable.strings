@@ -407,3 +407,4 @@
 "Шаблон пульта не знайдено у пакунці" = "The remote template was not found in the bundle";
 "Шаблон пульта не прочитано: %@" = "Remote template could not be read: %@";
 "Деякі кнопки пульта не працюють (%d): перевірте шаблон" = "Some remote buttons do not work (%d): check the template";
+"Термін переданого тексту минув, його не надіслано." = "The handed-over text expired and was not sent.";

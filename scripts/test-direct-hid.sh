@@ -102,6 +102,12 @@ swiftc -swift-version 5 \
 "$build_dir/remote-template-store-tests"
 
 swiftc -swift-version 5 \
+  "$repo_root/Shared/ShareEnvelope.swift" \
+  "$repo_root/Tests/ShareHandoffTests.swift" \
+  -o "$build_dir/share-handoff-tests"
+"$build_dir/share-handoff-tests"
+
+swiftc -swift-version 5 \
   "$repo_root/Shared/CommandUnlockState.swift" \
   "$repo_root/Tests/CommandUnlockStateTests.swift" \
   -o "$build_dir/command-unlock-tests"
