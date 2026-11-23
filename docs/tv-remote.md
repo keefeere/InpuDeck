@@ -374,3 +374,80 @@ bundled-id conflict, per-host isolation, removal, and the fallbacks.
 Nothing here needs a descriptor change, a firmware change, or a new transport.
 The first change that could need one is a key outside Consumer `0x0000`–`0x03FF`
 or a report type the composite descriptor does not already declare.
+
+## Appendix: the LG input-hook keycode table
+
+Source: Simon34545's "LG Input Hook" gist,
+<https://gist.github.com/Simon34545/31c528bfe8540880936fc4c580723a02>, file
+`keycodes.txt`. Copied here because it is the only public list that names what
+the TV reports internally, and the gist can be edited or disappear. The linked
+comment (permalink `6361253`) explains how to read any button's code live: the
+app serves a web UI on the TV (`http://<TV_IP>:1842`), its log prints the code
+of every press (e.g. `412 => 0`), and that number is what a keybind takes.
+
+These are **internal Linux input codes**, not webOS DOM keycodes and not USB HID
+usages. The `Linux key` column is what upstream
+`include/uapi/linux/input-event-codes.h` calls that number; the
+`consumer usage` column is what upstream `drivers/hid/hid-input.c` maps *to*
+that key. That third column is the bridge from the table to a report the ESP can
+actually send, and it is how Back (`412`) and Input (`241`) were found.
+
+| LG button | code | Linux key | Consumer usage | InpuDeck status |
+| --- | --- | --- | --- | --- |
+| POWER | 116 | `KEY_POWER` | `0x0001`, `0x0030` | no cell: a power press is a one-way ticket |
+| TV_VIDEO | 241 | `KEY_VIDEO_NEXT` | `0x0082` | **works** — the Вхід cell |
+| CC | 799 | not in upstream | - | untested |
+| RF_EMANUAL | 934 | not in upstream | - | untested |
+| SEARCH | 217 | `KEY_SEARCH` | `0x0221`, `0x0082` | untested |
+| TV | 377 | `KEY_TV` | `0x0089` | switches to the TV input, not the input list |
+| 1-9, 0 | 2-11, 11 | `KEY_1`…`KEY_9`, `KEY_0` | keyboard page | not on the remote |
+| LIST | 771 | not in upstream | - | untested |
+| FLASHBACK | 772 | not in upstream | - | untested |
+| VOLUMEUP | 115 | `KEY_VOLUMEUP` | `0x00E9` | **works** |
+| VOLUMEDOWN | 114 | `KEY_VOLUMEDOWN` | `0x00EA` | **works** |
+| CHANNELUP | 402 | `KEY_CHANNELUP` | `0x009C` | unwanted by the maintainer |
+| CHANNELDOWN | 403 | `KEY_CHANNELDOWN` | `0x009D` | unwanted by the maintainer |
+| FAVORITES | 364 | `KEY_FAVORITES` | none upstream | untested |
+| INFO | 358 | `KEY_INFO` | `0x0060`, `0x01BD` | **works** — the Інфо cell |
+| MUTE | 113 | `KEY_MUTE` | `0x00E2` | **works** |
+| NETFLIX | 1037 | not in upstream | - | untested |
+| RF_HOME | 773 | not in upstream | - | keyboard Win/GUI reaches home instead |
+| AMAZON | 1038 | not in upstream | - | untested |
+| MENU | 139 | `KEY_MENU` | `0x0005`, `0x0040` | **works** (`0x0040`) |
+| UP | 103 | `KEY_UP` | `0x000C`, `0x0042` | pad arm uses the keyboard arrow |
+| LIVE_ZOOM | 1027 | not in upstream | - | untested |
+| LEFT | 105 | `KEY_LEFT` | `0x000B`, `0x0044` | pad arm uses the keyboard arrow |
+| RIGHT | 106 | `KEY_RIGHT` | `0x000A`, `0x0045` | pad arm uses the keyboard arrow |
+| DOWN | 108 | `KEY_DOWN` | `0x000D`, `0x0043` | pad arm uses the keyboard arrow |
+| ENTER | 28 | `KEY_ENTER` | `0x0084` | pad centre uses keyboard `Return` |
+| BACK | 412 | `KEY_PREVIOUS` | `0x01A4` | **works** — the Назад cell |
+| EXIT | 174 | `KEY_EXIT` | `0x0008`, `0x0094`, `0x0204` | **works** (`0x0094`) |
+| AD | 829 | not in upstream | - | untested |
+| TIMER | 795 | not in upstream | - | untested |
+| STOP | 128 | `KEY_STOP` | `0x0226` | untested |
+| REWIND | 168 | `KEY_REWIND` | `0x00B4` | untested |
+| PLAY | 207 | `KEY_PLAY` | `0x00B0` | untested |
+| PAUSE | 119 | `KEY_PAUSE` | `0x00B1` | untested |
+| FASTFORWARD | 208 | `KEY_FASTFORWARD` | `0x00B3` | untested |
+| RED | 398 | `KEY_RED` | `0x0069` | untested |
+| GREEN | 399 | `KEY_GREEN` | `0x006A` | untested |
+| YELLOW | 400 | `KEY_YELLOW` | `0x006C` | untested |
+| BLUE | 401 | `KEY_BLUE` | `0x006B` | untested |
+
+Reading rules, learned the hard way:
+
+- **Never send the number itself.** 412 is a Linux code; the report must carry
+  the consumer usage `0x01A4`. Equal numbers in different code systems mean
+  nothing (this is exactly how the `461 → 0x01CD` guess went wrong).
+- Several usages can map to one Linux key (`MENU`: `0x0005` and `0x0040`).
+  Linux tells you which are possible; only the TV says which it acts on.
+- Codes above 700 (`LIST`, `FLASHBACK`, `RF_HOME`, `CC`, `TIMER`, `AD`,
+  `NETFLIX`, `AMAZON`, `LIVE_ZOOM`, `RF_EMANUAL`) are **not** in upstream
+  `input-event-codes.h`, so this chain cannot name a usage for them. Those need
+  a captured HID report, not a lookup.
+- `SEARCH` maps from `0x0221` and also from `0x0082` — the same usage Linux also
+  reads as `KEY_VIDEO_NEXT`, which is why the Вхід cell shows up twice in this
+  table. `FAVORITES` has no consumer mapping in upstream Linux at all.
+- The table is one TV/remote generation. Treat "works" here as the maintainer's
+  C1 result, not a promise for other models.
+

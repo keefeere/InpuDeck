@@ -36,3 +36,6 @@ by themselves; the chain that matters is LG table → Linux code → HID usage, 
 only the maintainer's TV confirms the last step. That chain held twice: Back and
 Input. No firmware change was needed: the existing bridge forwards a 16-bit
 consumer usage untouched.
+
+The whole table, with the Linux key and consumer usage for every row, is
+reproduced in `docs/tv-remote.md` ("Appendix: the LG input-hook keycode table").
