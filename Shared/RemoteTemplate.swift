@@ -94,6 +94,28 @@ struct RemoteCell: Equatable {
     let roles: [RemoteRole: RemoteRoleAction]
     /// Rockers split along the longer axis of the cell.
     var rockerIsHorizontal: Bool { colSpan >= rowSpan }
+    /// Visual scale of the control inside its cell. 1.0 fills the cell.
+    let scale: Double
+    /// Multiplier applied to the label font size. 1.0 leaves the default.
+    let fontScale: Double
+
+    init(id: String, row: Int, col: Int, rowSpan: Int, colSpan: Int, control: RemoteControl,
+         label: String, tone: RemoteTone, press: RemotePress, action: RemoteAction,
+         roles: [RemoteRole: RemoteRoleAction], scale: Double = 1.0, fontScale: Double = 1.0) {
+        self.id = id
+        self.row = row
+        self.col = col
+        self.rowSpan = rowSpan
+        self.colSpan = colSpan
+        self.control = control
+        self.label = label
+        self.tone = tone
+        self.press = press
+        self.action = action
+        self.roles = roles
+        self.scale = scale
+        self.fontScale = fontScale
+    }
 }
 
 struct RemoteTemplate: Equatable {
@@ -321,6 +343,8 @@ private struct RawCell: Codable {
     var label: String?
     var tone: String?
     var press: String?
+    var scale: Double?
+    var fontScale: Double?
     var action: RawAction?
     var actions: [String: RawAction]?
 }
@@ -338,6 +362,10 @@ enum RemoteTemplateDecoder {
     /// Cell bounds outside which a template is refused rather than guessed.
     static let columnRange = 3...6
     static let rowRange = 3...10
+    /// Visual scale of a control inside its cell; the bundled template uses 1.0.
+    static let scaleRange = 0.3...1.5
+    /// Multiplier on the label font size; 1.0 is the default 16 pt (10 pt compact).
+    static let fontScaleRange = 0.5...2.0
 
     static func decode(_ data: Data) -> RemoteTemplateLoad {
         guard let raw = try? JSONDecoder().decode(RawTemplate.self, from: data) else {
@@ -404,6 +432,12 @@ enum RemoteTemplateDecoder {
             if label.isEmpty && control == .button {
                 notes.append("cell \"\(rawCell.id)\" is a button with no label")
             }
+            let scale = rawCell.scale ?? 1.0
+            let fontScale = rawCell.fontScale ?? 1.0
+            if !(RemoteTemplateDecoder.scaleRange.contains(scale) && RemoteTemplateDecoder.fontScaleRange.contains(fontScale)) {
+                notes.append("cell \"\(rawCell.id)\" has an out-of-range scale/fontScale, dropped")
+                continue
+            }
 
             switch control {
             case .button, .spacer:
@@ -415,7 +449,7 @@ enum RemoteTemplateDecoder {
                 guard let action else { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: action, roles: [:]))
+                                        action: action, roles: [:], scale: scale, fontScale: fontScale))
 
             case .dpad:
                 if rawCell.action != nil {
@@ -446,7 +480,7 @@ enum RemoteTemplateDecoder {
                 }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: RemoteAction.none, roles: resolved))
+                                        action: RemoteAction.none, roles: resolved, scale: scale, fontScale: fontScale))
 
             case .rocker:
                 if rawCell.action != nil {
@@ -471,7 +505,7 @@ enum RemoteTemplateDecoder {
                 if failed { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,
                                         control: control, label: label, tone: tone, press: press,
-                                        action: RemoteAction.none, roles: resolved))
+                                        action: RemoteAction.none, roles: resolved, scale: scale, fontScale: fontScale))
             }
         }
 

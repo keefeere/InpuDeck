@@ -102,6 +102,13 @@ def check(path: str) -> list[str]:
             continue
         occupied.update({spot: cell_id for spot in covered})
 
+        scale = cell.get("scale", 1.0)
+        font_scale = cell.get("fontScale", 1.0)
+        if not isinstance(scale, (int, float)) or isinstance(scale, bool) or not 0.3 <= scale <= 1.5:
+            problems.append(f'cell "{cell_id}": scale must be 0.3..1.5, got {scale!r}')
+        if not isinstance(font_scale, (int, float)) or isinstance(font_scale, bool) or not 0.5 <= font_scale <= 2.0:
+            problems.append(f'cell "{cell_id}": fontScale must be 0.5..2.0, got {font_scale!r}')
+
         control = cell.get("control")
         if control not in CONTROLS:
             problems.append(f'cell "{cell_id}": unknown control {control!r}')

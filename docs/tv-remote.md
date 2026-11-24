@@ -97,6 +97,8 @@ a future iPad width and the iPhone Duo layout without editing the template.
       "label": "Живлення",     // see "Labels"
       "tone": "plain",         // plain | prominent
       "press": "tap",          // tap | hold; a dpad centre is always a tap
+      "scale": 1.0,             // optional, 0.3..1.5, default 1.0
+      "fontScale": 1.0,         // optional, 0.5..2.0, default 1.0
       "action": { "kind": "consumer", "usage": "power" }
     },
     {
@@ -114,6 +116,12 @@ a future iPad width and the iPhone Duo layout without editing the template.
   ]
 }
 ```
+
+`scale` and `fontScale` are the visual knobs: `scale` shrinks or grows a
+control around its own centre (1.0 fills the cell; 0.6 leaves most of the tile
+empty) and `fontScale` multiplies the label font size (the default 16 pt,
+10 pt compact). Both are optional and default to 1.0, so a file that was
+written before they existed keeps its exact look.
 
 Only `button`, `dpad`, `rocker` and `spacer` exist in v1. `rocker` is one cell
 with two halves (Volume ±, Channel ±) and is worth having precisely because
@@ -233,6 +241,7 @@ and recovery must never leave the user with a blank screen.
 | unparseable file | unreachable in v1 (only the bundled file exists), but tested: the tab shows an empty remote plus a hint, never a crash |
 | `formatVersion` newer than the app | refuse that one template, keep the rest |
 | unknown `control` / `kind` / name | drop that cell, name it in the test failure and in the app log |
+| out-of-range `scale` / `fontScale` | drop that cell, name it in the app log |
 | out-of-range or overlapping coordinates | refuse the template |
 | duplicate `id` | refuse the template |
 | unknown key in an object | ignore it, so a newer template still half-works |
@@ -355,7 +364,11 @@ The remote screen draws the template selected for the current host. `RemoteTempl
   key; deleting a template clears every host that pointed at it; an unknown id
   falls back to the bundled template rather than blanking the screen.
 
-The row above the grid offers the picker and `Імпорт із Files`. Editing a
+The row above the grid keeps only the picker and one button that opens the
+settings screen, where the template list lives: picking a template there
+exchanges it on the remote immediately, and an imported file is deleted by
+swiping it away. Import lives in that settings screen (`Імпортувати шаблон`),
+not on the remote itself. Editing a
 template on the phone is deliberately not offered: a grid editor on a small
 screen is the worst possible UI for this, and the maintainer decided the editor
 belongs on a desktop (`docs/tv-remote.md`, order step 3). Until then, a template

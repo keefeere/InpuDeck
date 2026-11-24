@@ -5,6 +5,9 @@ import UIKit
 struct ContentView: View {
     @StateObject private var ble = RemoteInputController()
     @StateObject private var shortcutInbox = ShortcutInbox.shared
+    /// Shared with the remote screen and the settings screen: the template
+    /// picked there is drawn here the moment it is stored.
+    @StateObject private var remoteCatalog = RemoteTemplateCatalog(hostKey: "esp:none")
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -276,7 +279,9 @@ struct ContentView: View {
             }
         case .remote:
             RemoteScreenPage(ble: ble, isActiveTab: activeTab == .remote,
-                             hostKey: ble.templateHostKey) {
+                             catalog: remoteCatalog,
+                             hostKey: ble.templateHostKey,
+                             onShowSettings: showSettings) {
                 connectionHeader
             }
         }
@@ -857,6 +862,15 @@ struct ContentView: View {
                         Label("Вкладки", systemImage: "rectangle.3.group")
                     }
                     .accessibilityIdentifier("settingsTabs")
+                }
+
+                Section {
+                    NavigationLink {
+                        RemoteTemplatesSettingsView(catalog: remoteCatalog)
+                    } label: {
+                        Label("Шаблони пульта", systemImage: "rectangle.grid.2x2")
+                    }
+                    .accessibilityIdentifier("settingsRemoteTemplates")
                 }
 
                 Section("Перемикання розкладки на пристрої") {

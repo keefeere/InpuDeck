@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// One rocker half, drawn as its own control, so it needs a stable SwiftUI id.
 private struct RockerHalf: Identifiable {
@@ -16,34 +15,29 @@ private struct RockerHalf: Identifiable {
 struct RemoteScreenPage<Header: View>: View {
     let ble: RemoteInputController
     let isActiveTab: Bool
+    /// Shared with the settings screen, so a template changed there is drawn
+    /// here the moment it is stored.
+    @ObservedObject var catalog: RemoteTemplateCatalog
+    /// Where the template-import button leads: the settings screen.
+    let onShowSettings: () -> Void
+    let hostKey: String
     private let header: Header
-
-    /// The bundled template is the shipped specification; this copy is the
-    /// fallback used when the resource is missing or unreadable.
-    @State private var template = RemoteTemplate.defaultTemplate
-    @State private var loadNote: String?
-    /// Templates the user imported, refreshed after every import.
-    @State private var storedTemplates: [RemoteTemplateDescriptor] = []
-    @State private var showsTemplateImporter = false
-
-    /// Imported JSON lives in app support; the bundled template is never
-    /// rewritten, so a bad import can only ever hide itself.
-    private let store = RemoteTemplateStore(
-        directory: RemoteTemplateStore.applicationDirectory()
-            ?? FileManager.default.temporaryDirectory
-    )
 
     private let gap: CGFloat = 10
 
     init(
         ble: RemoteInputController,
         isActiveTab: Bool,
+        catalog: RemoteTemplateCatalog,
         hostKey: String,
+        onShowSettings: @escaping () -> Void,
         @ViewBuilder header: () -> Header
     ) {
         self.ble = ble
         self.isActiveTab = isActiveTab
+        self.catalog = catalog
         self.hostKey = hostKey
+        self.onShowSettings = onShowSettings
         self.header = header()
     }
 
@@ -51,7 +45,7 @@ struct RemoteScreenPage<Header: View>: View {
         VStack(spacing: 12) {
             header
 
-            if let loadNote {
+            if let loadNote = catalog.bundledNote {
                 Text(loadNote)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -76,15 +70,9 @@ struct RemoteScreenPage<Header: View>: View {
         }
         .padding()
         .task {
-            storedTemplates = store.storedDescriptors()
-            loadTemplate()
+            catalog.refresh(hostKey: hostKey)
         }
-        .onChange(of: hostKey) { _, _ in loadTemplate() }
-        .fileImporter(isPresented: $showsTemplateImporter,
-                      allowedContentTypes: [.json],
-                      allowsMultipleSelection: false) { result in
-            importTemplate(result)
-        }
+        .onChange(of: hostKey) { _, newKey in catalog.refresh(hostKey: newKey) }
         .onChange(of: isActiveTab) { _, active in
             // Holding a direction key while swiping away must not leave the TV
             // scrolling forever.
@@ -92,6 +80,7 @@ struct RemoteScreenPage<Header: View>: View {
         }
         .onDisappear { ble.releaseAllInput() }
     }
+
 
     /// Identifiable because SwiftUI needs a stable id per cell; `id` is the
     /// template's control id, so it survives a template reload.
@@ -101,18 +90,13 @@ struct RemoteScreenPage<Header: View>: View {
         let frame: RemoteCellFrame
     }
 
-    /// Where this remote's template choice is remembered: the transport and the
-    /// device actually connected, so a TV remote stays a TV remote when another
-    /// bridge is selected.
-    private let hostKey: String
-
     /// The grid fills the width, but letting rows absorb all leftover height
     /// turns every tile into a tall slab: the remote looked like a column of
     /// empty gaps on a phone. Tiles stay close to square, and the grid centers
     /// vertically inside whatever height is left.
     private func gridSize(in available: CGSize) -> CGSize {
-        let columns = max(1, template.columns)
-        let rows = max(1, template.rows)
+        let columns = max(1, catalog.template.columns)
+        let rows = max(1, catalog.template.rows)
         let spacing = Double(gap)
         let cellWidth = max(24, (Double(available.width) - spacing * Double(columns - 1)) / Double(columns))
         let cellHeight = min(max(40, cellWidth * 1.15),
@@ -122,6 +106,7 @@ struct RemoteScreenPage<Header: View>: View {
     }
 
     private func items(in size: CGSize) -> [Item] {
+        let template = catalog.template
         let frames = template.frames(size: (Double(size.width), Double(size.height)), gap: Double(gap))
         return template.cells.compactMap { cell in
             // A spacer exists only to keep the decoder's grid coverage honest.
@@ -133,14 +118,25 @@ struct RemoteScreenPage<Header: View>: View {
         }
     }
 
+    /// The cell's rect scaled around its own centre, so a `scale: 1.3` button
+    /// fills only the middle of its tile instead of overlapping the neighbours.
+    private func scaledFrame(_ frame: RemoteCellFrame, scale: Double) -> RemoteCellFrame {
+        let w = frame.width * scale
+        let h = frame.height * scale
+        return RemoteCellFrame(id: frame.id, x: frame.x + (frame.width - w) / 2,
+                              y: frame.y + (frame.height - h) / 2, width: w, height: h)
+    }
+
     @ViewBuilder
     private func render(_ cell: RemoteCell, _ frame: RemoteCellFrame) -> some View {
+        let frame = scaledFrame(frame, scale: cell.scale)
         switch cell.control {
         case .button, .spacer:
             // `items` never hands a spacer here; the branch keeps the switch
             // exhaustive without ever drawing a dead tile.
             keyButton(title: localized(cell.label), action: cell.action, press: cell.press,
-                      prominent: cell.tone == .prominent, frame: frame, id: cell.id)
+                      prominent: cell.tone == .prominent, frame: frame, id: cell.id,
+                      fontScale: cell.fontScale)
 
         case .dpad:
             // A dpad is a 3x3 grid: the corners stay empty, the arms and centre
@@ -181,7 +177,8 @@ struct RemoteScreenPage<Header: View>: View {
                     if let slot = cell.roles[half.role] {
                         keyButton(title: slot.label.isEmpty ? directionGlyph(half.role) : localized(slot.label),
                                   action: slot.action, press: cell.press, prominent: false,
-                                  frame: half.frame, id: "\(cell.id).\(half.role.rawValue)")
+                                  frame: half.frame, id: "\(cell.id).\(half.role.rawValue)",
+                                  fontScale: cell.fontScale)
                             .position(x: half.frame.x + half.frame.width / 2,
                                       y: half.frame.y + half.frame.height / 2)
                     }
@@ -199,7 +196,8 @@ struct RemoteScreenPage<Header: View>: View {
                          prominent: role == .center,
                          frame: RemoteCellFrame(id: unit.id, x: unit.x, y: unit.y,
                                                 width: unit.width, height: unit.height),
-                         id: "\(cell.id).\(role.rawValue)")
+                         id: "\(cell.id).\(role.rawValue)",
+                         fontScale: cell.fontScale)
             .position(x: unit.x + unit.width / 2, y: unit.y + unit.height / 2)
     }
 
@@ -210,11 +208,13 @@ struct RemoteScreenPage<Header: View>: View {
     }
 
     private func keyButton(title: String, action: RemoteAction, press: RemotePress,
-                           prominent: Bool, frame: RemoteCellFrame, id: String) -> some View {
+                           prominent: Bool, frame: RemoteCellFrame, id: String,
+                           fontScale: Double = 1.0) -> some View {
         PressableKeyButton(
             title: title,
             isProminent: prominent,
             minHeight: 40,
+            fontSize: fontScale == 1.0 ? nil : CGFloat(16 * fontScale),
             onPress: {
                 sendDown(action)
                 if press == .tap { sendUp(action) }
@@ -270,80 +270,18 @@ struct RemoteScreenPage<Header: View>: View {
 
 
 
-    /// A bad bundled template is reported, never silently repaired: the same
-    /// decoder is what the unit tests run, so this only guards a packaging bug.
-    private func bundledTemplate() -> RemoteTemplate? {
-        guard let url = Bundle.main.url(forResource: "RemoteTemplate.tv-default", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else {
-            loadNote = localized("Шаблон пульта не знайдено у пакунці")
-            return nil
-        }
-        switch RemoteTemplateDecoder.decode(data) {
-        case let .loaded(loaded, notes):
-            loadNote = notes.isEmpty ? nil
-                : localizedFormat("Деякі кнопки пульта не працюють (%d): перевірте шаблон", notes.count)
-            return loaded.cells.isEmpty ? RemoteTemplate.defaultTemplate : loaded
-        case .rejected(let reason):
-            loadNote = localizedFormat("Шаблон пульта не прочитано: %@", reason)
-            return RemoteTemplate.defaultTemplate
-        }
-    }
-
-    /// Draws the template this host selected, falling back to the bundled one.
-    private func loadTemplate() {
-        guard let bundled = bundledTemplate() else {
-            template = RemoteTemplate.defaultTemplate
-            return
-        }
-        template = store.template(for: hostKey, bundled: bundled)
-    }
-
-    /// An import is validated by the same decoder the app renders with. A
-    /// rejected file changes nothing on screen; only its reason is reported.
-    private func importTemplate(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result, let url = urls.first else {
-            if case .failure(let error) = result {
-                loadNote = localizedFormat("Шаблон не імпортовано: %@", error.localizedDescription)
-            }
-            return
-        }
-        // Security-scoped access is required for a Files pick; a bookmark is not
-        // kept, because the template is copied into app support, not referenced.
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-        switch store.importTemplate(from: url) {
-        case let .success(notes):
-            storedTemplates = store.storedDescriptors()
-            loadTemplate()
-            loadNote = notes.isEmpty ? nil
-                : localizedFormat("Деякі кнопки пульта не працюють (%d): перевірте шаблон", notes.count)
-        case .failure(.unreadable):
-            loadNote = localized("Шаблон не вдалося прочитати")
-        case .failure(.tooLarge):
-            loadNote = localized("Файл шаблону завеликий")
-        case .failure(.conflictsWithBundled):
-            loadNote = localized("Шаблон із таким id уже є у пакунці")
-        case .failure(.invalid(let reason)):
-            loadNote = localizedFormat("Шаблон не підходить: %@", reason)
-        }
-    }
-
-    /// Template choice for this host, plus the import entry point. Deliberately
-    /// small: the grid is the screen, and this row only decides which grid to
-    /// draw.
+    /// The template this host should draw, drawn from the shared catalog.
+    /// The catalog owns the file store, so a change made in the settings screen
+    /// is picked up the moment it lands.
     @ViewBuilder
     private var templateBar: some View {
-        let descriptors = [RemoteTemplateDescriptor(id: RemoteTemplate.defaultId,
-                                                    name: localized("Вбудований шаблон"),
-                                                    source: .bundled)] + storedTemplates
         HStack(spacing: 8) {
             Menu {
-                ForEach(descriptors, id: \.id) { descriptor in
+                ForEach(catalog.descriptors, id: \.id) { descriptor in
                     Button {
-                        store.select(templateID: descriptor.id, for: hostKey)
-                        loadTemplate()
+                        catalog.select(id: descriptor.id)
                     } label: {
-                        if descriptor.id == template.id {
+                        if descriptor.id == catalog.selectedTemplateID {
                             Label(descriptor.name, systemImage: "checkmark")
                         } else {
                             Text(descriptor.name)
@@ -351,21 +289,8 @@ struct RemoteScreenPage<Header: View>: View {
                     }
                     .accessibilityIdentifier("remoteTemplate-\(descriptor.id)")
                 }
-                if !storedTemplates.isEmpty {
-                    Divider()
-                    ForEach(storedTemplates, id: \.id) { descriptor in
-                        Button(role: .destructive) {
-                            store.removeStoredTemplate(id: descriptor.id)
-                            storedTemplates = store.storedDescriptors()
-                            loadTemplate()
-                        } label: {
-                            Text(localizedFormat("Видалити шаблон «%@»", descriptor.name))
-                        }
-                        .accessibilityIdentifier("remoteTemplateDelete-\(descriptor.id)")
-                    }
-                }
             } label: {
-                Label(template.name, systemImage: "square.grid.2x2")
+                Label(catalog.template.name, systemImage: "square.grid.2x2")
                     .font(.caption)
             }
             .fixedSize()
@@ -374,13 +299,13 @@ struct RemoteScreenPage<Header: View>: View {
             Spacer()
 
             Button {
-                showsTemplateImporter = true
+                onShowSettings()
             } label: {
-                Label(localized("Імпорт із Files"), systemImage: "square.and.arrow.down")
+                Label(localized("Шаблони"), systemImage: "square.grid.2x2.fill")
                     .font(.caption)
             }
             .buttonStyle(.borderless)
-            .accessibilityIdentifier("remoteTemplateImport")
+            .accessibilityIdentifier("remoteTemplateSettings")
         }
         .padding(.horizontal, 2)
     }

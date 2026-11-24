@@ -17,6 +17,7 @@ struct RemoteTemplateTests {
 
         structuralRejections()
         degradedCells()
+        scaleAndFontScale()
         layoutMath()
         usageTables()
         print("Remote template decoding, layout and usage-table tests passed.")
@@ -197,6 +198,42 @@ struct RemoteTemplateTests {
         }
         precondition(template.cells.count == 1, "the button must survive")
         precondition(notes.contains(where: { $0.contains("no label") }), "the note must say it is unlabelled")
+    }
+
+    static func scaleAndFontScale() {
+        // Defaults: a cell with no scale/fontScale keeps 1.0 on both.
+        let plain = cellJSON(
+            #"{"id":"a","row":1,"col":1,"control":"button","label":"A","action":{"kind":"none"}}"#
+        )
+        guard case let .loaded(template, _) = load(plain) else {
+            preconditionFailure("a plain cell must load")
+        }
+        precondition(template.cells[0].scale == 1.0 && template.cells[0].fontScale == 1.0,
+                     "scale and fontScale default to 1.0")
+
+        // A valid scale and fontScale are kept on the cell.
+        let scaled = cellJSON(
+            #"{"id":"a","row":1,"col":1,"control":"button","label":"A","scale":0.6,"fontScale":1.4,"action":{"kind":"none"}}"#
+        )
+        guard case let .loaded(template, _) = load(scaled) else {
+            preconditionFailure("a scaled cell must load")
+        }
+        precondition(template.cells[0].scale == 0.6 && template.cells[0].fontScale == 1.4,
+                     "scale and fontScale are kept: \(template.cells[0].scale)/\(template.cells[0].fontScale)")
+
+        // An out-of-range scale or fontScale drops the cell and says why.
+        let badCases = [("scale", "3.0"), ("fontScale", "0.1"), ("scale", "-1")]
+        for (field, value) in badCases {
+            let bad = cellJSON(
+                "{\"id\":\"a\",\"row\":1,\"col\":1,\"control\":\"button\",\"label\":\"A\",\"\(field)\":\(value),\"action\":{\"kind\":\"none\"}}"
+            )
+            guard case let .loaded(template, notes) = load(bad) else {
+                preconditionFailure("a bad scale/fontScale must not reject the template")
+            }
+            precondition(template.cells.isEmpty, "the out-of-range cell must be dropped")
+            precondition(notes.contains(where: { $0.contains("scale") || $0.contains("fontScale") }),
+                         "the note must name the bad field: \(notes)")
+        }
     }
 
     static func layoutMath() {
