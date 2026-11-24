@@ -18,8 +18,8 @@ struct RemoteScreenPage<Header: View>: View {
     /// Shared with the settings screen, so a template changed there is drawn
     /// here the moment it is stored.
     @ObservedObject var catalog: RemoteTemplateCatalog
-    /// Where the template-import button leads: the settings screen.
-    let onShowSettings: () -> Void
+    /// Presents the templates screen directly — not the general settings.
+    @State private var showsTemplates = false
     let hostKey: String
     private let header: Header
 
@@ -30,14 +30,12 @@ struct RemoteScreenPage<Header: View>: View {
         isActiveTab: Bool,
         catalog: RemoteTemplateCatalog,
         hostKey: String,
-        onShowSettings: @escaping () -> Void,
         @ViewBuilder header: () -> Header
     ) {
         self.ble = ble
         self.isActiveTab = isActiveTab
         self.catalog = catalog
         self.hostKey = hostKey
-        self.onShowSettings = onShowSettings
         self.header = header()
     }
 
@@ -79,6 +77,11 @@ struct RemoteScreenPage<Header: View>: View {
             if !active { ble.releaseAllInput() }
         }
         .onDisappear { ble.releaseAllInput() }
+        .sheet(isPresented: $showsTemplates) {
+            NavigationStack {
+                RemoteTemplatesSettingsView(catalog: catalog)
+            }
+        }
     }
 
 
@@ -299,7 +302,7 @@ struct RemoteScreenPage<Header: View>: View {
             Spacer()
 
             Button {
-                onShowSettings()
+                showsTemplates = true
             } label: {
                 Label(localized("Шаблони"), systemImage: "square.grid.2x2.fill")
                     .font(.caption)

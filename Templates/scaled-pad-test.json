@@ -1,0 +1,186 @@
+{
+  "formatVersion": 1,
+  "id": "scaled-pad-test",
+  "name": "Scale test",
+  "columns": 5,
+  "rows": 4,
+  "cells": [
+    {
+      "id": "mute",
+      "row": 1,
+      "col": 1,
+      "control": "button",
+      "label": "Тиша",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "mute"
+      }
+    },
+    {
+      "id": "home",
+      "row": 1,
+      "col": 2,
+      "control": "button",
+      "label": "Додому",
+      "press": "tap",
+      "tone": "prominent",
+      "action": {
+        "kind": "key",
+        "key": "win"
+      }
+    },
+    {
+      "id": "menu",
+      "row": 1,
+      "col": 3,
+      "control": "button",
+      "label": "Меню",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "menu"
+      }
+    },
+    {
+      "id": "info",
+      "row": 1,
+      "col": 4,
+      "control": "button",
+      "label": "Інфо",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "consumer",
+        "usage": "info"
+      }
+    },
+    {
+      "id": "back",
+      "row": 3,
+      "col": 5,
+      "control": "button",
+      "label": "Назад",
+      "fontScale": 1.3,
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "key",
+        "key": "return"
+      },
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "id": "volume",
+      "row": 2,
+      "col": 1,
+      "rowSpan": 2,
+      "colSpan": 1,
+      "control": "rocker",
+      "label": "Гучність",
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "primary": {
+          "kind": "consumer",
+          "usage": "volumeUp",
+          "label": "Гучн. +"
+        },
+        "secondary": {
+          "kind": "consumer",
+          "usage": "volumeDown",
+          "label": "Гучн. −"
+        }
+      }
+    },
+    {
+      "id": "channel",
+      "row": 1,
+      "col": 5,
+      "rowSpan": 2,
+      "colSpan": 1,
+      "control": "rocker",
+      "label": "Кан.",
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "primary": {
+          "kind": "consumer",
+          "usage": "channelUp",
+          "label": "Кан. +"
+        },
+        "secondary": {
+          "kind": "consumer",
+          "usage": "channelDown",
+          "label": "Кан. −"
+        }
+      }
+    },
+    {
+      "id": "pad",
+      "row": 2,
+      "col": 2,
+      "rowSpan": 3,
+      "colSpan": 3,
+      "control": "dpad",
+      "label": "Навігація",
+      "scale": 0.75,
+      "press": "hold",
+      "tone": "plain",
+      "actions": {
+        "up": {
+          "kind": "key",
+          "key": "up",
+          "label": ""
+        },
+        "down": {
+          "kind": "key",
+          "key": "down",
+          "label": ""
+        },
+        "left": {
+          "kind": "key",
+          "key": "left",
+          "label": ""
+        },
+        "right": {
+          "kind": "key",
+          "key": "right",
+          "label": ""
+        },
+        "center": {
+          "kind": "key",
+          "key": "return",
+          "label": ""
+        }
+      }
+    },
+    {
+      "id": "gap-bottom-left",
+      "row": 4,
+      "col": 1,
+      "control": "spacer",
+      "label": "",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "gap-bottom-mid",
+      "row": 4,
+      "col": 5,
+      "control": "spacer",
+      "label": "",
+      "press": "tap",
+      "tone": "plain",
+      "action": {
+        "kind": "none"
+      }
+    }
+  ]
+}

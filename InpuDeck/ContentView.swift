@@ -280,8 +280,7 @@ struct ContentView: View {
         case .remote:
             RemoteScreenPage(ble: ble, isActiveTab: activeTab == .remote,
                              catalog: remoteCatalog,
-                             hostKey: ble.templateHostKey,
-                             onShowSettings: showSettings) {
+                             hostKey: ble.templateHostKey) {
                 connectionHeader
             }
         }
