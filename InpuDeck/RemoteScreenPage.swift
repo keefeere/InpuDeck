@@ -213,8 +213,8 @@ struct RemoteScreenPage<Header: View>: View {
         PressableKeyButton(
             title: title,
             isProminent: prominent,
-            minHeight: 40,
             fontSize: fontScale == 1.0 ? nil : CGFloat(16 * fontScale),
+            minHeight: 40,
             onPress: {
                 sendDown(action)
                 if press == .tap { sendUp(action) }

@@ -25,7 +25,7 @@ struct RemoteTemplatesSettingsView: View {
                 if let message {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(messageIsNote ? .secondary : .red)
+                        .foregroundStyle(messageIsNote ? Color.secondary : Color.red)
                 }
             } footer: {
                 Text(localized("JSON-файл шаблону з форматом на кшталт docs/tv-remote.md. Вибраний шаблон збережеться для цього пристрою; видалення позбавляє його лише цього пристрою."))
