@@ -1,12 +1,7 @@
 "Текст піде через вибраний Bluetooth-вихід, щойно InpuDeck відкриється." = "The text goes through the selected Bluetooth output as soon as InpuDeck opens.";
-"Надіслати зараз" = "Send now";
 "Завантаження…" = "Loading…";
 "Закрити" = "Close";
 "У спільному елементі немає тексту або URL." = "The shared item contains no text or URL.";
-"Введіть текст для передавання." = "Enter text to send.";
 "Скоротіть текст до 2000 символів." = "Shorten the text to 2,000 characters.";
 "Не вдалося зберегти текст" = "Could not save the text";
-"Текст збережено. Відкрий InpuDeck для надсилання." = "Text saved. Open InpuDeck to send it.";
-"%@. Текст не втрачено; можна повторити." = "%@. The text was not lost; you can retry.";
-"InpuDeck відкривається…" = "Opening InpuDeck…";
-"InpuDeck надсилає текст." = "InpuDeck is sending the text.";
+"%@. Текст не втрачено." = "%@. The text was not lost.";

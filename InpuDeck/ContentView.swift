@@ -1305,20 +1305,26 @@ struct ContentView: View {
             DeviceLog.info("pending text waiting: ready=\(ble.isReady) empty=\(pendingShortcutText == nil || pendingShortcutText!.isEmpty)")
             return
         }
+        // Keep the text if the send fails: a false success message would hide the
+        // failure and lose the text. The banner stays so the user can retry.
+        guard sendText(text) else {
+            DeviceLog.info("failed to send pending text, keeping it for retry")
+            return
+        }
         pendingShortcutText = nil
-        DeviceLog.info("sending pending text, length: \(text.count)")
-        sendText(text)
+        DeviceLog.info("sent pending text, length: \(text.count)")
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }
 
     private func resendInputText() {
         guard ble.isReady, !inputText.isEmpty else { return }
-        sendText(inputText)
+        guard sendText(inputText) else { return }
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }
 
-    private func sendText(_ text: String) {
-        guard !text.isEmpty else { return }
+    @discardableResult
+    private func sendText(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
 
         let plan = TextTypingPlanner.makePlan(
             for: text,
@@ -1330,9 +1336,18 @@ struct ContentView: View {
             layoutRawValue = plan.finalLayout.rawValue
         }
 
-        if !plan.taps.isEmpty {
-            ble.sendKeyTaps(plan.taps)
+        if plan.taps.isEmpty {
+            if plan.unsupportedCharacters.isEmpty {
+                // The text carried no keyboard keys at all (e.g. whitespace).
+                // Nothing to send and no message worth showing.
+                return false
+            }
+            let sample = String(plan.unsupportedCharacters.prefix(6))
+            inputWarning = localizedFormat("Немає HID-клавіш для: %@", sample)
+            return false
         }
+
+        let sent = ble.sendKeyTaps(plan.taps)
 
         if plan.unsupportedCharacters.isEmpty {
             inputWarning = nil
@@ -1340,6 +1355,7 @@ struct ContentView: View {
             let sample = String(plan.unsupportedCharacters.prefix(6))
             inputWarning = localizedFormat("Немає HID-клавіш для: %@", sample)
         }
+        return sent
     }
 
     private func showSendStatus(_ message: String) {
