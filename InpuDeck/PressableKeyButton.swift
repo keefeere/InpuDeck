@@ -158,12 +158,6 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
         configuration = nil
         contentHorizontalAlignment = .center
         contentVerticalAlignment = .center
-        titleLabel?.adjustsFontSizeToFitWidth = true
-        titleLabel?.minimumScaleFactor = 0.65
-        titleLabel?.lineBreakMode = .byClipping
-        titleLabel?.numberOfLines = 1
-        titleLabel?.textAlignment = .center
-
         secondaryTitleLabel.translatesAutoresizingMaskIntoConstraints = false
         secondaryTitleLabel.isUserInteractionEnabled = false
         secondaryTitleLabel.textAlignment = .right
@@ -422,6 +416,18 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
         setAttributedTitle(nil, for: .normal)
         setAttributedTitle(nil, for: .highlighted)
         setTitle(baseTitle, for: .normal)
+        // The title label is created by setTitle above, so this is the only
+        // point where its font and auto-shrink can be applied reliably.
+        let mainSize = fontSize ?? (isCompact ? 10 : 16)
+        titleLabel?.font = UIFont.monospacedSystemFont(
+            ofSize: mainSize,
+            weight: .semibold
+        )
+        titleLabel?.adjustsFontSizeToFitWidth = true
+        titleLabel?.minimumScaleFactor = 0.65
+        titleLabel?.lineBreakMode = .byClipping
+        titleLabel?.numberOfLines = 1
+        titleLabel?.textAlignment = .center
         setImage(systemImage.flatMap { UIImage(systemName: $0) }, for: .normal)
         tintColor = foreground
         setTitleColor(foreground, for: .normal)
@@ -435,7 +441,6 @@ final class KeyUIButton: UIButton, KeyGestureParticipant {
             return
         }
 
-        let mainSize = fontSize ?? (isCompact ? 10 : 16)
         titleLabel?.font = UIFont.monospacedSystemFont(
             ofSize: mainSize,
             weight: .bold

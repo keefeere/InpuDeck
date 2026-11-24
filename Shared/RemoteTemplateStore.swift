@@ -57,6 +57,26 @@ final class RemoteTemplateStore {
         return base.appendingPathComponent("RemoteTemplates", isDirectory: true)
     }
 
+    /// The Documents directory itself, not the RemoteTemplates subdirectory.
+    static func documentsDirectory(fileManager: FileManager = .default) -> URL? {
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+    }
+
+    /// Seeds the Documents directory with a copy of the bundled template so the
+    /// Files app shows the app's folder (empty folders are hidden). Duplicating
+    /// the template is harmless: the picker only offers the bundled template and
+    /// the files in RemoteTemplates, so this file never appears there. An
+    /// existing file is never overwritten — a user edit is never lost.
+    static func seedBundledTemplateFileIfNeeded(fileManager: FileManager = .default) {
+        guard let base = documentsDirectory(fileManager: fileManager) else { return }
+        let url = base.appendingPathComponent("default.json")
+        guard !fileManager.fileExists(atPath: url.path) else { return }
+        guard let bundled = Bundle.main.url(forResource: "RemoteTemplate.tv-default",
+                                            withExtension: "json"),
+              let data = try? Data(contentsOf: bundled) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
     /// Stored templates, in file-name order. A file that no longer decodes is
     /// skipped rather than offered: selecting it would produce a broken remote.
     func storedDescriptors() -> [RemoteTemplateDescriptor] {

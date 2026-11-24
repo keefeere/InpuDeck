@@ -59,7 +59,7 @@
     },
     {
       "id": "back",
-      "row": 1,
+      "row": 3,
       "col": 5,
       "control": "button",
       "label": "Назад",
@@ -68,7 +68,9 @@
       "action": {
         "kind": "key",
         "key": "return"
-      }
+      },
+      "rowSpan": 1,
+      "colSpan": 1
     },
     {
       "id": "volume",
@@ -95,8 +97,8 @@
     },
     {
       "id": "channel",
-      "row": 2,
-      "col": 2,
+      "row": 1,
+      "col": 5,
       "rowSpan": 2,
       "colSpan": 1,
       "control": "rocker",
@@ -119,7 +121,7 @@
     {
       "id": "pad",
       "row": 2,
-      "col": 3,
+      "col": 2,
       "rowSpan": 3,
       "colSpan": 3,
       "control": "dpad",
@@ -169,7 +171,7 @@
     {
       "id": "gap-bottom-mid",
       "row": 4,
-      "col": 2,
+      "col": 5,
       "control": "spacer",
       "label": "",
       "press": "tap",

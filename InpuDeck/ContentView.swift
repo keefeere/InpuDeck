@@ -149,6 +149,7 @@ struct ContentView: View {
             reconnectForPendingText()
         }
         .onAppear {
+            RemoteTemplateStore.seedBundledTemplateFileIfNeeded()
             ble.start()
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
