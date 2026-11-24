@@ -1264,6 +1264,24 @@ struct ContentView: View {
     }
 
     private func receiveSharedTextIfNeeded() {
+        // The extension reports its outcome to this app through the result
+        // pasteboard. Reading it is what turns a silent extension into a
+        // visible one: a failure is a logged line and a banner, not a no-op.
+        if let result = ShareResult.take() {
+            switch result.status {
+            case .ok:
+                DeviceLog.info("extension reported ok, length: \(result.length ?? -1)")
+            case .noText:
+                DeviceLog.info("extension reported no text")
+                inputWarning = localized("У спільному елементі немає тексту або URL.")
+            case .tooLong:
+                DeviceLog.info("extension reported too long, length: \(result.length ?? -1)")
+                inputWarning = localized("Надісланий текст занадто довгий.")
+            case .enqueueFailed:
+                DeviceLog.info("extension reported enqueue failure")
+                inputWarning = localized("Не вдалося зберегти текст. Відкрий InpuDeck і спробуй ще раз.")
+            }
+        }
         switch ShareTextInbox.take() {
         case .text(let text):
             DeviceLog.info("received shared text, length: \(text.count)")
@@ -1275,7 +1293,7 @@ struct ContentView: View {
             // drop has to be visible.
             inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
         case .empty:
-            break
+            DeviceLog.info("inbox empty")
         }
     }
 

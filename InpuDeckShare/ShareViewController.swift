@@ -133,19 +133,25 @@ final class ShareViewController: UIViewController {
 
     private func enqueueAndClose() {
         guard !extractedText.isEmpty else {
+            DeviceLog.info("no text to enqueue")
+            ShareResult.write(status: .noText)
             showManualFallback(localized("У спільному елементі немає тексту або URL."))
             return
         }
         guard extractedText.count <= 2_000 else {
+            DeviceLog.info("text too long")
+            ShareResult.write(status: .tooLong, length: extractedText.count)
             showManualFallback(localized("Скоротіть текст до 2000 символів."))
             return
         }
         guard ShareTextInbox.enqueue(extractedText) else {
             DeviceLog.info("enqueue failed")
+            ShareResult.write(status: .enqueueFailed, length: extractedText.count)
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
         DeviceLog.info("enqueued, closing")
+        ShareResult.write(status: .ok, length: extractedText.count)
         extensionContext?.completeRequest(returningItems: nil)
     }
 

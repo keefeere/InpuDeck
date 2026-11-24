@@ -412,3 +412,8 @@
 "Шаблон вилучено" = "Template removed";
 "Шаблон імпортовано" = "Template imported";
 "Шаблони" = "Templates";
+
+/* Share-extension outcome surfaced as a visible banner */
+"У спільному елементі немає тексту або URL." = "The shared item has no text or URL.";
+"Надісланий текст занадто довгий." = "The shared text is too long.";
+"Не вдалося зберегти текст. Відкрий InpuDeck і спробуй ще раз." = "Could not save the text. Open InpuDeck and try again.";
