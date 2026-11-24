@@ -143,6 +143,7 @@ struct ContentView: View {
             // The Share Extension cannot transmit HID itself: only this running
             // app owns the Bluetooth route. It stores the text and opens this
             // URL, which is what makes a shared password go out at once.
+            DeviceLog.info("onOpenURL: \(url.absoluteString)")
             guard ShareHandoff.isSendRequest(url) else { return }
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
@@ -1252,8 +1253,10 @@ struct ContentView: View {
     private func receiveSharedTextIfNeeded() {
         switch ShareTextInbox.take() {
         case .text(let text):
+            DeviceLog.info("received shared text, length: \(text.count)")
             queueIncomingText(text)
         case .expired:
+            DeviceLog.info("received shared text but it was expired")
             // Handoff text is normally a password. Typing it into whatever is
             // focused long after the share is worse than dropping it, and the
             // drop has to be visible.
@@ -1265,6 +1268,7 @@ struct ContentView: View {
 
     private func queueIncomingText(_ text: String) {
         guard !text.isEmpty else { return }
+        DeviceLog.info("queuing text, length: \(text.count), ready: \(ble.isReady)")
         // Respect the user's hidden tabs: incoming text must not select a
         // page that is absent from TabView or silently re-enable it.
         if tabConfiguration.isEnabled(.input) { selectedTab = .input }
@@ -1287,14 +1291,22 @@ struct ContentView: View {
     /// ready is left alone; restarting it would only delay the typing.
     private func reconnectForPendingText() {
         guard pendingShortcutText != nil, !ble.isReady, !ble.isSwitching else { return }
-        guard Date().timeIntervalSince(lastPendingTextReconnect) > 5 else { return }
+        guard Date().timeIntervalSince(lastPendingTextReconnect) > 5 else {
+            DeviceLog.info("reconnect skipped: throttled")
+            return
+        }
         lastPendingTextReconnect = Date()
+        DeviceLog.info("reconnecting for pending text")
         ble.reconnectNow()
     }
 
     private func sendPendingShortcutTextIfPossible() {
-        guard ble.isReady, let text = pendingShortcutText, !text.isEmpty else { return }
+        guard ble.isReady, let text = pendingShortcutText, !text.isEmpty else {
+            DeviceLog.info("pending text waiting: ready=\(ble.isReady) empty=\(pendingShortcutText == nil || pendingShortcutText!.isEmpty)")
+            return
+        }
         pendingShortcutText = nil
+        DeviceLog.info("sending pending text, length: \(text.count)")
         sendText(text)
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }

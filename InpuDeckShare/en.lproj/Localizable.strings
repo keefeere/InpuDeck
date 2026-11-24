@@ -8,3 +8,5 @@
 "Не вдалося зберегти текст" = "Could not save the text";
 "Текст збережено. Відкрий InpuDeck для надсилання." = "Text saved. Open InpuDeck to send it.";
 "%@. Текст не втрачено; можна повторити." = "%@. The text was not lost; you can retry.";
+"InpuDeck відкривається…" = "Opening InpuDeck…";
+"InpuDeck надсилає текст." = "InpuDeck is sending the text.";

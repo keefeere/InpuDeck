@@ -17,6 +17,7 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        DeviceLog.info("extension launched")
         configureUI()
         loadSharedContent()
     }
@@ -83,6 +84,7 @@ final class ShareViewController: UIViewController {
         let extensionItems = extensionContext?.inputItems.compactMap { $0 as? NSExtensionItem } ?? []
         let providers = extensionItems.flatMap { $0.attachments ?? [] }
         fallbackAttributedText = extensionItems.compactMap { $0.attributedContentText?.string }
+        DeviceLog.info("extension items: \(extensionItems.count), providers: \(providers.count)")
         loadProviderText(providers, index: 0, collected: [])
     }
 
@@ -97,6 +99,7 @@ final class ShareViewController: UIViewController {
                 values.append(value)
             }
             extractedText = (unique.isEmpty ? fallbackAttributedText : unique).joined(separator: "\n")
+            DeviceLog.info("extracted text, length: \(extractedText.count)")
             enqueueAndClose()
             return
         }
@@ -153,20 +156,52 @@ final class ShareViewController: UIViewController {
             return
         }
         guard ShareTextInbox.enqueue(extractedText) else {
+            DeviceLog.info("enqueue failed")
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
+        DeviceLog.info("enqueued, opening app")
 
+        attemptHandoff()
+    }
+
+    /// Bring the app forward so it can take the text and type it. The text is
+    /// already in the inbox, so the app picks it up as soon as it opens — the
+    /// URL carries only the route request, never the secret. This is the only
+    /// mechanism the Share Extension provides for opening the app, and it is
+    /// not a supported guarantee for foreground launch, so a failure leaves a
+    /// visible manual route instead of a false success.
+    private func attemptHandoff() {
         isSending = true
         sendButton.isEnabled = false
         closeButton.isEnabled = false
-        statusLabel.text = localized("Текст збережено. Відкрий InpuDeck для надсилання.")
+        statusLabel.text = localized("InpuDeck відкривається…")
 
-        // extensionContext.open is not a supported guarantee for foreground
-        // launch, so the text is already in the inbox and the app picks it up
-        // when the user opens it. Do not report success we did not earn: the
-        // extension closes here, and the app's own launch path does the rest.
-        extensionContext?.completeRequest(returningItems: nil)
+        guard let url = ShareHandoff.sendURL else {
+            showManualFallback(localized("Текст збережено. Відкрий InpuDeck для надсилання."))
+            return
+        }
+
+        extensionContext?.open(url) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                DeviceLog.info("open(inpudeck://send) returned \(success)")
+                if success {
+                    // iOS opens the app and tears this extension down; completing
+                    // the request here would be a second completion.
+                    self.statusLabel.text = localized("InpuDeck надсилає текст.")
+                } else {
+                    // iOS did not bring the app forward. The text is already in
+                    // the inbox, so the manual route still works.
+                    self.isSending = false
+                    self.sendButton.isEnabled = true
+                    self.closeButton.isEnabled = true
+                    self.statusLabel.text = localized(
+                        "Текст збережено. Відкрий InpuDeck для надсилання."
+                    )
+                }
+            }
+        }
     }
 
     private func showManualFallback(_ message: String) {
@@ -177,20 +212,18 @@ final class ShareViewController: UIViewController {
     }
 
     @objc private func sendTapped() {
+        DeviceLog.info("send button tapped")
         guard !extractedText.isEmpty else {
             statusLabel.text = localized("Введіть текст для передавання.")
             return
         }
+        // The text is already in the inbox from the auto-extraction; only re-enqueue
+        // when the user asked to send without a successful handoff.
         guard ShareTextInbox.enqueue(extractedText) else {
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
-
-        isSending = true
-        sendButton.isEnabled = false
-        closeButton.isEnabled = false
-        statusLabel.text = localized("Текст збережено. Відкрий InpuDeck для надсилання.")
-        extensionContext?.completeRequest(returningItems: nil)
+        attemptHandoff()
     }
 
     @objc private func closeTapped() {

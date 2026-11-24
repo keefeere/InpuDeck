@@ -175,16 +175,17 @@ subsequent updates.
 `Share` in any app hands text or a URL to InpuDeck, which types it on the connected
 computer through the selected output.
 
-- **No window, no editor.** `Share` → **InpuDeck** silently extracts the plain text,
-  hands it to the inbox, and closes. The secret is never rendered in the extension; it
-  goes straight to the app, which types it.
+- **No editor, no secret.** `Share` → **InpuDeck** extracts the plain text silently,
+  hands it to the inbox, and asks iOS to open the app. The secret is never rendered
+  in the extension; it goes straight to the app, which types it.
 - **No Enter, no extra characters.** The text is passed exactly as shared — the app
   types it as-is, without any appended newline or transformation.
-- **The app does not open itself.** Only the running app owns the Bluetooth route, so
-  the Share Extension cannot transmit HID by itself. `extensionContext.open` is not a
-  supported guarantee for foreground launch, so the text stays in the inbox and opening
-  InpuDeck sends it. If the route is idle, the app reconnects immediately instead of
-  waiting.
+- **The app tries to open itself.** Only the running app owns the Bluetooth route, so
+  the Share Extension cannot transmit HID by itself. The extension calls
+  `extensionContext.open` with `inpudeck://send`, and the app takes the text and types
+  it as soon as it opens — reconnecting immediately if the route is idle. That call is
+  not a supported guarantee for foreground launch, so if iOS refuses it the text stays
+  in the inbox and opening InpuDeck manually sends it as before.
 - **It does not linger.** The inbox is a persistent named pasteboard shared with the
   extension. Consumed text is cleared and stops being persistent, and text older than
   15 minutes is dropped with a visible warning rather than typed into whatever happens to
