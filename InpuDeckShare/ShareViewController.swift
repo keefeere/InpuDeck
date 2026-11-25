@@ -106,7 +106,22 @@ final class ShareViewController: UIViewController {
             return
         }
 
+        // Some providers never call the completion handler. Without a bound,
+        // the extension would sit on "Завантаження…" forever and never close.
+        // Track which of the two paths (handler vs timeout) won the race so a
+        // late handler cannot double-advance the index.
+        var settled = false
+        let timeout = DispatchWorkItem { [weak self] in
+            guard !settled else { return }
+            settled = true
+            self?.loadProviderText(providers, index: index + 1, collected: collected)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: timeout)
+
         provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { [weak self] item, _ in
+            guard !settled else { return }
+            settled = true
+            timeout.cancel()
             let value = Self.stringValue(from: item)
             DispatchQueue.main.async {
                 var updated = collected
@@ -152,6 +167,12 @@ final class ShareViewController: UIViewController {
         }
         DeviceLog.info("enqueued, closing")
         ShareResult.write(status: .ok, length: extractedText.count)
+        // Try to bring the app forward so the stored text can reach the
+        // computer. iOS does not guarantee this, but it is the honest attempt:
+        // the app still opens from the URL when it is already running.
+        if let sendURL = ShareHandoff.sendURL {
+            extensionContext?.open(sendURL)
+        }
         extensionContext?.completeRequest(returningItems: nil)
     }
 
