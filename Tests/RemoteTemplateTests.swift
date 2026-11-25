@@ -18,6 +18,7 @@ struct RemoteTemplateTests {
         structuralRejections()
         degradedCells()
         scaleAndFontScale()
+        localizedLabels()
         layoutMath()
         usageTables()
         print("Remote template decoding, layout and usage-table tests passed.")
@@ -236,6 +237,50 @@ struct RemoteTemplateTests {
         }
     }
 
+    static func localizedLabels() {
+        // A plain-string label keeps the localization-key form.
+        let plain = cellJSON(
+            #"{"id":"a","row":1,"col":1,"control":"button","label":"A","action":{"kind":"none"}}"#
+        )
+        guard case let .loaded(template, _) = load(plain) else {
+            preconditionFailure("a plain-string label must load")
+        }
+        precondition(template.cells[0].label.byLanguage == nil,
+                     "a plain label is a localization key, not a map")
+
+        // An object form keeps the explicit per-language map.
+        let mapped = cellJSON(
+            #"{"id":"a","row":1,"col":1,"control":"button","label":{"uk":"Тиша","en":"Mute"},"action":{"kind":"none"}}"#
+        )
+        guard case let .loaded(template, _) = load(mapped) else {
+            preconditionFailure("a localized label must load")
+        }
+        precondition(template.cells[0].label.byLanguage?["uk"] == "Тиша", "the uk value is kept")
+        precondition(template.cells[0].label.byLanguage?["en"] == "Mute", "the en value is kept")
+        precondition(template.cells[0].label.isEmpty == false, "a non-empty map is not empty")
+
+        // Resolution: exact, then language prefix, then en/uk fallback.
+        let label = template.cells[0].label
+        precondition(label.resolvedText(for: "uk") == "Тиша", "uk resolves to the uk value")
+        precondition(label.resolvedText(for: "en_US") == "Mute", "en_US falls back to the en value")
+        precondition(label.resolvedText(for: "uk_UA") == "Тиша", "uk_UA resolves to the uk value")
+        precondition(label.resolvedText(for: "ru") == "Mute", "unknown language falls back to en")
+
+        // A role slot may also carry an object label.
+        let slotMapped = cellJSON(
+            #"{"id":"a","row":1,"col":1,"rowSpan":2,"colSpan":1,"control":"rocker","actions":{"primary":{"kind":"consumer","usage":"volumeUp","label":{"uk":"Гучн. +","en":"Volume +"}},"secondary":{"kind":"consumer","usage":"volumeDown","label":"Гучн. −"}}}"#
+        )
+        guard case let .loaded(template, _) = load(slotMapped) else {
+            preconditionFailure("a localized rocker label must load")
+        }
+        let primarySlot = template.cells[0].roles[.primary]!
+        precondition(primarySlot.label.byLanguage?["en"] == "Volume +", "role slot keeps the en value")
+        precondition(primarySlot.label.resolvedText(for: "en") == "Volume +", "role slot resolves by locale")
+        // The plain-string role label keeps the legacy key form.
+        let secondarySlot = template.cells[0].roles[.secondary]!
+        precondition(secondarySlot.label.byLanguage == nil, "a plain rocker label stays a key")
+    }
+
     static func layoutMath() {
         let template = RemoteTemplate.defaultTemplate
         let gap = 10.0
@@ -301,11 +346,11 @@ struct RemoteTemplateTests {
                      "a zero-column grid yields no units")
 
         let vertical = RemoteCell(id: "v", row: 1, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
-                                  label: "", tone: .plain, press: .hold, action: .none, roles: [:])
+                                  label: RemoteLabel(""), tone: .plain, press: .hold, action: .none, roles: [:])
         precondition(!vertical.rockerIsHorizontal,
                      "a taller-than-wide rocker stacks its halves vertically")
         let horizontal = RemoteCell(id: "c", row: 1, col: 1, rowSpan: 1, colSpan: 2, control: .rocker,
-                                    label: "", tone: .plain, press: .hold, action: .none, roles: [:])
+                                    label: RemoteLabel(""), tone: .plain, press: .hold, action: .none, roles: [:])
         precondition(horizontal.rockerIsHorizontal,
                      "a wider-than-tall rocker puts its halves side by side")
     }

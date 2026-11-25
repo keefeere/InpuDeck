@@ -97,6 +97,13 @@ struct RemoteScreenPage<Header: View>: View {
     /// turns every tile into a tall slab: the remote looked like a column of
     /// empty gaps on a phone. Tiles stay close to square, and the grid centers
     /// vertically inside whatever height is left.
+    /// Selects the label's text for the current app locale. Plain strings go
+    /// through the app's localization table (Ukrainian keys, English values);
+    /// imported templates may carry explicit per-language values.
+    private func text(_ label: RemoteLabel) -> String {
+        label.resolvedText(for: Locale.current.identifier)
+    }
+
     private func gridSize(in available: CGSize) -> CGSize {
         let columns = max(1, catalog.template.columns)
         let rows = max(1, catalog.template.rows)
@@ -137,7 +144,7 @@ struct RemoteScreenPage<Header: View>: View {
         case .button, .spacer:
             // `items` never hands a spacer here; the branch keeps the switch
             // exhaustive without ever drawing a dead tile.
-            keyButton(title: localized(cell.label), action: cell.action, press: cell.press,
+            keyButton(title: text(cell.label), action: cell.action, press: cell.press,
                       prominent: cell.tone == .prominent, frame: frame, id: cell.id,
                       fontScale: cell.fontScale)
 
@@ -178,7 +185,7 @@ struct RemoteScreenPage<Header: View>: View {
             ZStack(alignment: .topLeading) {
                 ForEach(halves, id: \.role) { half in
                     if let slot = cell.roles[half.role] {
-                        keyButton(title: slot.label.isEmpty ? directionGlyph(half.role) : localized(slot.label),
+                        keyButton(title: slot.label.isEmpty ? directionGlyph(half.role) : text(slot.label),
                                   action: slot.action, press: cell.press, prominent: false,
                                   frame: half.frame, id: "\(cell.id).\(half.role.rawValue)",
                                   fontScale: cell.fontScale)
@@ -193,8 +200,8 @@ struct RemoteScreenPage<Header: View>: View {
 
     private func dpadButton(_ cell: RemoteCell, _ role: RemoteRole, _ unit: RemoteCellFrame,
                             _ cellFrame: RemoteCellFrame) -> some View {
-        let label = cell.roles[role]?.label ?? ""
-        return keyButton(title: label.isEmpty ? directionGlyph(role) : localized(label),
+        let label = cell.roles[role]?.label ?? RemoteLabel("")
+        return keyButton(title: label.isEmpty ? directionGlyph(role) : text(label),
                          action: cell.roles[role]?.action ?? .none, press: dpadPress(role),
                          prominent: role == .center,
                          frame: RemoteCellFrame(id: unit.id, x: unit.x, y: unit.y,

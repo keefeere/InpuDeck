@@ -32,6 +32,25 @@ DPAD_ROLES = {"up", "down", "left", "right", "center"}
 ROCKER_ROLES = {"primary", "secondary"}
 
 
+def label_problems(value, where: str) -> list[str]:
+    """A label is a plain string or an object of per-language values."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return []
+    if isinstance(value, dict):
+        problems = []
+        if not value:
+            problems.append(f'{where}: a label object must not be empty')
+        for lang, text in value.items():
+            if not isinstance(lang, str) or not lang.strip():
+                problems.append(f'{where}: a language code must be a non-empty string')
+            if not isinstance(text, str):
+                problems.append(f'{where}: a language value must be a string ({text!r})')
+        return problems
+    return [f'{where}: label must be a string or an object ({value!r})']
+
+
 def action_problems(action: dict, cell_id: str) -> list[str]:
     kind = action.get("kind")
     if kind not in {"key", "consumer", "none"}:
@@ -51,7 +70,8 @@ def action_problems(action: dict, cell_id: str) -> list[str]:
             return [f'cell "{cell_id}": unknown consumer usage {usage!r}']
         if not 0x0000 <= USAGE[usage] <= 0x03FF:
             return [f'cell "{cell_id}": usage {usage} is outside the declared range']
-    return []
+    problems = label_problems(action.get("label"), f'cell "{cell_id}"')
+    return problems
 
 
 def check(path: str) -> list[str]:
@@ -114,13 +134,22 @@ def check(path: str) -> list[str]:
             problems.append(f'cell "{cell_id}": unknown control {control!r}')
             continue
 
+        problems += label_problems(cell.get("label"), f'cell "{cell_id}"')
+
         if control in {"button", "spacer"}:
             if "actions" in cell:
                 problems.append(f'cell "{cell_id}": a {control} must not list role actions')
             if "action" in cell:
                 problems += action_problems(cell["action"], cell_id)
-            if control == "button" and not cell.get("label"):
-                problems.append(f'cell "{cell_id}": a button needs a label')
+            if control == "button":
+                label = cell.get("label")
+                label_missing = (
+                    label is None
+                    or (isinstance(label, str) and not label.strip())
+                    or (isinstance(label, dict) and all(not str(v).strip() for v in label.values()))
+                )
+                if label_missing:
+                    problems.append(f'cell "{cell_id}": a button needs a label')
         elif control == "dpad":
             if "action" in cell:
                 problems.append(f'cell "{cell_id}": a dpad must not list a single action')
@@ -145,7 +174,13 @@ def check(path: str) -> list[str]:
             if set(roles) - ROCKER_ROLES:
                 problems.append(f'cell "{cell_id}": rocker has unknown roles {sorted(set(roles) - ROCKER_ROLES)}')
             for role, slot in roles.items():
-                if not slot.get("label") and not cell.get("label"):
+                half_label = slot.get("label")
+                half_empty = (
+                    half_label is None
+                    or (isinstance(half_label, str) and not half_label.strip())
+                    or (isinstance(half_label, dict) and all(not str(v).strip() for v in half_label.values()))
+                )
+                if half_empty and not cell.get("label"):
                     problems.append(f'cell "{cell_id}.{role}": a rocker half with no label is an anonymous button')
                 problems += action_problems(slot, f'{cell_id}.{role}')
 

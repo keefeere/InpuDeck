@@ -59,6 +59,7 @@ bridge presents itself as a physical USB keyboard and mouse.
 - **Keyboard trackpad** - Uses the free portrait space below the full keyboard without extra mouse buttons
 - **Landscape swipe pointer** - Drag across keyboard keys to move the mouse without typing, with left- and right-click zones beside the keyboard-tools row
 - **Air mouse** - Rotate the phone to move the cursor: gyroscope-driven and read about the world's own axes, so the cursor travels the same way at any angle you hold the phone, with a slow, even tip still moving the pointer through gravity, tremor filtering, per-axis sensitivity on a 0-100 % scale, slow-movement and acceleration gains, a movement threshold and a dead zone behind Developer mode, axis inversion, automatic filter reset when the phone rests, a pointer that stays where the hand left it instead of walking back when the phone stops, a recentre control, and left/right click buttons filling the pointing field so they sit under your thumb ([details](docs/air-mouse.md))
+- **Template-driven TV remote** - A `Пульт` tab renders a JSON template (grid, scale, fontScale, per-language labels), with imported templates in Settings, a per-host selection, and a bundled LG Remote. Import flow lives in Settings; the editor is deliberately deferred to a desktop. ([Template format manual](docs/remote-template-format.md) · [device facts](docs/tv-remote.md))
 - **Hardware control deck** - System, media, audio, microphone-mute, and numpad HID controls
 - **QR and barcode scanner** - Scan into the composer or automatically type codes, including an optional batch mode
 - **Mouse jiggler** - Configurable foreground pointer movement with a selectable movement interval
@@ -543,6 +544,9 @@ InpuDeck/
 
 ## Use Cases
 
+- **Typing passwords where no keyboard is nearby** - at LUKS boot, in the BIOS setup screen, and on computers where installing a password manager is not an option
+- **BIOS and pre-OS input** - set the firmware settings on a machine where the only available input is a Bluetooth keyboard
+- **TV remotes without the original** - when the factory remote is lost, InpuDeck's template-driven remote takes over ([manual](docs/remote-template-format.md))
 - **Smart TV control** - Type passwords, search content, and navigate streaming apps naturally
 - **Home theater PC** - Control media centers from your couch
 - **Presentation remote** - Wireless control during demos
@@ -580,7 +584,6 @@ This project solves a real problem with a unique hardware approach. Contribution
 
 ## Roadmap
 
-- **TV remote** - Create a dynamic remote screen defined by a template; design the template format (e.g. JSON). Bundle a default template with directional buttons, Enter in the center, Home and Back; choose suitable additional controls. Consider a switch between the touchpad and the Air mouse.
 - **ESP Bluetooth-client USB HID bridge** - Investigate allowing physical Bluetooth keyboards and mice to connect to the ESP and send input as USB HID, while preserving existing InpuDeck functionality. Design standalone pairing without a PC or app, with persistent bonds and reconnect. Test candidates: Logitech MX Keys, MX Master 3S, Pebble, and an unnamed Chinese folding keyboard/mouse. Investigate device/protocol compatibility and coexistence before committing to an implementation.
 - **Adaptive layouts for iPhone Duo and iPad (wishlist)** - Once the iPhone Duo simulator is available, verify the app in full-screen and half-screen configurations. Also test representative iPad sizes and multitasking widths (Split View and Stage Manager), then consider layouts that make better use of the additional space.
 
@@ -608,6 +611,8 @@ helper and distribution-specific testing is optional.
 - **ESP32-S3-Zero status LED** - Completed in 3.3.9 and physically validated on the Waveshare board. A restrained green solid light means the full BLE-to-USB path is ready; blue-cyan means USB HID only; an amber double blink means authenticated Bluetooth with USB power but no USB HID host; a red heartbeat means neither data side is connected; purple pulsing marks the physical pairing window; and rapid red reports USB recovery. Returning a host restores the correct live state instead of leaving the LED stuck.
 - **Native Windows ESP installer** - Added in 3.3.12 and hardened in 3.3.13. A one-command PowerShell wrapper performs the same full flash, rename-only, and passkey/identity rotation flows as Linux/macOS, auto-detects Windows COM ports through the shared Python core, bootstraps a checksum-pinned temporary `uv`, and verifies exact-tag Sigstore provenance before executing downloaded release assets. Version 3.3.13 safely probes ambiguous Espressif COM ports with a no-reset, no-stub `read-mac` operation and uses a numeric Windows console chooser only when probing cannot identify exactly one board. CI parses the script on `windows-latest`, and tagged releases publish the wrapper with its own provenance bundle.
 - **Landscape keyboard swipe pointer** - Added in 3.4.1 and opt-in since 3.4.5 (`Settings → Курсор клавіатури`): when off, every tap stays a keystroke, the left- and right-click zones disappear and the keys get that height back. A drag across an ordinary letter key moves the pointer instead of typing; keys that must stay keystrokes (modifiers, arrows, Tab, Esc, the function row) never drive the pointer. Gesture logic is tested by unit and synthetic touch tests, and the behaviour was confirmed on the maintainer's iPhone in 3.4.7 (113). Cross-host pointer feel on macOS/Windows/Linux is not separately verified.
+- **Air mouse** - The cursor follows how the phone is rotated: gyroscope-driven with gravity-based axis detection, so the pointer travels the same way at any angle you hold the phone, with slow-movement and acceleration gains, a dead zone and per-axis thresholds behind Developer mode, axis inversion (vertical inversion via coordinate math, not a UI toggle), automatic filter reset when the phone rests, and a recentre control. Confirmed on-device in 3.5.19 (133).
+- **Template-driven TV remote** - `Пульт` tab renders a JSON template (grid of buttons with a bundled default, imported templates in Settings, per-host selection, per-language labels, cell `scale`/`fontScale`, and a read-only remote). Bundled template verified on the maintainer's LG C1 OLED 2021; the editor is deferred to a desktop. ([manual](docs/remote-template-format.md) · [facts](docs/tv-remote.md))
 
 ### Completed in iOS 2.2
 

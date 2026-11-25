@@ -43,12 +43,50 @@ enum RemoteRole: String, Codable {
     case up, down, left, right, center, primary, secondary
 }
 
+/// A label for a cell or a role slot. Two forms:
+/// - plain string: the localization key (Ukrainian source text, translated
+///   by the app's localization table), or
+/// - an object `{"uk": "...", "en": "..."}`: explicit per-language values,
+///   resolved by the renderer against the current app locale.
+struct RemoteLabel: Equatable {
+    /// Plain-string form: the localization key.
+    let key: String
+    /// Explicit per-language form from an imported template.
+    let byLanguage: [String: String]?
+
+    init(_ text: String) {
+        self.key = text
+        self.byLanguage = nil
+    }
+
+    init(byLanguage: [String: String]) {
+        self.key = ""
+        self.byLanguage = byLanguage
+    }
+
+    var isEmpty: Bool {
+        if let byLanguage { return byLanguage.values.allSatisfy { $0.isEmpty } }
+        return key.isEmpty
+    }
+
+    /// The text to draw for the app locale identified by `localeIdentifier`
+    /// (e.g. "uk", "en_US", "uk_UA"). Exact match, then the language prefix,
+    /// then English, then Ukrainian; a plain key falls back to the app's
+    /// localization table.
+    func resolvedText(for localeIdentifier: String) -> String {
+        guard let byLanguage else { return localized(key) }
+        let id = localeIdentifier.lowercased()
+        let short = String(id.prefix(2))
+        return byLanguage[id] ?? byLanguage[short] ?? byLanguage["en"] ?? byLanguage["uk"] ?? ""
+    }
+}
+
 /// A slot's action plus the text drawn on it. Rocker halves and the dpad centre
 /// need their own labels, because an action cannot say "Гучність +" by itself.
 struct RemoteRoleAction: Equatable {
     let action: RemoteAction
-    /// Localization key; empty means the renderer falls back to a glyph.
-    let label: String
+    /// Resolved at render time; empty means the renderer falls back to a glyph.
+    let label: RemoteLabel
 }
 
 /// A validated action. Every field is resolved, so the renderer never has to
@@ -83,8 +121,8 @@ struct RemoteCell: Equatable {
     let rowSpan: Int
     let colSpan: Int
     let control: RemoteControl
-    /// Localization key; empty means the renderer shows only the glyph-free label.
-    let label: String
+    /// Empty means the key button renders nothing but its action glyph.
+    let label: RemoteLabel
     let tone: RemoteTone
     let press: RemotePress
     /// The single action of a `button`/`spacer`.
@@ -100,7 +138,7 @@ struct RemoteCell: Equatable {
     let fontScale: Double
 
     init(id: String, row: Int, col: Int, rowSpan: Int, colSpan: Int, control: RemoteControl,
-         label: String, tone: RemoteTone, press: RemotePress, action: RemoteAction,
+         label: RemoteLabel, tone: RemoteTone, press: RemotePress, action: RemoteAction,
          roles: [RemoteRole: RemoteRoleAction], scale: Double = 1.0, fontScale: Double = 1.0) {
         self.id = id
         self.row = row
@@ -147,50 +185,60 @@ struct RemoteTemplate: Equatable {
             // Consumer Select, Home, Back and Play-pause were ignored by the TV,
             // so they are not in this template.
             RemoteCell(id: "mute", row: 1, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Тиша", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
+                       label: RemoteLabel("Тиша"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.mute), roles: [:]),
             RemoteCell(id: "home", row: 1, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Додому", tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
+                       label: RemoteLabel("Додому"), tone: .prominent, press: .tap, action: .key(0, modifiers: HID.modLeftGUI), roles: [:]),
             RemoteCell(id: "menu", row: 1, col: 3, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Меню", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
+                       label: RemoteLabel("Меню"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.menu), roles: [:]),
             // Verified on the C1 with 3.6.13: consumer 0x0082 is what Linux
             // turns into KEY_VIDEO_NEXT, listed as TV_VIDEO (241) in the LG
             // input-hook table, and it opens the input list. Consumer tv 0x0089
             // only switches to the TV input.
             RemoteCell(id: "input", row: 1, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вхід", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.videoNext), roles: [:]),
+                       label: RemoteLabel("Вхід"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.videoNext), roles: [:]),
             RemoteCell(id: "exit", row: 2, col: 1, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Вийти", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
+                       label: RemoteLabel("Вийти"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.exit), roles: [:]),
             RemoteCell(id: "info", row: 2, col: 2, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Інфо", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
+                       label: RemoteLabel("Інфо"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.info), roles: [:]),
             RemoteCell(id: "gap-mid", row: 2, col: 3, rowSpan: 1, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+                       label: RemoteLabel(""), tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
             // Back belongs on the outer right edge, where the maintainer's thumb
             // reaches it without crossing the pad.
             RemoteCell(id: "back", row: 2, col: 4, rowSpan: 1, colSpan: 1, control: .button,
-                       label: "Назад", tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
+                       label: RemoteLabel("Назад"), tone: .plain, press: .tap, action: .consumer(RemoteUsageId.backLg), roles: [:]),
             // The rocker takes the column left of the pad, so volume sits beside
             // the cross rather than stacked above its left arm.
             RemoteCell(id: "volume", row: 3, col: 1, rowSpan: 2, colSpan: 1, control: .rocker,
-                       label: "Гучність", tone: .plain, press: .hold, action: RemoteAction.none,
+                       label: RemoteLabel("Гучність"), tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
-                           .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: "Гучн. +"),
-                           .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: "Гучн. −"),
+                           .primary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeUp), label: RemoteLabel("Гучн. +")),
+                           .secondary: RemoteRoleAction(action: .consumer(RemoteUsageId.volumeDown), label: RemoteLabel("Гучн. −")),
                        ]),
             // The pad's arms carry no label: ▲ ▼ ◀ ▶ read faster than five words
             // inside a narrow tile. Enter is the centre, not consumer Select.
             RemoteCell(id: "pad", row: 3, col: 2, rowSpan: 3, colSpan: 3, control: .dpad,
-                       label: "Навігація", tone: .plain, press: .hold, action: RemoteAction.none,
+                       label: RemoteLabel("Навігація"), tone: .plain, press: .hold, action: RemoteAction.none,
                        roles: [
-                           .up: RemoteRoleAction(action: .key(RemoteKeyId.up), label: ""),
-                           .down: RemoteRoleAction(action: .key(RemoteKeyId.down), label: ""),
-                           .left: RemoteRoleAction(action: .key(RemoteKeyId.left), label: ""),
-                           .right: RemoteRoleAction(action: .key(RemoteKeyId.right), label: ""),
-                           .center: RemoteRoleAction(action: .key(RemoteKeyId.returnKey), label: ""),
+                           .up: RemoteRoleAction(action: .key(RemoteKeyId.up), label: RemoteLabel("")),
+                           .down: RemoteRoleAction(action: .key(RemoteKeyId.down), label: RemoteLabel("")),
+                           .left: RemoteRoleAction(action: .key(RemoteKeyId.left), label: RemoteLabel("")),
+                           .right: RemoteRoleAction(action: .key(RemoteKeyId.right), label: RemoteLabel("")),
+                           .center: RemoteRoleAction(action: .key(RemoteKeyId.returnKey), label: RemoteLabel("")),
                        ]),
             RemoteCell(id: "gap-bottom", row: 5, col: 1, rowSpan: 1, colSpan: 1, control: .spacer,
-                       label: "", tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
+                       label: RemoteLabel(""), tone: .plain, press: .tap, action: RemoteAction.none, roles: [:]),
         ]
     )
+}
+
+extension RemoteTemplateDecoder {
+    /// Turns the raw label form into a RemoteLabel. An empty object keeps the
+    /// value (isEmpty drives the unlabelled-button note).
+    static func remoteLabel(from raw: RawLabel?) -> RemoteLabel {
+        guard let raw else { return RemoteLabel("") }
+        if let s = raw.string { return RemoteLabel(s) }
+        return RemoteLabel(byLanguage: raw.byLanguage ?? [:])
+    }
 }
 
 /// A cell's resolved rectangle in an arbitrary coordinate space. Layout lives
@@ -325,12 +373,31 @@ enum RemoteTemplateLoad: Equatable {
     case rejected(String)
 }
 
+/// A label in its raw form: either a plain string (legacy) or an object of
+/// per-language values, e.g. `{"uk": "Тиша", "en": "Mute"}`.
+private struct RawLabel: Decodable {
+    let string: String?
+    let byLanguage: [String: String]?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let s = try? container.decode(String.self) {
+            self.string = s
+            self.byLanguage = nil
+            return
+        }
+        let map = try container.decode([String: String].self)
+        self.string = nil
+        self.byLanguage = map
+    }
+}
+
 private struct RawAction: Codable {
     var kind: String?
     var key: String?
     var modifiers: [String]?
     var usage: String?
-    var label: String?
+    var label: RawLabel?
 }
 
 private struct RawCell: Codable {
@@ -340,7 +407,7 @@ private struct RawCell: Codable {
     var rowSpan: Int?
     var colSpan: Int?
     var control: String?
-    var label: String?
+    var label: RawLabel?
     var tone: String?
     var press: String?
     var scale: Double?
@@ -428,7 +495,7 @@ enum RemoteTemplateDecoder {
             }
             let tone = RemoteTone(rawValue: rawCell.tone ?? "plain") ?? .plain
             let press = RemotePress(rawValue: rawCell.press ?? "tap") ?? .tap
-            let label = rawCell.label ?? ""
+            let label = Self.remoteLabel(from: rawCell.label)
             if label.isEmpty && control == .button {
                 notes.append("cell \"\(rawCell.id)\" is a button with no label")
             }
@@ -469,12 +536,12 @@ enum RemoteTemplateDecoder {
                         failed = true
                         break
                     }
-                    resolved[role] = RemoteRoleAction(action: action, label: rawAction.label ?? "")
+                    resolved[role] = RemoteRoleAction(action: action, label: Self.remoteLabel(from: rawAction.label))
                 }
                 if failed { continue }
                 if let center = roles["center"] {
                     guard let action = resolveAction(center, id: rawCell.id, notes: &notes) else { continue }
-                    resolved[.center] = RemoteRoleAction(action: action, label: center.label ?? "")
+                    resolved[.center] = RemoteRoleAction(action: action, label: Self.remoteLabel(from: center.label))
                 } else {
                     notes.append("cell \"\(rawCell.id)\" dpad has no center action")
                 }
@@ -500,7 +567,7 @@ enum RemoteTemplateDecoder {
                         failed = true
                         break
                     }
-                    resolved[role] = RemoteRoleAction(action: action, label: rawAction.label ?? "")
+                    resolved[role] = RemoteRoleAction(action: action, label: Self.remoteLabel(from: rawAction.label))
                 }
                 if failed { continue }
                 cells.append(RemoteCell(id: rawCell.id, row: row, col: col, rowSpan: rowSpan, colSpan: colSpan,

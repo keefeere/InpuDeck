@@ -187,9 +187,27 @@ without a second field. A user-authored label with no matching entry simply
 renders verbatim. The one accepted wart: a user label that happens to equal an
 existing localization key gets translated.
 
+`label` also accepts an **object of per-language values**, which is the way an
+imported template carries translations on its own:
+
+```jsonc
+"label": { "uk": "Тиша", "en": "Mute" }
+```
+
+The renderer resolves it against the current app locale: exact match
+(`en_US`), then the language prefix (`en`), then English, then Ukrainian. A
+key with no match in the map renders as an empty string — it does not fall
+back to the plain-string form, and it does not go through the localization
+table. A plain string and an empty map both count as "no label" (a button
+with one is still kept, with a note). Role slots (`actions.primary.label`,
+`actions.center.label`, …) accept the same object form.
+
 `label` may also name a glyph (`"▲"`, `"⏻"`). Icons stay as text so that a
 template does not need app assets; if a real symbol is wanted later, a `symbol`
 field can be added without changing existing files.
+
+The full format — every field, every action, with a complete example — is
+documented in [the template format manual](remote-template-format.md).
 
 ## Storage and defaults
 
