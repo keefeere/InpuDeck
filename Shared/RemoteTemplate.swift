@@ -234,7 +234,7 @@ struct RemoteTemplate: Equatable {
 extension RemoteTemplateDecoder {
     /// Turns the raw label form into a RemoteLabel. An empty object keeps the
     /// value (isEmpty drives the unlabelled-button note).
-    static func remoteLabel(from raw: RawLabel?) -> RemoteLabel {
+    fileprivate static func remoteLabel(from raw: RawLabel?) -> RemoteLabel {
         guard let raw else { return RemoteLabel("") }
         if let s = raw.string { return RemoteLabel(s) }
         return RemoteLabel(byLanguage: raw.byLanguage ?? [:])
@@ -392,7 +392,7 @@ private struct RawLabel: Decodable {
     }
 }
 
-private struct RawAction: Codable {
+private struct RawAction: Decodable {
     var kind: String?
     var key: String?
     var modifiers: [String]?
@@ -400,7 +400,7 @@ private struct RawAction: Codable {
     var label: RawLabel?
 }
 
-private struct RawCell: Codable {
+private struct RawCell: Decodable {
     var id: String
     var row: Int?
     var col: Int?
@@ -416,7 +416,7 @@ private struct RawCell: Codable {
     var actions: [String: RawAction]?
 }
 
-private struct RawTemplate: Codable {
+private struct RawTemplate: Decodable {
     var formatVersion: Int?
     var id: String?
     var name: String?
