@@ -1269,6 +1269,7 @@ struct ContentView: View {
         if let result = ShareResult.take() {
             switch result.status {
             case .ok:
+                break
             case .noText:
                 inputWarning = localized("У спільному елементі немає тексту або URL.")
             case .tooLong:
@@ -1286,6 +1287,7 @@ struct ContentView: View {
             // drop has to be visible.
             inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
         case .empty:
+            break
         }
     }
 
