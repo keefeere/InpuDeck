@@ -6,3 +6,5 @@
 "Не вдалося зберегти текст" = "Could not save the text";
 "%@. Текст не втрачено." = "%@. The text was not lost.";
 "Відкрийте InpuDeck вручну" = "Open InpuDeck manually";
+"Відкрити InpuDeck" = "Open InpuDeck";
+"InpuDeck не відкрився автоматично. Натисніть кнопку." = "InpuDeck did not open automatically. Tap the button.";
