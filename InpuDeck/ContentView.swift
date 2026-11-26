@@ -123,7 +123,6 @@ struct ContentView: View {
                 ble.direct.recordExternal("scenePhase active")
                 ble.start()
                 ble.becameActive()
-                receiveSharedTextIfNeeded()
                 receiveShortcutTextIfNeeded()
                 // If text was pending when the app went to background, the
                 // retry loop was cancelled. Restart it so the text is sent.
@@ -159,20 +158,26 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             // The Share Extension cannot transmit HID itself: only this running
-            // app owns the Bluetooth route. It stores the text and opens this
-            // URL, which is what makes a shared password go out at once.
+            // app owns the Bluetooth route. It opens this URL with the text
+            // as base64url, which is what makes a shared password go out at once.
             guard ShareHandoff.isSendRequest(url) else { return }
-            let pb = ShareHandoff.pasteboardUUID(from: url)
-            ble.direct.recordExternal("onOpenURL received (pb=\(pb ?? "nil"))")
+            guard let envelope = ShareHandoff.envelope(from: url) else {
+                ble.direct.recordExternal("onOpenURL: invalid payload")
+                return
+            }
+            ble.direct.recordExternal("onOpenURL received, len=\(envelope.text.count)")
             ble.start()
-            receiveSharedTextIfNeeded(pb: pb)
+            if envelope.isFresh(at: Date()) {
+                queueIncomingText(envelope.text)
+            } else {
+                inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
+            }
             receiveShortcutTextIfNeeded()
             reconnectForPendingText()
         }
         .onAppear {
             RemoteTemplateStore.seedBundledTemplateFileIfNeeded()
             ble.start()
-            receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
             updateIdleTimer()
             syncPointerSurface()
@@ -1280,44 +1285,6 @@ struct ContentView: View {
     private func receiveShortcutTextIfNeeded() {
         guard let text = shortcutInbox.takePendingText() else { return }
         queueIncomingText(text)
-    }
-
-    private func receiveSharedTextIfNeeded(pb: String? = nil) {
-        // The extension reports its outcome to this app through the result
-        // pasteboard. Reading it is what turns a silent extension into a
-        // visible one: a failure is a logged line and a banner, not a no-op.
-        if let result = ShareResult.take() {
-            switch result.status {
-            case .ok:
-                // The extension tried to open the app. When it did not, the
-                // text is still in the inbox; the app must be opened manually.
-                if result.opened == false {
-                    if result.foundUIApplication == false {
-                        inputWarning = localized("Не вдалося відкрити InpuDeck. Відкрийте його вручну.")
-                    } else {
-                        inputWarning = localized("InpuDeck не відкрився автоматично. Відкрийте його вручну.")
-                    }
-                }
-            case .noText:
-                inputWarning = localized("У спільному елементі немає тексту або URL.")
-            case .tooLong:
-                inputWarning = localized("Надісланий текст занадто довгий.")
-            case .enqueueFailed:
-                inputWarning = localized("Не вдалося зберегти текст. Відкрий InpuDeck і спробуй ще раз.")
-            }
-        }
-        switch ShareTextInbox.take(pb) {
-        case .text(let text):
-            ble.direct.recordExternal("ShareTextInbox.take() = text(len=\(text.count))")
-            queueIncomingText(text)
-        case .expired:
-            // Drop silently — the text is stale and must not be typed.
-            ble.direct.recordExternal("ShareTextInbox.take() = expired")
-            break
-        case .empty:
-            ble.direct.recordExternal("ShareTextInbox.take() = empty")
-            break
-        }
     }
 
     private func queueIncomingText(_ text: String) {

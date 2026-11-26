@@ -1,15 +1,16 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// The extension hands off the shared text to the app and closes itself. It
-/// never renders the secret: the text goes through the persistent inbox and
+/// The extension hands off the shared text to the app via the URL scheme and
+/// closes itself. It never renders the secret: the text goes through the URL
+/// as base64url (only for correct encoding, not as a security mechanism) and
 /// the running app types it, which is the only route that owns the Bluetooth
 /// connection. The extension tries to bring the app forward via the URL
 /// scheme — on iOS 18+ it calls openURL:options:completionHandler: on the
 /// UIApplication found in the responder chain. iOS does not guarantee the
 /// launch, so when the completion returns false the window stays with a
 /// single "Open InpuDeck" button that retries the same call from a tap. Only
-/// a failure (nothing read, too long, cannot save) keeps a window, and it
+/// a failure (nothing read, too long, cannot encode) keeps a window, and it
 /// shows an error and a close button, never the text.
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
@@ -18,8 +19,7 @@ final class ShareViewController: UIViewController {
 
     private var fallbackAttributedText: [String] = []
     private var extractedText = ""
-    private var lastLength = 0
-    private var lastUUID: String?
+    private var lastURL: URL?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -159,26 +159,20 @@ final class ShareViewController: UIViewController {
 
     private func enqueueAndClose() {
         guard !extractedText.isEmpty else {
-            ShareResult.write(status: .noText)
             showManualFallback(localized("У спільному елементі немає тексту або URL."))
             return
         }
         guard extractedText.count <= 2_000 else {
-            ShareResult.write(status: .tooLong, length: extractedText.count)
             showManualFallback(localized("Скоротіть текст до 2000 символів."))
             return
         }
-        guard let uuid = ShareTextInbox.enqueue(extractedText) else {
-            ShareResult.write(status: .enqueueFailed, length: extractedText.count)
+        guard let envelope = ShareEnvelope(text: extractedText, writtenAt: Date()).encoded,
+              let sendURL = ShareHandoff.sendURL(envelope: ShareEnvelope(text: extractedText, writtenAt: Date())) else {
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
-        // Try to bring the app forward so the stored text can reach the
-        // computer. The extension cannot transmit HID itself — only this
-        // running app owns the Bluetooth route — so it hands off via the
-        // URL scheme. iOS does not guarantee the launch, but the attempt is
-        // honest: the app still opens from the URL when it is already running.
-        openAppViaResponderChain(length: extractedText.count, uuid: uuid)
+        lastURL = sendURL
+        openAppViaResponderChain(length: extractedText.count, sendURL: sendURL)
     }
 
     /// Walk the responder chain to the UIApplication and call
@@ -186,28 +180,20 @@ final class ShareViewController: UIViewController {
     /// APPLICATION_EXTENSION_API_ONLY, so the direct call does not compile —
     /// the dynamic call is the honest path. completeRequest is called only
     /// in the completion, never before the result is known.
-    private func openAppViaResponderChain(length: Int, uuid: String? = nil) {
-        guard let sendURL = ShareHandoff.sendURL(pb: uuid) else {
-            ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
-            showManualFallback(localized("Відкрийте InpuDeck вручну"))
-            return
-        }
-        lastLength = length
-        lastUUID = uuid
+    private func openAppViaResponderChain(length: Int, sendURL: URL) {
         let selector = NSSelectorFromString("openURL:options:completionHandler:")
         var responder: UIResponder? = self
         while let current = responder {
             if current is UIApplication, current.responds(to: selector) {
                 typealias Fn = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, (@convention(block) (Bool) -> Void)?) -> Void
                 guard let method = current.method(for: selector) else {
-                    ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: true)
                     showManualFallback(localized("Відкрийте InpuDeck вручну"))
                     return
                 }
                 let fn = unsafeBitCast(method, to: Fn.self)
                 fn(current, selector, sendURL as NSURL, NSDictionary(), { [weak self] ok in
                     DispatchQueue.main.async {
-                        self?.finishWithOpenResult(ok: ok, length: length, foundUIApplication: true)
+                        self?.finishWithOpenResult(ok: ok, length: length)
                     }
                 })
                 return
@@ -215,13 +201,11 @@ final class ShareViewController: UIViewController {
             responder = current.next
         }
         // UIApplication not found in the chain — the handoff was never
-        // attempted. The text is in the inbox; the app must be opened manually.
-        ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
+        // attempted. The app must be opened manually.
         showManualFallback(localized("Відкрийте InpuDeck вручну"))
     }
 
-    private func finishWithOpenResult(ok: Bool, length: Int, foundUIApplication: Bool) {
-        ShareResult.write(status: .ok, length: length, opened: ok, foundUIApplication: foundUIApplication)
+    private func finishWithOpenResult(ok: Bool, length: Int) {
         if ok {
             extensionContext?.completeRequest(returningItems: nil)
         } else {
@@ -235,7 +219,8 @@ final class ShareViewController: UIViewController {
     }
 
     @objc private func openTapped() {
-        openAppViaResponderChain(length: lastLength, uuid: lastUUID)
+        guard let sendURL = lastURL else { return }
+        openAppViaResponderChain(length: 0, sendURL: sendURL)
     }
 
     private func showManualFallback(_ message: String) {

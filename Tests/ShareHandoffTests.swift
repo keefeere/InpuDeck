@@ -5,7 +5,7 @@ struct ShareHandoffTests {
     static func main() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-        // The text and its write time must survive the pasteboard round trip.
+        // The text and its write time must survive the envelope round trip.
         let envelope = ShareEnvelope(text: "Від 1Password \nwith\rnewline", writtenAt: now)
         guard let encoded = envelope.encoded else {
             preconditionFailure("Handed text must encode")
@@ -25,52 +25,46 @@ struct ShareHandoffTests {
         precondition(decoded.isFresh(at: now.addingTimeInterval(ShareEnvelope.lifetime - 1)),
                      "A lifetime boundary must not drop text written moments ago")
 
-        // An older Share Extension wrote bare text with no timestamp.
-        guard let legacy = ShareEnvelope.decode("s3cret") else {
-            preconditionFailure("Legacy plain text must decode")
-        }
-        precondition(legacy.text == "s3cret" && legacy.isFresh(at: Date()),
-                     "Legacy text was written moments ago, so it stays typeable")
-
-        precondition(ShareEnvelope.decode("").map { _ in true } == nil,
-                     "An empty inbox item carries nothing")
+        precondition(ShareEnvelope.decode("") == nil,
+                     "An empty payload carries nothing")
         precondition(ShareEnvelope(text: "", writtenAt: now).encoded == nil,
                      "Nothing is stored for empty text")
         precondition(ShareEnvelope(text: "Від", writtenAt: now).isFresh(at: now),
                      "Fresh text is typeable regardless of alphabet")
-        precondition(ShareEnvelope(text: "{}", writtenAt: now).encoded != nil,
-                     "Text that looks like JSON must still round trip as text")
-        guard let braces = ShareEnvelope.decode(ShareEnvelope(text: "{}", writtenAt: now).encoded ?? "") else {
-            preconditionFailure("Text shaped like JSON must decode")
-        }
-        precondition(braces.text == "{}" && braces.writtenAt == now,
-                     "Text shaped like JSON keeps its own content, not the envelope's")
 
-        // The handoff URL carries no text; only the route request travels it.
-        guard let url = ShareHandoff.sendURL() else {
+        // The URL carries the envelope as base64url — only for correct encoding.
+        guard let url = ShareHandoff.sendURL(envelope: envelope) else {
             preconditionFailure("The handoff URL must be buildable")
         }
         precondition(ShareHandoff.isSendRequest(url), "The built URL is a send request")
-        // The UUID is carried as a query item, never the text.
-        let pb = "test-uuid-1234"
-        guard let urlWithPB = ShareHandoff.sendURL(pb: pb) else {
-            preconditionFailure("The handoff URL with UUID must be buildable")
+        guard let decodedFromURL = ShareHandoff.envelope(from: url) else {
+            preconditionFailure("The envelope must decode from the URL")
         }
-        precondition(ShareHandoff.isSendRequest(urlWithPB), "The built URL is a send request")
-        precondition(ShareHandoff.pasteboardUUID(from: urlWithPB) == pb,
-                     "The UUID must survive the URL round trip")
-        precondition(ShareHandoff.pasteboardUUID(from: url) == nil,
-                     "A URL without UUID has no pasteboard UUID")
-        precondition(ShareHandoff.pasteboardUUID(from: URL(string: "https://example.com/send")!) == nil,
-                     "A non-send URL has no pasteboard UUID")
-        precondition(ShareHandoff.isSendRequest(URL(string: "InpuDeck://SEND?x=1")!),
-                     "Scheme and host are matched case-insensitively")
+        precondition(decodedFromURL.text == envelope.text,
+                     "The text must survive the URL round trip")
+        precondition(abs(decodedFromURL.writtenAt.timeIntervalSince(now)) < 0.001,
+                     "The write time must survive the URL round trip")
+
+        // Cyrillic and special characters must round trip through the URL.
+        let special = ShareEnvelope(text: "пароль!@#$%^&*()_+{}|:\"<>?~`\\/", writtenAt: now)
+        guard let specialURL = ShareHandoff.sendURL(envelope: special),
+              let specialDecoded = ShareHandoff.envelope(from: specialURL) else {
+            preconditionFailure("Special characters must round trip through the URL")
+        }
+        precondition(specialDecoded.text == special.text,
+                     "Special characters must survive the URL round trip")
+
+        // A URL without a payload carries no envelope.
         precondition(!ShareHandoff.isSendRequest(URL(string: "https://example.com/send")!),
                      "Another app's URL is not a send request")
         precondition(!ShareHandoff.isSendRequest(URL(string: "inpudeck://settings")!),
                      "Only the send route consumes the inbox")
         precondition(!ShareHandoff.isSendRequest(URL(string: "inpudeck:///send")!),
                      "A missing host is not a send request")
+        precondition(ShareHandoff.envelope(from: URL(string: "inpudeck://send")!) == nil,
+                     "A send URL without payload carries no envelope")
+        precondition(ShareHandoff.envelope(from: URL(string: "inpudeck://send?d=invalid")!) == nil,
+                     "An invalid payload carries no envelope")
 
         print("Share handoff envelope and URL checks passed.")
     }

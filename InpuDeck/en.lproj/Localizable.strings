@@ -421,3 +421,4 @@
 "Не вдалося відкрити InpuDeck. Відкрийте його вручну." = "Could not open InpuDeck. Open it manually.";
 "InpuDeck не відкрився автоматично. Відкрийте його вручну." = "InpuDeck did not open automatically. Open it manually.";
 "Відкрийте InpuDeck вручну" = "Open InpuDeck manually";
+"Термін переданого тексту минув, його не надіслано." = "The handed-over text expired and was not sent.";
