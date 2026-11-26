@@ -5,12 +5,12 @@ import UniformTypeIdentifiers
 /// never renders the secret: the text goes through the persistent inbox and
 /// the running app types it, which is the only route that owns the Bluetooth
 /// connection. The extension tries to bring the app forward via the URL
-/// scheme — on iOS 18+ it calls application.open directly on the UIApplication
-/// found in the responder chain. iOS does not guarantee the launch, so when
-/// the completion returns false the window stays with a single "Open
-/// InpuDeck" button that retries the same call from a tap. Only a failure
-/// (nothing read, too long, cannot save) keeps a window, and it shows an
-/// error and a close button, never the text.
+/// scheme — on iOS 18+ it calls openURL:options:completionHandler: on the
+/// UIApplication found in the responder chain. iOS does not guarantee the
+/// launch, so when the completion returns false the window stays with a
+/// single "Open InpuDeck" button that retries the same call from a tap. Only
+/// a failure (nothing read, too long, cannot save) keeps a window, and it
+/// shows an error and a close button, never the text.
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
     private let closeButton = UIButton(type: .system)
@@ -180,11 +180,11 @@ final class ShareViewController: UIViewController {
         openAppViaResponderChain(length: extractedText.count)
     }
 
-    /// Walk the responder chain to the UIApplication and call open on it.
-    /// The extension target is no longer APPLICATION_EXTENSION_API_ONLY, so
-    /// the direct call compiles — the same approach Firefox uses in its
-    /// ShareTo extension. completeRequest is called only in the completion,
-    /// never before the result is known.
+    /// Walk the responder chain to the UIApplication and call
+    /// openURL:options:completionHandler: on it. The extension target is
+    /// APPLICATION_EXTENSION_API_ONLY, so the direct call does not compile —
+    /// the dynamic call is the honest path. completeRequest is called only
+    /// in the completion, never before the result is known.
     private func openAppViaResponderChain(length: Int) {
         guard let sendURL = ShareHandoff.sendURL else {
             ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
@@ -192,14 +192,22 @@ final class ShareViewController: UIViewController {
             return
         }
         lastLength = length
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
         var responder: UIResponder? = self
         while let current = responder {
-            if let app = current as? UIApplication {
-                app.open(sendURL, options: [:]) { [weak self] ok in
+            if current is UIApplication, current.responds(to: selector) {
+                typealias Fn = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, (@convention(block) (Bool) -> Void)?) -> Void
+                guard let method = current.method(for: selector) else {
+                    ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: true)
+                    showManualFallback(localized("Відкрийте InpuDeck вручну"))
+                    return
+                }
+                let fn = unsafeBitCast(method, to: Fn.self)
+                fn(current, selector, sendURL as NSURL, NSDictionary(), { [weak self] ok in
                     DispatchQueue.main.async {
                         self?.finishWithOpenResult(ok: ok, length: length, foundUIApplication: true)
                     }
-                }
+                })
                 return
             }
             responder = current.next
