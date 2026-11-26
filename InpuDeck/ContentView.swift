@@ -1310,11 +1310,9 @@ struct ContentView: View {
             ble.direct.recordExternal("ShareTextInbox.take() = text(len=\(text.count))")
             queueIncomingText(text)
         case .expired:
+            // Drop silently — the text is stale and must not be typed.
             ble.direct.recordExternal("ShareTextInbox.take() = expired")
-            // Handoff text is normally a password. Typing it into whatever is
-            // focused long after the share is worse than dropping it, and the
-            // drop has to be visible.
-            inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
+            break
         case .empty:
             ble.direct.recordExternal("ShareTextInbox.take() = empty")
             break
