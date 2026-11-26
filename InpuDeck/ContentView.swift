@@ -61,6 +61,10 @@ struct ContentView: View {
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""
+    /// True once any text in the field has actually gone out over HID. The
+    /// resend button flips to «Ввід» in that state — pressing «Надіслати»
+    /// after auto-typing would duplicate everything already sent.
+    @State private var inputTextWasSent = false
     @State private var wantsFocus = false
     @State private var isSecureInput = false
     @State private var selectedTab = AppTabConfiguration(
@@ -319,8 +323,8 @@ struct ContentView: View {
     private func actionLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
         if expertMode {
             Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 24, height: 22)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 26, height: 26)
                 .frame(maxWidth: .infinity)
         } else {
             Label(title, systemImage: systemImage)
@@ -423,6 +427,7 @@ struct ContentView: View {
                     wantsFocus = false
                     inputText = ""
                     inputWarning = nil
+                    inputTextWasSent = false
                 } label: {
                     actionLabel("Очистити", systemImage: "xmark")
                 }
@@ -430,13 +435,21 @@ struct ContentView: View {
                 .accessibilityLabel("Очистити")
 
                 Button {
-                    resendInputText()
+                    if inputTextWasSent {
+                        wantsFocus = true
+                    } else {
+                        resendInputText()
+                    }
                 } label: {
-                    actionLabel("Надіслати", systemImage: "paperplane.fill")
+                    if inputTextWasSent {
+                        actionLabel("Ввід", systemImage: "keyboard")
+                    } else {
+                        actionLabel("Надіслати", systemImage: "paperplane.fill")
+                    }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(inputText.isEmpty || !ble.isReady)
-                .accessibilityLabel("Надіслати")
+                .disabled(inputText.isEmpty || (!inputTextWasSent && !ble.isReady))
+                .accessibilityLabel(inputTextWasSent ? "Ввід" : "Надіслати")
             }
             .font(.caption.weight(.semibold))
 
@@ -1268,7 +1281,9 @@ struct ContentView: View {
             inputWarning = nil
         }
 
-        sendText(mutation.insertedText)
+        if sendText(mutation.insertedText) {
+            inputTextWasSent = true
+        }
     }
 
     private func pasteClipboard() {
@@ -1376,6 +1391,7 @@ struct ContentView: View {
     private func resendInputText() {
         guard ble.isReady, !inputText.isEmpty else { return }
         guard sendText(inputText) else { return }
+        inputTextWasSent = true
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }
 

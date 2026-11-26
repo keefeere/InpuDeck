@@ -277,7 +277,7 @@ rule the air-mouse sign work taught the hard way: a wrong guess that loads
    today**, i.e. the path is iPhone → BLE → ESP32 → USB HID → TV USB port.
    Direct Bluetooth is a possible later step, explicitly not part of v1.
 2. **No pointer on the remote tab in v1.** `pointerSurface` stays one global
-   `@AppStorage` and `syncPointerSurface()` (`InpuDeck/ContentView.swift:1120`)
+   `@AppStorage` and `syncPointerSurface()` (`InpuDeck/ContentView.swift:1197`)
    keeps streaming only while the Input tab is on screen, so the exactly-one-
    pointer-source rule from 3.5.13 is untouched. This is why the format lost its
    `pointerZone` field and the `setting` action.
