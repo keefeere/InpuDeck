@@ -417,3 +417,8 @@
 "У спільному елементі немає тексту або URL." = "The shared item has no text or URL.";
 "Надісланий текст занадто довгий." = "The shared text is too long.";
 "Не вдалося зберегти текст. Відкрий InpuDeck і спробуй ще раз." = "Could not save the text. Open InpuDeck and try again.";
+
+/* Share-extension outcome: app not opened automatically */
+"Не вдалося відкрити InpuDeck. Відкрийте його вручну." = "Could not open InpuDeck. Open it manually.";
+"InpuDeck не відкрився автоматично. Відкрийте його вручну." = "InpuDeck did not open automatically. Open it manually.";
+"Відкрийте InpuDeck вручну" = "Open InpuDeck manually";

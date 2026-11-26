@@ -4,10 +4,11 @@ import UniformTypeIdentifiers
 /// The extension hands off the shared text to the app and closes itself. It
 /// never renders the secret: the text goes through the persistent inbox and
 /// the running app types it, which is the only route that owns the Bluetooth
-/// connection. iOS does not reliably bring the app forward from a share
-/// extension, so the app is opened by the user — that is the honest path.
-/// Only a failure (nothing read, too long, cannot save) keeps a window, and
-/// it shows an error and a close button, never the text.
+/// connection. The extension tries to bring the app forward via the URL
+/// scheme, but iOS does not guarantee that — the app still opens from the URL
+/// when it is already running. Only a failure (nothing read, too long, cannot
+/// save) keeps a window, and it shows an error and a close button, never the
+/// text.
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
     private let closeButton = UIButton(type: .system)
@@ -159,14 +160,58 @@ final class ShareViewController: UIViewController {
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
         }
-        ShareResult.write(status: .ok, length: extractedText.count)
         // Try to bring the app forward so the stored text can reach the
-        // computer. iOS does not guarantee this, but it is the honest attempt:
-        // the app still opens from the URL when it is already running.
-        if let sendURL = ShareHandoff.sendURL {
-            extensionContext?.open(sendURL)
+        // computer. The extension cannot transmit HID itself — only this
+        // running app owns the Bluetooth route — so it hands off via the
+        // URL scheme. iOS does not guarantee the launch, but the attempt is
+        // honest: the app still opens from the URL when it is already running.
+        openAppViaResponderChain(length: extractedText.count)
+    }
+
+    /// Walk the responder chain to the UIApplication and call openURL:options:completionHandler:.
+    /// The extension target is APPLICATION_EXTENSION_API_ONLY, so a direct
+    /// app.open(...) does not compile — the dynamic call is the honest path.
+    /// completeRequest is called only in the completion, never before the
+    /// result is known.
+    private func openAppViaResponderChain(length: Int) {
+        guard let sendURL = ShareHandoff.sendURL else {
+            ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
+            showManualFallback(localized("Відкрийте InpuDeck вручну"))
+            return
         }
-        extensionContext?.completeRequest(returningItems: nil)
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
+        var responder: UIResponder? = self
+        while let current = responder {
+            if current is UIApplication, current.responds(to: selector) {
+                typealias Fn = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, (@convention(block) (Bool) -> Void)?) -> Void
+                guard let method = current.method(for: selector) else {
+                    ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: true)
+                    showManualFallback(localized("Відкрийте InpuDeck вручну"))
+                    return
+                }
+                let fn = unsafeBitCast(method, to: Fn.self)
+                fn(current, selector, sendURL as NSURL, NSDictionary(), { [weak self] ok in
+                    DispatchQueue.main.async {
+                        self?.finishWithOpenResult(ok: ok, length: length, foundUIApplication: true)
+                    }
+                })
+                return
+            }
+            responder = current.next
+        }
+        // UIApplication not found in the chain — the handoff was never
+        // attempted. The text is in the inbox; the app must be opened manually.
+        ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
+        showManualFallback(localized("Відкрийте InpuDeck вручну"))
+    }
+
+    private func finishWithOpenResult(ok: Bool, length: Int, foundUIApplication: Bool) {
+        ShareResult.write(status: .ok, length: length, opened: ok, foundUIApplication: foundUIApplication)
+        if ok {
+            extensionContext?.completeRequest(returningItems: nil)
+        } else {
+            showManualFallback(localized("Відкрийте InpuDeck вручну"))
+        }
     }
 
     private func showManualFallback(_ message: String) {

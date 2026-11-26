@@ -111,7 +111,13 @@ struct ContentView: View {
         }
         .onChange(of: ble.isReady) { _, isReady in
             if isReady {
-                sendPendingShortcutTextIfPossible()
+                // Cold start: the host may not be ready to receive input yet.
+                // A short pause after the ready gate avoids the false "Sent"
+                // and the 2-of-10 typing failure.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    sendPendingShortcutTextIfPossible()
+                }
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -1269,7 +1275,15 @@ struct ContentView: View {
         if let result = ShareResult.take() {
             switch result.status {
             case .ok:
-                break
+                // The extension tried to open the app. When it did not, the
+                // text is still in the inbox; the app must be opened manually.
+                if result.opened == false {
+                    if result.foundUIApplication == false {
+                        inputWarning = localized("Не вдалося відкрити InpuDeck. Відкрийте його вручну.")
+                    } else {
+                        inputWarning = localized("InpuDeck не відкрився автоматично. Відкрийте його вручну.")
+                    }
+                }
             case .noText:
                 inputWarning = localized("У спільному елементі немає тексту або URL.")
             case .tooLong:
@@ -1306,7 +1320,13 @@ struct ContentView: View {
             pendingShortcutText = text
         }
 
-        sendPendingShortcutTextIfPossible()
+        // Cold start: the host may not be ready to receive input yet. A short
+        // pause after the ready gate avoids the false "Sent" and the 2-of-10
+        // typing failure.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            sendPendingShortcutTextIfPossible()
+        }
         reconnectForPendingText()
     }
 

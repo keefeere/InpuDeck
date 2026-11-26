@@ -7,6 +7,13 @@ import UIKit
 struct ShareResult {
     let status: Status
     let length: Int?
+    /// Whether the app was opened via the URL handoff. Only meaningful when
+    /// status is .ok — a failure path never reaches the handoff.
+    let opened: Bool?
+    /// Whether the UIApplication object was found in the responder chain.
+    /// When false, the handoff was never attempted and the app must be opened
+    /// manually.
+    let foundUIApplication: Bool?
 
     enum Status: String {
         case ok
@@ -17,8 +24,8 @@ struct ShareResult {
 
     static let pasteboardName = UIPasteboard.Name("com.keefeere.InpuDeck.share-result")
 
-    static func write(status: Status, length: Int? = nil) {
-        let payload = Payload(status: status.rawValue, length: length)
+    static func write(status: Status, length: Int? = nil, opened: Bool? = nil, foundUIApplication: Bool? = nil) {
+        let payload = Payload(status: status.rawValue, length: length, opened: opened, foundUIApplication: foundUIApplication)
         guard let data = try? JSONEncoder().encode(payload),
               let raw = String(data: data, encoding: .utf8),
               let pasteboard = UIPasteboard(name: pasteboardName, create: true) else {
@@ -39,11 +46,13 @@ struct ShareResult {
         }
         pasteboard.items = []
         pasteboard.setPersistent(false)
-        return ShareResult(status: status, length: payload.length)
+        return ShareResult(status: status, length: payload.length, opened: payload.opened, foundUIApplication: payload.foundUIApplication)
     }
 
     private struct Payload: Codable {
         let status: String
         let length: Int?
+        let opened: Bool?
+        let foundUIApplication: Bool?
     }
 }
