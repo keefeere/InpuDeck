@@ -120,10 +120,17 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                ble.direct.recordExternal("scenePhase active")
                 ble.start()
                 ble.becameActive()
                 receiveSharedTextIfNeeded()
                 receiveShortcutTextIfNeeded()
+                // If text was pending when the app went to background, the
+                // retry loop was cancelled. Restart it so the text is sent.
+                if pendingShortcutText != nil {
+                    ble.direct.recordExternal("scenePhase active: restarting retry loop for pending text")
+                    startPendingRetry()
+                }
                 syncPointerSurface()
             } else if newPhase == .background {
                 jigglerEnabled = false
@@ -131,6 +138,7 @@ struct ContentView: View {
                 ble.enteredBackground()
                 pendingRetryTask?.cancel()
                 pendingRetryTask = nil
+                ble.direct.recordExternal("scenePhase background: pending=\(pendingShortcutText != nil)")
             }
             updateIdleTimer()
         }
@@ -154,6 +162,7 @@ struct ContentView: View {
             // app owns the Bluetooth route. It stores the text and opens this
             // URL, which is what makes a shared password go out at once.
             guard ShareHandoff.isSendRequest(url) else { return }
+            ble.direct.recordExternal("onOpenURL received")
             ble.start()
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
@@ -1298,19 +1307,23 @@ struct ContentView: View {
         }
         switch ShareTextInbox.take() {
         case .text(let text):
+            ble.direct.recordExternal("ShareTextInbox.take() = text(len=\(text.count))")
             queueIncomingText(text)
         case .expired:
+            ble.direct.recordExternal("ShareTextInbox.take() = expired")
             // Handoff text is normally a password. Typing it into whatever is
             // focused long after the share is worse than dropping it, and the
             // drop has to be visible.
             inputWarning = localized("Термін переданого тексту минув, його не надіслано.")
         case .empty:
+            ble.direct.recordExternal("ShareTextInbox.take() = empty")
             break
         }
     }
 
     private func queueIncomingText(_ text: String) {
         guard !text.isEmpty else { return }
+        ble.direct.recordExternal("queueIncomingText: len=\(text.count)")
         // Respect the user's hidden tabs: incoming text must not select a
         // page that is absent from TabView or silently re-enable it.
         if tabConfiguration.isEnabled(.input) { selectedTab = .input }
@@ -1360,6 +1373,7 @@ struct ContentView: View {
             while !Task.isCancelled {
                 guard let text = pendingShortcutText, !text.isEmpty else { return }
                 guard ble.isReady else {
+                    ble.direct.recordExternal("retry loop: not ready, waiting")
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
@@ -1375,6 +1389,7 @@ struct ContentView: View {
     }
 
     private func sendPendingShortcutTextIfPossible() {
+        ble.direct.recordExternal("sendPendingShortcutTextIfPossible: isReady=\(ble.isReady) pending=\(pendingShortcutText != nil)")
         guard ble.isReady, let text = pendingShortcutText, !text.isEmpty else {
             return
         }
@@ -1420,7 +1435,9 @@ struct ContentView: View {
             return false
         }
 
+        ble.direct.recordExternal("sendText: isReady=\(ble.isReady) taps=\(plan.taps.count)")
         let sent = ble.sendKeyTaps(plan.taps)
+        ble.direct.recordExternal("sendText result: sent=\(sent)")
 
         if plan.unsupportedCharacters.isEmpty {
             inputWarning = nil

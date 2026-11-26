@@ -711,6 +711,13 @@ final class DirectHIDTransport: NSObject, ObservableObject, InputTransport, CBPe
         if diagnostics.count > 400 { diagnostics.removeFirst(diagnostics.count - 400) }
     }
 
+    /// Record a metadata-only diagnostic line from a caller outside the
+    /// transport (e.g. the share-extension handoff path). Never pass secret
+    /// text — only lengths, statuses and identifiers.
+    func recordExternal(_ event: String) {
+        record(event)
+    }
+
     private func noteATT(_ action: String, _ attribute: String, _ peer: UUID,
                          _ result: String, detail: String = "") {
         if loggedATT.count > 400 { loggedATT.removeAll() }
