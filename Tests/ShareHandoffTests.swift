@@ -47,7 +47,7 @@ struct ShareHandoffTests {
                      "Text shaped like JSON keeps its own content, not the envelope's")
 
         // The handoff URL carries no text; only the route request travels it.
-        guard let url = ShareHandoff.sendURL else {
+        guard let url = ShareHandoff.sendURL() else {
             preconditionFailure("The handoff URL must be buildable")
         }
         precondition(ShareHandoff.isSendRequest(url), "The built URL is a send request")
