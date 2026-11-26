@@ -177,16 +177,20 @@ final class ShareViewController: UIViewController {
         // computer. The extension cannot transmit HID itself — only this
         // running app owns the Bluetooth route — so it hands off via the
         // URL scheme. iOS does not guarantee the launch, but the attempt is
-        // honest: the app still opens from the URL when it is already running.
-        openAppViaResponderChain(length: extractedText.count, uuid: uuid)
+        // Bring the app forward via the URL handoff. The extension cannot
+        // transmit HID itself — only this running app owns the Bluetooth route.
+        // extensionContext?.open(URL) is the standard way; iOS does not
+        // guarantee the launch, so the result is honest: the window stays
+        // with a single "Open InpuDeck" button when the attempt fails.
+        openAppViaURL(length: extractedText.count, uuid: uuid)
     }
 
-    /// Walk the responder chain to the UIApplication and call
-    /// openURL:options:completionHandler: on it. The extension target is
-    /// APPLICATION_EXTENSION_API_ONLY, so the direct call does not compile —
-    /// the dynamic call is the honest path. completeRequest is called only
-    /// in the completion, never before the result is known.
-    private func openAppViaResponderChain(length: Int, uuid: String? = nil) {
+    /// Open the app via the URL handoff. The extension target is
+    /// APPLICATION_EXTENSION_API_ONLY, so the direct UIApplication call does
+    /// not compile — extensionContext?.open(URL) is the standard path.
+    /// completeRequest is called only in the completion, never before the
+    /// result is known.
+    private func openAppViaURL(length: Int, uuid: String? = nil) {
         guard let sendURL = ShareHandoff.sendURL(pb: uuid) else {
             ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
             showManualFallback(localized("Відкрийте InpuDeck вручну"))
@@ -194,34 +198,15 @@ final class ShareViewController: UIViewController {
         }
         lastLength = length
         lastUUID = uuid
-        let selector = NSSelectorFromString("openURL:options:completionHandler:")
-        var responder: UIResponder? = self
-        while let current = responder {
-            if current is UIApplication, current.responds(to: selector) {
-                typealias Fn = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, (@convention(block) (Bool) -> Void)?) -> Void
-                guard let method = current.method(for: selector) else {
-                    ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: true)
-                    showManualFallback(localized("Відкрийте InpuDeck вручну"))
-                    return
-                }
-                let fn = unsafeBitCast(method, to: Fn.self)
-                fn(current, selector, sendURL as NSURL, NSDictionary(), { [weak self] ok in
-                    DispatchQueue.main.async {
-                        self?.finishWithOpenResult(ok: ok, length: length, foundUIApplication: true)
-                    }
-                })
-                return
+        extensionContext?.open(sendURL, completionHandler: { [weak self] ok in
+            DispatchQueue.main.async {
+                self?.finishWithOpenResult(ok: ok, length: length)
             }
-            responder = current.next
-        }
-        // UIApplication not found in the chain — the handoff was never
-        // attempted. The text is in the inbox; the app must be opened manually.
-        ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
-        showManualFallback(localized("Відкрийте InpuDeck вручну"))
+        })
     }
 
-    private func finishWithOpenResult(ok: Bool, length: Int, foundUIApplication: Bool) {
-        ShareResult.write(status: .ok, length: length, opened: ok, foundUIApplication: foundUIApplication)
+    private func finishWithOpenResult(ok: Bool, length: Int) {
+        ShareResult.write(status: .ok, length: length, opened: ok, foundUIApplication: true)
         if ok {
             extensionContext?.completeRequest(returningItems: nil)
         } else {
@@ -235,7 +220,7 @@ final class ShareViewController: UIViewController {
     }
 
     @objc private func openTapped() {
-        openAppViaResponderChain(length: lastLength, uuid: lastUUID)
+        openAppViaURL(length: lastLength, uuid: lastUUID)
     }
 
     private func showManualFallback(_ message: String) {
