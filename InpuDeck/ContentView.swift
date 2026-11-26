@@ -1343,6 +1343,9 @@ struct ContentView: View {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
+                // Give the connection a moment to settle after the ready gate —
+                // the first taps can be lost if sent immediately.
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if sendText(text) {
                     pendingShortcutText = nil
                     pendingRetryTask = nil
