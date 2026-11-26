@@ -122,6 +122,11 @@ struct ContentView: View {
             if newPhase == .active {
                 ble.start()
                 ble.becameActive()
+                // The route may have been left cold by the background
+                // transition. Reconnect so the ready gate can fire.
+                if !ble.isReady && !ble.isSwitching {
+                    ble.reconnectNow()
+                }
                 receiveSharedTextIfNeeded()
                 receiveShortcutTextIfNeeded()
                 syncPointerSurface()
@@ -155,6 +160,9 @@ struct ContentView: View {
             // URL, which is what makes a shared password go out at once.
             guard ShareHandoff.isSendRequest(url) else { return }
             ble.start()
+            if !ble.isReady && !ble.isSwitching {
+                ble.reconnectNow()
+            }
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
             reconnectForPendingText()
@@ -1327,6 +1335,9 @@ struct ContentView: View {
         // The route may have been left in a cold state (e.g. the app was
         // backgrounded). Start it so the ready gate can fire.
         ble.start()
+        if !ble.isReady && !ble.isSwitching {
+            ble.reconnectNow()
+        }
 
         // Cold start: the host may not be ready to receive input yet. A short
         // pause after the ready gate avoids the false "Sent" and the 2-of-10
@@ -1360,6 +1371,11 @@ struct ContentView: View {
             while !Task.isCancelled {
                 guard let text = pendingShortcutText, !text.isEmpty else { return }
                 guard ble.isReady else {
+                    // Periodically reconnect so the route comes back.
+                    if Date().timeIntervalSince(lastPendingTextReconnect) > 5 {
+                        lastPendingTextReconnect = Date()
+                        ble.reconnectNow()
+                    }
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
