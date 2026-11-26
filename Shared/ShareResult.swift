@@ -1,9 +1,9 @@
 import UIKit
 
 /// What the Share Extension reported back to the app. The extension writes a
-/// one-shot result to a shared persistent pasteboard right before closing;
-/// the app reads, logs and drops it so a failure is visible instead of a
-/// silent no-op. The payload carries no secret text — only the outcome.
+/// one-shot result to a shared named pasteboard right before closing; the app
+/// reads, logs and drops it so a failure is visible instead of a silent no-op.
+/// The payload carries no secret text — only the outcome.
 struct ShareResult {
     let status: Status
     let length: Int?
@@ -31,7 +31,6 @@ struct ShareResult {
               let pasteboard = UIPasteboard(name: pasteboardName, create: true) else {
             return
         }
-        pasteboard.setPersistent(true)
         pasteboard.string = raw
     }
 
@@ -45,7 +44,6 @@ struct ShareResult {
             return nil
         }
         pasteboard.items = []
-        pasteboard.setPersistent(false)
         return ShareResult(status: status, length: payload.length, opened: payload.opened, foundUIApplication: payload.foundUIApplication)
     }
 

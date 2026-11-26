@@ -162,9 +162,10 @@ struct ContentView: View {
             // app owns the Bluetooth route. It stores the text and opens this
             // URL, which is what makes a shared password go out at once.
             guard ShareHandoff.isSendRequest(url) else { return }
-            ble.direct.recordExternal("onOpenURL received")
+            let pb = ShareHandoff.pasteboardUUID(from: url)
+            ble.direct.recordExternal("onOpenURL received (pb=\(pb ?? "nil"))")
             ble.start()
-            receiveSharedTextIfNeeded()
+            receiveSharedTextIfNeeded(pb: pb)
             receiveShortcutTextIfNeeded()
             reconnectForPendingText()
         }
@@ -1281,7 +1282,7 @@ struct ContentView: View {
         queueIncomingText(text)
     }
 
-    private func receiveSharedTextIfNeeded() {
+    private func receiveSharedTextIfNeeded(pb: String? = nil) {
         // The extension reports its outcome to this app through the result
         // pasteboard. Reading it is what turns a silent extension into a
         // visible one: a failure is a logged line and a banner, not a no-op.
@@ -1305,7 +1306,7 @@ struct ContentView: View {
                 inputWarning = localized("Не вдалося зберегти текст. Відкрий InpuDeck і спробуй ще раз.")
             }
         }
-        switch ShareTextInbox.take() {
+        switch ShareTextInbox.take(pb) {
         case .text(let text):
             ble.direct.recordExternal("ShareTextInbox.take() = text(len=\(text.count))")
             queueIncomingText(text)

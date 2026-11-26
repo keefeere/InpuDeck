@@ -51,6 +51,18 @@ struct ShareHandoffTests {
             preconditionFailure("The handoff URL must be buildable")
         }
         precondition(ShareHandoff.isSendRequest(url), "The built URL is a send request")
+        // The UUID is carried as a query item, never the text.
+        let pb = "test-uuid-1234"
+        guard let urlWithPB = ShareHandoff.sendURL(pb: pb) else {
+            preconditionFailure("The handoff URL with UUID must be buildable")
+        }
+        precondition(ShareHandoff.isSendRequest(urlWithPB), "The built URL is a send request")
+        precondition(ShareHandoff.pasteboardUUID(from: urlWithPB) == pb,
+                     "The UUID must survive the URL round trip")
+        precondition(ShareHandoff.pasteboardUUID(from: url) == nil,
+                     "A URL without UUID has no pasteboard UUID")
+        precondition(ShareHandoff.pasteboardUUID(from: URL(string: "https://example.com/send")!) == nil,
+                     "A non-send URL has no pasteboard UUID")
         precondition(ShareHandoff.isSendRequest(URL(string: "InpuDeck://SEND?x=1")!),
                      "Scheme and host are matched case-insensitively")
         precondition(!ShareHandoff.isSendRequest(URL(string: "https://example.com/send")!),

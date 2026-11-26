@@ -19,6 +19,7 @@ final class ShareViewController: UIViewController {
     private var fallbackAttributedText: [String] = []
     private var extractedText = ""
     private var lastLength = 0
+    private var lastUUID: String?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -167,7 +168,7 @@ final class ShareViewController: UIViewController {
             showManualFallback(localized("Скоротіть текст до 2000 символів."))
             return
         }
-        guard ShareTextInbox.enqueue(extractedText) else {
+        guard let uuid = ShareTextInbox.enqueue(extractedText) else {
             ShareResult.write(status: .enqueueFailed, length: extractedText.count)
             showManualFallback(localized("Не вдалося зберегти текст"))
             return
@@ -177,7 +178,7 @@ final class ShareViewController: UIViewController {
         // running app owns the Bluetooth route — so it hands off via the
         // URL scheme. iOS does not guarantee the launch, but the attempt is
         // honest: the app still opens from the URL when it is already running.
-        openAppViaResponderChain(length: extractedText.count)
+        openAppViaResponderChain(length: extractedText.count, uuid: uuid)
     }
 
     /// Walk the responder chain to the UIApplication and call
@@ -185,13 +186,14 @@ final class ShareViewController: UIViewController {
     /// APPLICATION_EXTENSION_API_ONLY, so the direct call does not compile —
     /// the dynamic call is the honest path. completeRequest is called only
     /// in the completion, never before the result is known.
-    private func openAppViaResponderChain(length: Int) {
-        guard let sendURL = ShareHandoff.sendURL else {
+    private func openAppViaResponderChain(length: Int, uuid: String? = nil) {
+        guard let sendURL = ShareHandoff.sendURL(pb: uuid) else {
             ShareResult.write(status: .ok, length: length, opened: false, foundUIApplication: false)
             showManualFallback(localized("Відкрийте InpuDeck вручну"))
             return
         }
         lastLength = length
+        lastUUID = uuid
         let selector = NSSelectorFromString("openURL:options:completionHandler:")
         var responder: UIResponder? = self
         while let current = responder {
@@ -233,7 +235,7 @@ final class ShareViewController: UIViewController {
     }
 
     @objc private func openTapped() {
-        openAppViaResponderChain(length: lastLength)
+        openAppViaResponderChain(length: lastLength, uuid: lastUUID)
     }
 
     private func showManualFallback(_ message: String) {

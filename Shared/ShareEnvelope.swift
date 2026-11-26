@@ -1,9 +1,9 @@
 import Foundation
 
 /// Text handed from the Share Extension to the main app, with the moment it was
-/// written. The handoff travels through a persistent named pasteboard, so a
-/// password would otherwise wait there indefinitely and could be typed into
-/// whatever is focused hours later. The lifetime bounds that.
+/// written. The handoff travels through a named pasteboard, so a password would
+/// otherwise wait there indefinitely and could be typed into whatever is
+/// focused hours later. The lifetime bounds that.
 struct ShareEnvelope {
     /// Long enough for a share-sheet round trip and for the app to come back to
     /// the foreground, short enough that abandoned password text is not still
@@ -50,14 +50,32 @@ struct ShareEnvelope {
 /// The URL the Share Extension uses to bring the app forward so the stored text
 /// can actually reach the computer. Only the running app owns the Bluetooth
 /// route, so the extension cannot transmit HID itself; it hands off instead.
-/// The URL carries no text — the secret stays in the pasteboard.
+/// The URL carries no text — only a UUID identifying the pasteboard that holds
+/// the secret.
 enum ShareHandoff {
     static let scheme = "inpudeck"
     static let sendHost = "send"
 
-    static var sendURL: URL? { URL(string: "\(scheme)://\(sendHost)") }
+    static func sendURL(pb: String? = nil) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = sendHost
+        if let pb, !pb.isEmpty {
+            components.queryItems = [URLQueryItem(name: "pb", value: pb)]
+        }
+        return components.url
+    }
 
     static func isSendRequest(_ url: URL) -> Bool {
         url.scheme?.lowercased() == scheme && url.host?.lowercased() == sendHost
+    }
+
+    /// Extracts the pasteboard UUID from a handoff URL. Returns nil when the
+    /// URL carries no UUID (legacy handoff).
+    static func pasteboardUUID(from url: URL) -> String? {
+        guard isSendRequest(url),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = components.queryItems else { return nil }
+        return items.first(where: { $0.name == "pb" })?.value
     }
 }
