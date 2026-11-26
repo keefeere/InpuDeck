@@ -120,6 +120,7 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                ble.start()
                 ble.becameActive()
                 receiveSharedTextIfNeeded()
                 receiveShortcutTextIfNeeded()
@@ -153,6 +154,7 @@ struct ContentView: View {
             // app owns the Bluetooth route. It stores the text and opens this
             // URL, which is what makes a shared password go out at once.
             guard ShareHandoff.isSendRequest(url) else { return }
+            ble.start()
             receiveSharedTextIfNeeded()
             receiveShortcutTextIfNeeded()
             reconnectForPendingText()
@@ -1321,6 +1323,10 @@ struct ContentView: View {
         } else {
             pendingShortcutText = text
         }
+
+        // The route may have been left in a cold state (e.g. the app was
+        // backgrounded). Start it so the ready gate can fire.
+        ble.start()
 
         // Cold start: the host may not be ready to receive input yet. A short
         // pause after the ready gate avoids the false "Sent" and the 2-of-10
