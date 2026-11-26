@@ -79,6 +79,7 @@ struct ContentView: View {
     // kicked once. A throttle keeps one share from restarting Bluetooth several
     // times while the app is still coming forward.
     @State private var lastPendingTextReconnect = Date.distantPast
+    @State private var pendingRetryTask: Task<Void, Never>?
 
     private let jigglerIntervals: [Double] = [0.5, 1, 2, 5, 7, 10, 15, 20]
 
@@ -114,10 +115,7 @@ struct ContentView: View {
                 // Cold start: the host may not be ready to receive input yet.
                 // A short pause after the ready gate avoids the false "Sent"
                 // and the 2-of-10 typing failure.
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    sendPendingShortcutTextIfPossible()
-                }
+                startPendingRetry()
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -130,6 +128,8 @@ struct ContentView: View {
                 jigglerEnabled = false
                 airMouse.deactivate()
                 ble.enteredBackground()
+                pendingRetryTask?.cancel()
+                pendingRetryTask = nil
             }
             updateIdleTimer()
         }
@@ -168,6 +168,8 @@ struct ContentView: View {
         .onDisappear {
             airMouse.deactivate()
             UIApplication.shared.isIdleTimerDisabled = false
+            pendingRetryTask?.cancel()
+            pendingRetryTask = nil
         }
         .task(id: "\(jigglerEnabled)-\(jigglerIntervalIndex)") {
             await runJiggler()
@@ -1323,10 +1325,7 @@ struct ContentView: View {
         // Cold start: the host may not be ready to receive input yet. A short
         // pause after the ready gate avoids the false "Sent" and the 2-of-10
         // typing failure.
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            sendPendingShortcutTextIfPossible()
-        }
+        startPendingRetry()
         reconnectForPendingText()
     }
 
@@ -1342,6 +1341,33 @@ struct ContentView: View {
         ble.reconnectNow()
     }
 
+    /// Retries sending the pending text every second until it succeeds, the
+    /// app is backgrounded, or there is no text left. A single 500ms attempt
+    /// is not enough: the route may take longer to become ready, and a silent
+    /// failure would lose the text.
+    private func startPendingRetry() {
+        pendingRetryTask?.cancel()
+        pendingRetryTask = Task { @MainActor in
+            // Short pause after the ready gate avoids the false "Sent" and the
+            // 2-of-10 typing failure.
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            while !Task.isCancelled {
+                guard let text = pendingShortcutText, !text.isEmpty else { return }
+                guard ble.isReady else {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
+                if sendText(text) {
+                    pendingShortcutText = nil
+                    pendingRetryTask = nil
+                    showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
     private func sendPendingShortcutTextIfPossible() {
         guard ble.isReady, let text = pendingShortcutText, !text.isEmpty else {
             return
@@ -1352,6 +1378,8 @@ struct ContentView: View {
             return
         }
         pendingShortcutText = nil
+        pendingRetryTask?.cancel()
+        pendingRetryTask = nil
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }
 
