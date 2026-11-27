@@ -61,10 +61,14 @@ struct ContentView: View {
     @StateObject private var airMouse = AirMousePointer()
 
     @State private var inputText = ""
-    /// True once any text in the field has actually gone out over HID. The
-    /// resend button flips to «Ввід» in that state — pressing «Надіслати»
-    /// after auto-typing would duplicate everything already sent.
-    @State private var inputTextWasSent = false
+    /// True when something in the field has NOT reached the output yet — the
+    /// field then shows the «Надіслати» button and the paste/edit path never
+    /// sends anything on its own. Instant mode (all sent) sends every change
+    /// the moment it happens.
+    @State private var awaitingSend = false
+    /// Caption under the field: last paste outcome ("Вставлено не надіслано" /
+    /// "Вставлено і надіслано"), overriding the generic hint.
+    @State private var pasteStatus: String?
     @State private var wantsFocus = false
     @State private var isSecureInput = false
     @State private var selectedTab = AppTabConfiguration(
@@ -144,6 +148,12 @@ struct ContentView: View {
                 ble.direct.recordExternal("scenePhase background: pending=\(pendingShortcutText != nil)")
             }
             updateIdleTimer()
+        }
+        .onChange(of: ble.inputEpoch) { _, _ in
+            // The output route changed: the text in the field has not gone
+            // through the new route, so the button must go back to «Надіслати».
+            pasteStatus = nil
+            awaitingSend = !inputText.isEmpty
         }
         .onChange(of: tabConfigurationRawValue) { _, _ in
             if !tabConfiguration.isEnabled(.tools) { jigglerEnabled = false }
@@ -260,7 +270,7 @@ struct ContentView: View {
 
     private var connectionHeader: some View {
         HStack(spacing: 8) {
-            ConnectionStatusView(input: ble)
+            ConnectionStatusView(input: ble, sendModeHint: sendModeHint)
 
             Divider()
                 .frame(height: 20)
@@ -279,6 +289,12 @@ struct ContentView: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var sendModeHint: String {
+        awaitingSend
+            ? localized("режим затриманої відправки")
+            : localized("режим миттєвої відправки")
     }
 
     private var tabConfiguration: AppTabConfiguration {
@@ -424,10 +440,20 @@ struct ContentView: View {
                 .accessibilityLabel("Вставити")
 
                 Button {
+                    ble.sendKeyTap(modifiers: 0, hidKeycode: HID.keyEnter)
+                } label: {
+                    actionLabel("Enter", systemImage: "return")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!ble.isReady)
+                .accessibilityLabel("Enter")
+
+                Button {
                     wantsFocus = false
                     inputText = ""
                     inputWarning = nil
-                    inputTextWasSent = false
+                    pasteStatus = nil
+                    awaitingSend = false
                 } label: {
                     actionLabel("Очистити", systemImage: "xmark")
                 }
@@ -435,21 +461,23 @@ struct ContentView: View {
                 .accessibilityLabel("Очистити")
 
                 Button {
-                    if inputTextWasSent {
-                        wantsFocus = true
-                    } else {
+                    if awaitingSend {
                         resendInputText()
+                    } else if wantsFocus {
+                        insertNewlineAndSend()
+                    } else {
+                        wantsFocus = true
                     }
                 } label: {
-                    if inputTextWasSent {
-                        actionLabel("Ввід", systemImage: "keyboard")
-                    } else {
+                    if awaitingSend {
                         actionLabel("Надіслати", systemImage: "paperplane.fill")
+                    } else {
+                        actionLabel("Ввід", systemImage: "keyboard")
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(inputText.isEmpty || (!inputTextWasSent && !ble.isReady))
-                .accessibilityLabel(inputTextWasSent ? "Ввід" : "Надіслати")
+                .disabled(awaitingSend && (inputText.isEmpty || !ble.isReady))
+                .accessibilityLabel(awaitingSend ? "Надіслати" : "Ввід")
             }
             .font(.caption.weight(.semibold))
 
@@ -519,6 +547,10 @@ struct ContentView: View {
                 Label(inputWarning, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
+            } else if let pasteStatus {
+                Text(pasteStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else if !expertMode {
                 Text("Мова визначається автоматично. Для голосового введення натисніть мікрофон на системній клавіатурі iOS.")
                     .font(.caption)
@@ -1265,24 +1297,29 @@ struct ContentView: View {
     }
 
     private func handleTextChange(oldText: String, newText: String) {
-        let mutation = TextMutationPlanner.makePlan(from: oldText, to: newText)
-        var taps: [(modifiers: UInt8, keycode: UInt8)] = []
-
-        taps.append(contentsOf: repeatElement(
-            (modifiers: UInt8(0), keycode: HID.keyBackspace),
-            count: mutation.deletedCharacterCount
-        ))
-
-        if !taps.isEmpty {
-            ble.sendKeyTaps(taps)
+        pasteStatus = nil
+        if newText.isEmpty {
+            awaitingSend = false
+            inputWarning = nil
+            return
         }
-
+        if awaitingSend {
+            // Delayed mode: the field keeps the unsent text; the output gets
+            // it only when «Надіслати» is pressed.
+            return
+        }
+        let mutation = TextMutationPlanner.makePlan(from: oldText, to: newText)
+        if mutation.deletedCharacterCount > 0 {
+            ble.sendKeyTaps(Array(repeating: (modifiers: UInt8(0), keycode: HID.keyBackspace), count: mutation.deletedCharacterCount))
+        }
         if mutation.insertedText.isEmpty {
             inputWarning = nil
+            return
         }
-
         if sendText(mutation.insertedText) {
-            inputTextWasSent = true
+            // Sent instantly; still nothing to wait for.
+        } else {
+            awaitingSend = true
         }
     }
 
@@ -1294,7 +1331,35 @@ struct ContentView: View {
         let oldText = inputText
         let newText = oldText + clipboardText
         inputText = newText
-        handleTextChange(oldText: oldText, newText: newText)
+        pasteStatus = nil
+        inputWarning = nil
+        if awaitingSend {
+            // Delayed mode: insert only, nothing is sent until «Надіслати».
+            pasteStatus = localized("Вставлено не надіслано")
+            return
+        }
+        // Instant mode: only the pasted part leaves — the rest of the field is
+        // already on the output.
+        if sendText(clipboardText) {
+            pasteStatus = localized("Вставлено і надіслано")
+        } else {
+            awaitingSend = true
+            pasteStatus = localized("Вставлено не надіслано")
+        }
+    }
+
+    /// The Ввід button acting on a focused field inserts a newline and sends
+    /// it immediately, like pressing Enter on the keyboard.
+    private func insertNewlineAndSend() {
+        let newText = inputText + "\n"
+        inputText = newText
+        if awaitingSend {
+            // The newline joins the unsent text; it goes out with «Надіслати».
+            return
+        }
+        if !sendText("\n") {
+            awaitingSend = true
+        }
     }
 
     private func receiveShortcutTextIfNeeded() {
@@ -1390,8 +1455,12 @@ struct ContentView: View {
 
     private func resendInputText() {
         guard ble.isReady, !inputText.isEmpty else { return }
-        guard sendText(inputText) else { return }
-        inputTextWasSent = true
+        guard sendText(inputText) else {
+            // Send failed: stay in delayed mode so the button keeps «Надіслати».
+            awaitingSend = true
+            return
+        }
+        awaitingSend = false
         showSendStatus(localizedFormat("Надіслано через %@", ble.mode.title))
     }
 

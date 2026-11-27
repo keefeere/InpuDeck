@@ -422,3 +422,9 @@
 "InpuDeck не відкрився автоматично. Відкрийте його вручну." = "InpuDeck did not open automatically. Open it manually.";
 "Відкрийте InpuDeck вручну" = "Open InpuDeck manually";
 "Термін переданого тексту минув, його не надіслано." = "The handed-over text expired and was not sent.";
+
+/* Paste outcome and send-mode hint */
+"Вставлено не надіслано" = "Pasted, not sent";
+"Вставлено і надіслано" = "Pasted and sent";
+"режим затриманої відправки" = "Delayed sending";
+"режим миттєвої відправки" = "Instant sending";
