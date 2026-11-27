@@ -69,6 +69,12 @@ struct ContentView: View {
     /// Caption under the field: last paste outcome ("Вставлено не надіслано" /
     /// "Вставлено і надіслано"), overriding the generic hint.
     @State private var pasteStatus: String?
+    /// One-shot mode note next to the send status, cleared after a few
+    /// seconds: "режим миттєвої відправки" (green) / "режим затриманої
+    /// відправки" (yellow).
+    @State private var modeHintText: String?
+    @State private var modeHintIsInstant = true
+    @State private var modeHintToken = 0
     @State private var wantsFocus = false
     @State private var isSecureInput = false
     @State private var selectedTab = AppTabConfiguration(
@@ -154,6 +160,13 @@ struct ContentView: View {
             // through the new route, so the button must go back to «Надіслати».
             pasteStatus = nil
             awaitingSend = !inputText.isEmpty
+        }
+        .onChange(of: awaitingSend) { _, newValue in
+            modeHintToken += 1
+            modeHintText = newValue
+                ? localized("режим затриманої відправки")
+                : localized("режим миттєвої відправки")
+            modeHintIsInstant = !newValue
         }
         .onChange(of: tabConfigurationRawValue) { _, _ in
             if !tabConfiguration.isEnabled(.tools) { jigglerEnabled = false }
@@ -270,7 +283,7 @@ struct ContentView: View {
 
     private var connectionHeader: some View {
         HStack(spacing: 8) {
-            ConnectionStatusView(input: ble, sendModeHint: sendModeHint)
+            ConnectionStatusView(input: ble)
 
             Divider()
                 .frame(height: 20)
@@ -289,12 +302,6 @@ struct ContentView: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var sendModeHint: String {
-        awaitingSend
-            ? localized("режим затриманої відправки")
-            : localized("режим миттєвої відправки")
     }
 
     private var tabConfiguration: AppTabConfiguration {
@@ -440,15 +447,6 @@ struct ContentView: View {
                 .accessibilityLabel("Вставити")
 
                 Button {
-                    ble.sendKeyTap(modifiers: 0, hidKeycode: HID.keyEnter)
-                } label: {
-                    actionLabel("Enter", systemImage: "return")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!ble.isReady)
-                .accessibilityLabel("Enter")
-
-                Button {
                     wantsFocus = false
                     inputText = ""
                     inputWarning = nil
@@ -540,6 +538,21 @@ struct ContentView: View {
                         }
                         guard !Task.isCancelled else { return }
                         self.sendStatus = nil
+                    }
+            }
+
+            if let modeHintText {
+                Label(modeHintText, systemImage: modeHintIsInstant ? "bolt.fill" : "clock.fill")
+                    .font(.caption)
+                    .foregroundStyle(modeHintIsInstant ? .green : .yellow)
+                    .task(id: modeHintToken) {
+                        do {
+                            try await Task.sleep(for: .seconds(3))
+                        } catch {
+                            return
+                        }
+                        guard !Task.isCancelled else { return }
+                        self.modeHintText = nil
                     }
             }
 

@@ -6,18 +6,15 @@ struct ConnectionStatusView: View {
     @ObservedObject private var direct: DirectHIDTransport
     @ObservedObject private var esp: BLEKeyboardBridge
     var compact = false
-    /// Optional annotation shown under the status line (e.g. the send mode).
-    var sendModeHint: String? = nil
     @State private var showsBluetooth = false
     @State private var showsESPBridges = false
     @AppStorage("developerMode") private var developerMode = false
 
-    init(input: RemoteInputController, compact: Bool = false, sendModeHint: String? = nil) {
+    init(input: RemoteInputController, compact: Bool = false) {
         self.input = input
         self.direct = input.direct
         self.esp = input.esp
         self.compact = compact
-        self.sendModeHint = sendModeHint
     }
 
     var body: some View {
@@ -70,7 +67,6 @@ struct ConnectionStatusView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: compact ? 32 : 44, alignment: .leading)
-                .padding(.bottom, sendModeHint == nil ? 0 : 2)
                 .contentShape(Rectangle())
             }
             .frame(maxWidth: .infinity)
@@ -118,19 +114,11 @@ struct ConnectionStatusView: View {
     }
 
     private var statusLabel: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(displayStatus)
-                .font(compact ? .caption2 : .caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if !compact, let sendModeHint {
-                Text(sendModeHint)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(displayStatus)
+            .font(compact ? .caption2 : .caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var displayStatus: String {
