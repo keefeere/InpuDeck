@@ -292,14 +292,14 @@ struct ContentView: View {
                 showSettings()
             } label: {
                 Image(systemName: "gearshape")
-                    .frame(width: 28, height: 32)
+                    .frame(width: 28, height: 28)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Налаштування")
             .accessibilityIdentifier("appSettings")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) { Divider() }
     }
