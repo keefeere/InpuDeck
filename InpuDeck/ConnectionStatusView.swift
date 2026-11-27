@@ -66,7 +66,7 @@ struct ConnectionStatusView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, minHeight: compact ? 32 : 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: compact ? 32 : 34, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .frame(maxWidth: .infinity)

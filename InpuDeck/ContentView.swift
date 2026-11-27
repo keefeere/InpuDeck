@@ -299,7 +299,7 @@ struct ContentView: View {
             .accessibilityIdentifier("appSettings")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 5)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) { Divider() }
     }
