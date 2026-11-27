@@ -56,14 +56,17 @@ struct ConfiguredTabView<Content: View>: View {
 
     @ViewBuilder
     private func icon(_ tab: AppTab) -> some View {
+        // 15 % larger than the default so it sits level with its neighbours
+        // in expert mode, where the labels are hidden.
         if let asset = tab.assetName {
             Image(asset)
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 24, height: 21)
+                .frame(width: 27.6, height: 24)
         } else {
             Image(systemName: tab.systemImage)
+                .scaleEffect(1.15)
         }
     }
 }
