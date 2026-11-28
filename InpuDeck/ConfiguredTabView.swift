@@ -64,11 +64,11 @@ struct ConfiguredTabView<Content: View>: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
         } else {
             Image(systemName: tab.systemImage)
-                .font(.system(size: 24))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 26))
+                .frame(width: 30, height: 30)
         }
     }
 }
